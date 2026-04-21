@@ -39,6 +39,25 @@ export interface TokenSpread {
   volume24h?: number;
   /** True when response contains simulated data due to exchange unavailability */
   demo?: boolean;
+  gatePrice?: number;
+  gateFundingRate?: number;
+  gateNextFunding?: string;
+  gateBid?: number;
+  gateAsk?: number;
+  okxPrice?: number;
+  okxFundingRate?: number;
+  okxNextFunding?: string;
+  okxBid?: number;
+  okxAsk?: number;
+  mexcPrice?: number;
+  mexcFundingRate?: number;
+  mexcNextFunding?: string;
+  mexcBid?: number;
+  mexcAsk?: number;
+  /** Highest absolute spread across all tracked exchange pairs */
+  bestSpreadPct?: number;
+  /** Label of the exchange pair with the best spread e.g. "gate/binance" */
+  bestSpreadLeg?: string;
 }
 
 export interface ExchangeBalances {

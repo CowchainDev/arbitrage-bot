@@ -35,17 +35,35 @@ function formatPnl(pnl: number | null | undefined): string {
   return (pnl >= 0 ? "+" : "") + "$" + Math.abs(pnl).toFixed(2);
 }
 
-function SpreadBadge({ spreadPct }: { spreadPct: number }) {
-  const abs = Math.abs(spreadPct);
-  const isPositive = spreadPct >= 0;
+const EXCHANGE_LABELS: Record<string, string> = {
+  bybit: "BB", binance: "BN", gate: "GT", okx: "OKX", mexc: "MX",
+};
+const EXCHANGE_COLORS: Record<string, string> = {
+  bybit: "text-amber-400", binance: "text-violet-400", gate: "text-sky-400", okx: "text-emerald-400", mexc: "text-rose-400",
+};
+
+function SpreadBadge({ spreadPct, bestSpreadPct, bestSpreadLeg }: { spreadPct: number; bestSpreadPct?: number; bestSpreadLeg?: string }) {
+  const value = bestSpreadPct != null ? bestSpreadPct : Math.abs(spreadPct);
   let colorClass = "text-muted-foreground";
-  if (abs >= 1) colorClass = isPositive ? "text-primary" : "text-destructive";
-  else if (abs >= 0.3) colorClass = "text-amber-400";
+  if (value >= 1) colorClass = "text-primary";
+  else if (value >= 0.3) colorClass = "text-amber-400";
 
   return (
-    <span className={`font-mono font-semibold text-sm ${colorClass}`}>
-      {formatPct(spreadPct)}
-    </span>
+    <div className="text-right">
+      <span className={`font-mono font-semibold text-sm ${colorClass}`}>
+        +{value.toFixed(4)}%
+      </span>
+      {bestSpreadLeg && (
+        <div className="text-[10px] text-muted-foreground font-mono leading-tight">
+          {bestSpreadLeg.split("/").map((ex, i) => (
+            <span key={ex}>
+              {i > 0 && <span className="text-muted-foreground/50">/</span>}
+              <span className={EXCHANGE_COLORS[ex] ?? ""}>{EXCHANGE_LABELS[ex] ?? ex.toUpperCase()}</span>
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -83,26 +101,28 @@ function TokenCard({
             />
           </button>
         </div>
-        <SpreadBadge spreadPct={token.spreadPct} />
+        <SpreadBadge spreadPct={token.spreadPct} bestSpreadPct={token.bestSpreadPct} bestSpreadLeg={token.bestSpreadLeg} />
       </div>
 
-      <div className="grid grid-cols-2 gap-x-2 text-xs">
-        <div>
-          <span className="text-amber-400/70 font-semibold">BB</span>
-          <span className="ml-1 font-mono text-foreground">{formatPrice(token.bybitPrice)}</span>
-        </div>
-        <div>
-          <span className="text-violet-400/70 font-semibold">BN</span>
-          <span className="ml-1 font-mono text-foreground">{formatPrice(token.binancePrice)}</span>
-        </div>
-        <div className="mt-0.5 text-muted-foreground">
-          FR: <span className={token.bybitFundingRate != null && token.bybitFundingRate > 0 ? "text-primary" : "text-destructive"}>
-            {formatFunding(token.bybitFundingRate)}
-          </span>
-        </div>
-        <div className="mt-0.5 text-muted-foreground">
-          FR: <span className={token.binanceFundingRate != null && token.binanceFundingRate > 0 ? "text-primary" : "text-destructive"}>
-            {formatFunding(token.binanceFundingRate)}
+      <div className="space-y-0.5 text-xs">
+        {(([
+          ["BB", token.bybitPrice, "text-amber-400"],
+          ["BN", token.binancePrice, "text-violet-400"],
+          token.gatePrice != null ? ["GT", token.gatePrice, "text-sky-400"] : null,
+          token.okxPrice != null ? ["OKX", token.okxPrice, "text-emerald-400"] : null,
+          token.mexcPrice != null ? ["MX", token.mexcPrice, "text-rose-400"] : null,
+        ]).filter((x): x is [string, number, string] => x !== null)).map(([label, price, color]) => (
+          <div key={label} className="flex items-center justify-between">
+            <span className={`font-semibold w-8 ${color}`}>{label}</span>
+            <span className="font-mono text-foreground">{formatPrice(price)}</span>
+          </div>
+        ))}
+        <div className="flex items-center justify-between mt-0.5 pt-0.5 border-t border-border/50 text-muted-foreground">
+          <span>FR BB/BN</span>
+          <span className="font-mono">
+            <span className={token.bybitFundingRate != null && token.bybitFundingRate > 0 ? "text-primary" : "text-destructive"}>{formatFunding(token.bybitFundingRate)}</span>
+            <span className="text-muted-foreground/50 mx-0.5">/</span>
+            <span className={token.binanceFundingRate != null && token.binanceFundingRate > 0 ? "text-primary" : "text-destructive"}>{formatFunding(token.binanceFundingRate)}</span>
           </span>
         </div>
       </div>
@@ -381,31 +401,78 @@ function TokenDetailPanel({
         </p>
       )}
 
-      {/* Live data table */}
+      {/* All-exchange price matrix */}
       <div className="border border-border rounded overflow-hidden">
-        <div className="grid grid-cols-3 bg-muted text-xs px-2 py-1.5 text-muted-foreground font-semibold uppercase tracking-wider">
-          <span></span>
+        <div className="grid grid-cols-3 bg-muted text-xs px-2 py-1.5 font-semibold uppercase tracking-wider">
+          <span className="text-muted-foreground"></span>
           <span className="text-amber-400/80">BYBIT</span>
           <span className="text-violet-400/80">BINANCE</span>
         </div>
         {[
-          { label: "Price", bybit: formatPrice(token.bybitPrice), binance: formatPrice(token.binancePrice) },
-          { label: "Bid", bybit: formatPrice(token.bybitBid), binance: formatPrice(token.binanceBid) },
-          { label: "Ask", bybit: formatPrice(token.bybitAsk), binance: formatPrice(token.binanceAsk) },
+          { label: "Price",   bybit: formatPrice(token.bybitPrice),   binance: formatPrice(token.binancePrice) },
+          { label: "Bid",     bybit: formatPrice(token.bybitBid),     binance: formatPrice(token.binanceBid) },
+          { label: "Ask",     bybit: formatPrice(token.bybitAsk),     binance: formatPrice(token.binanceAsk) },
           { label: "Funding", bybit: formatFunding(token.bybitFundingRate), binance: formatFunding(token.binanceFundingRate) },
-          { label: "Next Fund", bybit: token.bybitNextFunding ? new Date(token.bybitNextFunding).toLocaleTimeString() : "-", binance: token.binanceNextFunding ? new Date(token.binanceNextFunding).toLocaleTimeString() : "-" },
-          { label: "Spread", bybit: formatPct(token.spreadPct), binance: "-" },
+          { label: "Next FR", bybit: token.bybitNextFunding ? new Date(token.bybitNextFunding).toLocaleTimeString() : "-", binance: token.binanceNextFunding ? new Date(token.binanceNextFunding).toLocaleTimeString() : "-" },
+          { label: "Spread",  bybit: formatPct(token.spreadPct),      binance: "-" },
         ].map((row, i) => (
-          <div
-            key={row.label}
-            className={`grid grid-cols-3 text-xs px-2 py-1.5 ${i % 2 === 0 ? "bg-card" : "bg-background"}`}
-          >
+          <div key={row.label} className={`grid grid-cols-3 text-xs px-2 py-1.5 ${i % 2 === 0 ? "bg-card" : "bg-background"}`}>
             <span className="text-muted-foreground">{row.label}</span>
             <span className="font-mono text-foreground">{row.bybit}</span>
             <span className="font-mono text-foreground">{row.binance}</span>
           </div>
         ))}
       </div>
+
+      {/* Read-only exchange prices */}
+      {(token.gatePrice != null || token.okxPrice != null || token.mexcPrice != null) && (
+        <div className="border border-border rounded overflow-hidden">
+          <div className="bg-muted text-xs px-2 py-1.5 font-semibold uppercase tracking-wider text-muted-foreground">
+            Read-only exchanges
+          </div>
+          <div className="grid grid-cols-4 text-xs px-2 py-1 bg-muted/50 text-muted-foreground font-semibold">
+            <span></span>
+            <span className="text-sky-400/80">GATE</span>
+            <span className="text-emerald-400/80">OKX</span>
+            <span className="text-rose-400/80">MEXC</span>
+          </div>
+          {[
+            { label: "Price",   gate: formatPrice(token.gatePrice),   okx: formatPrice(token.okxPrice),   mexc: formatPrice(token.mexcPrice) },
+            { label: "Bid",     gate: formatPrice(token.gateBid),     okx: formatPrice(token.okxBid),     mexc: formatPrice(token.mexcBid) },
+            { label: "Ask",     gate: formatPrice(token.gateAsk),     okx: formatPrice(token.okxAsk),     mexc: formatPrice(token.mexcAsk) },
+            { label: "Funding", gate: formatFunding(token.gateFundingRate), okx: formatFunding(token.okxFundingRate), mexc: formatFunding(token.mexcFundingRate) },
+          ].map((row, i) => (
+            <div key={row.label} className={`grid grid-cols-4 text-xs px-2 py-1.5 ${i % 2 === 0 ? "bg-card" : "bg-background"}`}>
+              <span className="text-muted-foreground">{row.label}</span>
+              <span className="font-mono text-foreground">{row.gate}</span>
+              <span className="font-mono text-foreground">{row.okx}</span>
+              <span className="font-mono text-foreground">{row.mexc}</span>
+            </div>
+          ))}
+
+          {/* Cross-exchange spreads */}
+          <div className="bg-muted/30 px-2 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider border-t border-border">
+            Cross spreads vs BB
+          </div>
+          {(["gate", "okx", "mexc"] as const).map((ex, i) => {
+            const exPrice = ex === "gate" ? token.gatePrice : ex === "okx" ? token.okxPrice : token.mexcPrice;
+            if (exPrice == null) return null;
+            const spread = ((exPrice - token.bybitPrice) / token.bybitPrice) * 100;
+            const color = Math.abs(spread) >= 1 ? (spread >= 0 ? "text-primary" : "text-destructive") : Math.abs(spread) >= 0.3 ? "text-amber-400" : "text-muted-foreground";
+            const label = ex === "gate" ? "GT" : ex === "okx" ? "OKX" : "MX";
+            const labelColor = EXCHANGE_COLORS[ex];
+            return (
+              <div key={ex} className={`grid grid-cols-3 text-xs px-2 py-1.5 ${i % 2 === 0 ? "bg-card" : "bg-background"}`}>
+                <span className={`font-semibold ${labelColor}`}>{label}/BB</span>
+                <span className={`font-mono font-semibold ${color}`}>{formatPct(spread)}</span>
+                <span className="text-muted-foreground font-mono text-[10px]">
+                  {Math.abs(spread) >= 1 ? "HIGH" : Math.abs(spread) >= 0.3 ? "MED" : "LOW"}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -514,13 +581,13 @@ export default function Dashboard() {
   const [showPositions, setShowPositions] = useState(true);
 
   const pricesQuery = useGetExchangePrices({
-    query: { refetchInterval: 3000, queryKey: getGetExchangePricesQueryKey() },
+    query: { refetchInterval: 8000, queryKey: getGetExchangePricesQueryKey() },
     request: requestHeaders ?? undefined,
   });
 
   const positionsQuery = useGetPositions({
     query: {
-      refetchInterval: 3000,
+      refetchInterval: 5000,
       queryKey: getGetPositionsQueryKey(),
       enabled: hasCredentials,
     },

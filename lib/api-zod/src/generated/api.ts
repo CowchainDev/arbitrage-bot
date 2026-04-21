@@ -63,6 +63,31 @@ export const GetExchangePricesResponseItem = zod.object({
     .describe(
       "True when response contains simulated data due to exchange unavailability",
     ),
+  gatePrice: zod.number().optional(),
+  gateFundingRate: zod.number().optional(),
+  gateNextFunding: zod.string().optional(),
+  gateBid: zod.number().optional(),
+  gateAsk: zod.number().optional(),
+  okxPrice: zod.number().optional(),
+  okxFundingRate: zod.number().optional(),
+  okxNextFunding: zod.string().optional(),
+  okxBid: zod.number().optional(),
+  okxAsk: zod.number().optional(),
+  mexcPrice: zod.number().optional(),
+  mexcFundingRate: zod.number().optional(),
+  mexcNextFunding: zod.string().optional(),
+  mexcBid: zod.number().optional(),
+  mexcAsk: zod.number().optional(),
+  bestSpreadPct: zod
+    .number()
+    .optional()
+    .describe("Highest absolute spread across all tracked exchange pairs"),
+  bestSpreadLeg: zod
+    .string()
+    .optional()
+    .describe(
+      'Label of the exchange pair with the best spread e.g. \"gate\/binance\"',
+    ),
 });
 export const GetExchangePricesResponse = zod.array(
   GetExchangePricesResponseItem,

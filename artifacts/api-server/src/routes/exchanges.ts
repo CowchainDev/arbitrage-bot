@@ -8,6 +8,119 @@ import {
 
 const router: IRouter = Router();
 
+let priceCache: { data: unknown[]; ts: number } | null = null;
+let priceFetchInFlight: Promise<unknown[]> | null = null;
+const PRICE_CACHE_TTL_MS = 9_000;
+
+async function fetchAndCachePrices(): Promise<unknown[]> {
+  const bybit = createBybitExchange();
+  const binance = createBinanceExchange();
+  const gate = createGateExchange();
+  const okx = createOkxExchange();
+  const mexc = createMexcExchange();
+
+  const [
+    bybitTickers, binanceTickers, gateTickers, okxTickers, mexcTickers,
+    bybitFunding, binanceFunding, gateFunding, okxFunding, mexcFunding,
+  ] = await Promise.allSettled([
+    bybit.fetchTickers(undefined, { type: "linear" }),
+    binance.fetchTickers(undefined, { type: "future" }),
+    gate.fetchTickers(undefined, { type: "swap" }),
+    okx.fetchTickers(undefined, { type: "swap" }),
+    mexc.fetchTickers(undefined, { type: "swap" }),
+    bybit.fetchFundingRates(),
+    binance.fetchFundingRates(),
+    gate.fetchFundingRates(),
+    okx.fetchFundingRates(),
+    mexc.fetchFundingRates(),
+  ]);
+
+  const bybitTickerMap  = bybitTickers.status  === "fulfilled" ? bybitTickers.value  : {};
+  const binanceTickerMap = binanceTickers.status === "fulfilled" ? binanceTickers.value : {};
+  const gateTickerMap   = gateTickers.status   === "fulfilled" ? gateTickers.value   : {};
+  const okxTickerMap    = okxTickers.status    === "fulfilled" ? okxTickers.value    : {};
+  const mexcTickerMap   = mexcTickers.status   === "fulfilled" ? mexcTickers.value   : {};
+
+  const bybitFundingMap  = bybitFunding.status  === "fulfilled" ? bybitFunding.value  : {};
+  const binanceFundingMap = binanceFunding.status === "fulfilled" ? binanceFunding.value : {};
+  const gateFundingMap   = gateFunding.status   === "fulfilled" ? gateFunding.value   : {};
+  const okxFundingMap    = okxFunding.status    === "fulfilled" ? okxFunding.value    : {};
+  const mexcFundingMap   = mexcFunding.status   === "fulfilled" ? mexcFunding.value   : {};
+
+  const spreads = [];
+
+  for (const symbol of POPULAR_SYMBOLS) {
+    const key = `${symbol}/USDT:USDT`;
+
+    const bybitTicker  = bybitTickerMap[key];
+    const binanceTicker = binanceTickerMap[key];
+    const gateTicker   = gateTickerMap[key];
+    const okxTicker    = okxTickerMap[key];
+    const mexcTicker   = mexcTickerMap[key];
+
+    const bybitPrice  = bybitTicker  ? (bybitTicker.last  ?? bybitTicker.bid  ?? 0) : 0;
+    const binancePrice = binanceTicker ? (binanceTicker.last ?? binanceTicker.bid ?? 0) : 0;
+    const gatePrice   = gateTicker   ? (gateTicker.last   ?? gateTicker.bid   ?? 0) : 0;
+    const okxPrice    = okxTicker    ? (okxTicker.last    ?? okxTicker.bid    ?? 0) : 0;
+    const mexcPrice   = mexcTicker   ? (mexcTicker.last   ?? mexcTicker.bid   ?? 0) : 0;
+
+    if (!bybitPrice || !binancePrice) continue;
+
+    const spreadPct = ((bybitPrice - binancePrice) / binancePrice) * 100;
+
+    const allPrices: Record<string, ExchangePrices | null> = {
+      bybit:   bybitPrice  ? { price: bybitPrice,  bid: bybitTicker?.bid  ?? bybitPrice,  ask: bybitTicker?.ask  ?? bybitPrice,  fundingRate: bybitFundingMap[key]?.fundingRate  ?? 0 } : null,
+      binance: binancePrice ? { price: binancePrice, bid: binanceTicker?.bid ?? binancePrice, ask: binanceTicker?.ask ?? binancePrice, fundingRate: binanceFundingMap[key]?.fundingRate ?? 0 } : null,
+      gate:    gatePrice   ? { price: gatePrice,   bid: gateTicker?.bid   ?? gatePrice,   ask: gateTicker?.ask   ?? gatePrice,   fundingRate: gateFundingMap[key]?.fundingRate   ?? 0 } : null,
+      okx:     okxPrice    ? { price: okxPrice,    bid: okxTicker?.bid    ?? okxPrice,    ask: okxTicker?.ask    ?? okxPrice,    fundingRate: okxFundingMap[key]?.fundingRate    ?? 0 } : null,
+      mexc:    mexcPrice   ? { price: mexcPrice,   bid: mexcTicker?.bid   ?? mexcPrice,   ask: mexcTicker?.ask   ?? mexcPrice,   fundingRate: mexcFundingMap[key]?.fundingRate   ?? 0 } : null,
+    };
+
+    const { bestSpreadPct, bestSpreadLeg } = computeBestSpread(allPrices);
+
+    spreads.push({
+      symbol,
+      bybitPrice,
+      binancePrice,
+      spreadPct,
+      bybitFundingRate:  bybitFundingMap[key]?.fundingRate   ?? null,
+      binanceFundingRate: binanceFundingMap[key]?.fundingRate  ?? null,
+      bybitNextFunding:  bybitFundingMap[key]?.fundingDatetime  ?? null,
+      binanceNextFunding: binanceFundingMap[key]?.fundingDatetime ?? null,
+      bybitBid:  bybitTicker?.bid  ?? null,
+      bybitAsk:  bybitTicker?.ask  ?? null,
+      binanceBid: binanceTicker?.bid ?? null,
+      binanceAsk: binanceTicker?.ask ?? null,
+      gatePrice:   gatePrice   || null,
+      gateFundingRate:  gateFundingMap[key]?.fundingRate   ?? null,
+      gateNextFunding:  gateFundingMap[key]?.fundingDatetime  ?? null,
+      gateBid:  gateTicker?.bid  ?? null,
+      gateAsk:  gateTicker?.ask  ?? null,
+      okxPrice:    okxPrice    || null,
+      okxFundingRate:   okxFundingMap[key]?.fundingRate    ?? null,
+      okxNextFunding:   okxFundingMap[key]?.fundingDatetime   ?? null,
+      okxBid:   okxTicker?.bid   ?? null,
+      okxAsk:   okxTicker?.ask   ?? null,
+      mexcPrice:   mexcPrice   || null,
+      mexcFundingRate:  mexcFundingMap[key]?.fundingRate   ?? null,
+      mexcNextFunding:  mexcFundingMap[key]?.fundingDatetime  ?? null,
+      mexcBid:  mexcTicker?.bid  ?? null,
+      mexcAsk:  mexcTicker?.ask  ?? null,
+      bestSpreadPct,
+      bestSpreadLeg,
+      volume24h: (bybitTicker?.quoteVolume ?? 0) + (binanceTicker?.quoteVolume ?? 0),
+    });
+  }
+
+  spreads.sort((a, b) => Math.abs(b.bestSpreadPct) - Math.abs(a.bestSpreadPct));
+
+  if (spreads.length > 0) {
+    priceCache = { data: spreads, ts: Date.now() };
+  }
+
+  return spreads;
+}
+
 function getBybitCredentials(req: Request) {
   return {
     apiKey: (req.headers["x-bybit-api-key"] as string) || "",
@@ -42,6 +155,24 @@ function createBinanceExchange(apiKey = "", secret = "") {
   });
 }
 
+function createGateExchange() {
+  return new ccxt.gateio({
+    options: { defaultType: "swap" },
+  });
+}
+
+function createOkxExchange() {
+  return new ccxt.okx({
+    options: { defaultType: "swap" },
+  });
+}
+
+function createMexcExchange() {
+  return new ccxt.mexc({
+    options: { defaultType: "swap" },
+  });
+}
+
 const POPULAR_SYMBOLS = [
   "BTC", "ETH", "SOL", "BNB", "XRP", "DOGE", "ADA", "AVAX", "DOT", "LINK",
   "MATIC", "UNI", "ATOM", "LTC", "BCH", "ETC", "FIL", "APT", "ARB", "OP",
@@ -62,112 +193,127 @@ const DEMO_BASE_PRICES: Record<string, number> = {
   LDO: 2.1, RPL: 15.2,
 };
 
+type ExchangePrices = {
+  price: number;
+  bid: number;
+  ask: number;
+  fundingRate: number;
+};
+
+function computeBestSpread(prices: Record<string, ExchangePrices | null>): { bestSpreadPct: number; bestSpreadLeg: string } {
+  const entries = Object.entries(prices).filter((e): e is [string, ExchangePrices] => e[1] !== null);
+  let bestAbs = 0;
+  let bestLeg = "";
+  for (let i = 0; i < entries.length; i++) {
+    for (let j = i + 1; j < entries.length; j++) {
+      const [nameA, a] = entries[i];
+      const [nameB, b] = entries[j];
+      const pct = ((a.price - b.price) / b.price) * 100;
+      if (Math.abs(pct) > bestAbs) {
+        bestAbs = Math.abs(pct);
+        bestLeg = pct >= 0 ? `${nameA}/${nameB}` : `${nameB}/${nameA}`;
+      }
+    }
+  }
+  return { bestSpreadPct: bestAbs, bestSpreadLeg: bestLeg };
+}
+
 function generateDemoSpreads() {
   const nextFundingOffset = 3600 * 1000 * (Math.floor(Date.now() / (3600 * 8 * 1000) + 1) * 8 - Math.floor(Date.now() / (3600 * 1000)));
   const nextFundingTime = new Date(Date.now() + nextFundingOffset).toISOString();
 
   return Object.entries(DEMO_BASE_PRICES).map(([symbol, basePrice]) => {
-    const noise1 = (Math.random() - 0.5) * 0.002;
-    const noise2 = (Math.random() - 0.5) * 0.002;
-    const spreadBias = (Math.random() - 0.5) * 0.03;
-    const bybitPrice = basePrice * (1 + noise1 + spreadBias / 2);
-    const binancePrice = basePrice * (1 + noise2 - spreadBias / 2);
+    const n = () => (Math.random() - 0.5) * 0.002;
+    const bybitPrice = basePrice * (1 + n() + (Math.random() - 0.5) * 0.015);
+    const binancePrice = basePrice * (1 + n() + (Math.random() - 0.5) * 0.015);
+    const gatePrice = basePrice * (1 + n() + (Math.random() - 0.5) * 0.015);
+    const okxPrice = basePrice * (1 + n() + (Math.random() - 0.5) * 0.015);
+    const mexcPrice = basePrice * (1 + n() + (Math.random() - 0.5) * 0.015);
     const spreadPct = ((bybitPrice - binancePrice) / binancePrice) * 100;
-    const bybitFundingRate = (Math.random() - 0.4) * 0.001;
-    const binanceFundingRate = (Math.random() - 0.4) * 0.001;
     const spread = basePrice * 0.0001;
+
+    const allPrices: Record<string, ExchangePrices | null> = {
+      bybit: { price: bybitPrice, bid: bybitPrice - spread, ask: bybitPrice + spread, fundingRate: (Math.random() - 0.4) * 0.001 },
+      binance: { price: binancePrice, bid: binancePrice - spread, ask: binancePrice + spread, fundingRate: (Math.random() - 0.4) * 0.001 },
+      gate: { price: gatePrice, bid: gatePrice - spread, ask: gatePrice + spread, fundingRate: (Math.random() - 0.4) * 0.001 },
+      okx: { price: okxPrice, bid: okxPrice - spread, ask: okxPrice + spread, fundingRate: (Math.random() - 0.4) * 0.001 },
+      mexc: { price: mexcPrice, bid: mexcPrice - spread, ask: mexcPrice + spread, fundingRate: (Math.random() - 0.4) * 0.001 },
+    };
+
+    const { bestSpreadPct, bestSpreadLeg } = computeBestSpread(allPrices);
 
     return {
       symbol,
       bybitPrice,
       binancePrice,
       spreadPct,
-      bybitFundingRate,
-      binanceFundingRate,
+      bybitFundingRate: allPrices.bybit!.fundingRate,
+      binanceFundingRate: allPrices.binance!.fundingRate,
       bybitNextFunding: nextFundingTime,
       binanceNextFunding: nextFundingTime,
       bybitBid: bybitPrice - spread,
       bybitAsk: bybitPrice + spread,
       binanceBid: binancePrice - spread,
       binanceAsk: binancePrice + spread,
+      gatePrice,
+      gateFundingRate: allPrices.gate!.fundingRate,
+      gateNextFunding: nextFundingTime,
+      gateBid: gatePrice - spread,
+      gateAsk: gatePrice + spread,
+      okxPrice,
+      okxFundingRate: allPrices.okx!.fundingRate,
+      okxNextFunding: nextFundingTime,
+      okxBid: okxPrice - spread,
+      okxAsk: okxPrice + spread,
+      mexcPrice,
+      mexcFundingRate: allPrices.mexc!.fundingRate,
+      mexcNextFunding: nextFundingTime,
+      mexcBid: mexcPrice - spread,
+      mexcAsk: mexcPrice + spread,
+      bestSpreadPct,
+      bestSpreadLeg,
       volume24h: basePrice * Math.random() * 50000000,
       demo: true,
     };
-  }).sort((a, b) => Math.abs(b.spreadPct) - Math.abs(a.spreadPct));
+  }).sort((a, b) => Math.abs(b.bestSpreadPct) - Math.abs(a.bestSpreadPct));
+}
+
+function ensurePriceFetch(): Promise<unknown[]> {
+  if (!priceFetchInFlight) {
+    priceFetchInFlight = fetchAndCachePrices().finally(() => {
+      priceFetchInFlight = null;
+    });
+  }
+  return priceFetchInFlight;
 }
 
 router.get("/exchanges/prices", async (req: Request, res: Response) => {
   try {
-    const bybit = createBybitExchange();
-    const binance = createBinanceExchange();
+    const now = Date.now();
+    const cacheAge = priceCache ? now - priceCache.ts : Infinity;
 
-    const [bybitTickers, binanceTickers, bybitFunding, binanceFunding] =
-      await Promise.allSettled([
-        bybit.fetchTickers(undefined, { type: "linear" }),
-        binance.fetchTickers(undefined, { type: "future" }),
-        bybit.fetchFundingRates(),
-        binance.fetchFundingRates(),
-      ]);
-
-    const bybitTickerMap =
-      bybitTickers.status === "fulfilled" ? bybitTickers.value : {};
-    const binanceTickerMap =
-      binanceTickers.status === "fulfilled" ? binanceTickers.value : {};
-    const bybitFundingMap =
-      bybitFunding.status === "fulfilled" ? bybitFunding.value : {};
-    const binanceFundingMap =
-      binanceFunding.status === "fulfilled" ? binanceFunding.value : {};
-
-    const spreads = [];
-
-    for (const symbol of POPULAR_SYMBOLS) {
-      const bybitKey = `${symbol}/USDT:USDT`;
-      const binanceKey = `${symbol}/USDT:USDT`;
-
-      const bybitTicker = bybitTickerMap[bybitKey];
-      const binanceTicker = binanceTickerMap[binanceKey];
-
-      if (!bybitTicker || !binanceTicker) continue;
-
-      const bybitPrice = bybitTicker.last ?? bybitTicker.bid ?? 0;
-      const binancePrice = binanceTicker.last ?? binanceTicker.bid ?? 0;
-
-      if (!bybitPrice || !binancePrice) continue;
-
-      const spreadPct = ((bybitPrice - binancePrice) / binancePrice) * 100;
-
-      const bybitFundingData = bybitFundingMap[bybitKey];
-      const binanceFundingData = binanceFundingMap[binanceKey];
-
-      spreads.push({
-        symbol,
-        bybitPrice,
-        binancePrice,
-        spreadPct,
-        bybitFundingRate: bybitFundingData?.fundingRate ?? null,
-        binanceFundingRate: binanceFundingData?.fundingRate ?? null,
-        bybitNextFunding: bybitFundingData?.fundingDatetime ?? null,
-        binanceNextFunding: binanceFundingData?.fundingDatetime ?? null,
-        bybitBid: bybitTicker.bid ?? null,
-        bybitAsk: bybitTicker.ask ?? null,
-        binanceBid: binanceTicker.bid ?? null,
-        binanceAsk: binanceTicker.ask ?? null,
-        volume24h: (bybitTicker.quoteVolume ?? 0) + (binanceTicker.quoteVolume ?? 0),
-      });
+    if (cacheAge < PRICE_CACHE_TTL_MS) {
+      if (!priceFetchInFlight && cacheAge > PRICE_CACHE_TTL_MS / 2) {
+        ensurePriceFetch();
+      }
+      res.json(priceCache!.data);
+      return;
     }
 
-    spreads.sort((a, b) => Math.abs(b.spreadPct) - Math.abs(a.spreadPct));
+    let spreads = await ensurePriceFetch();
 
     if (spreads.length === 0) {
       req.log.warn("Live exchange data unavailable, returning demo data");
-      res.json(generateDemoSpreads());
-      return;
+      spreads = generateDemoSpreads();
+      priceCache = { data: spreads, ts: Date.now() - PRICE_CACHE_TTL_MS + 15_000 };
     }
 
     res.json(spreads);
   } catch (err) {
     req.log.error({ err }, "Error fetching exchange prices, returning demo data");
-    res.json(generateDemoSpreads());
+    const demo = generateDemoSpreads();
+    priceCache = { data: demo, ts: Date.now() - PRICE_CACHE_TTL_MS + 15_000 };
+    res.json(demo);
   }
 });
 
@@ -577,5 +723,7 @@ router.post("/exchanges/jump-in", async (req: Request, res: Response) => {
     });
   }
 });
+
+ensurePriceFetch();
 
 export default router;

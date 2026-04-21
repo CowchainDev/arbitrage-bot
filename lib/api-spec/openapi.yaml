@@ -347,6 +347,42 @@ components:
         demo:
           type: boolean
           description: True when response contains simulated data due to exchange unavailability
+        gatePrice:
+          type: number
+        gateFundingRate:
+          type: number
+        gateNextFunding:
+          type: string
+        gateBid:
+          type: number
+        gateAsk:
+          type: number
+        okxPrice:
+          type: number
+        okxFundingRate:
+          type: number
+        okxNextFunding:
+          type: string
+        okxBid:
+          type: number
+        okxAsk:
+          type: number
+        mexcPrice:
+          type: number
+        mexcFundingRate:
+          type: number
+        mexcNextFunding:
+          type: string
+        mexcBid:
+          type: number
+        mexcAsk:
+          type: number
+        bestSpreadPct:
+          type: number
+          description: Highest absolute spread across all tracked exchange pairs
+        bestSpreadLeg:
+          type: string
+          description: Label of the exchange pair with the best spread e.g. "gate/binance"
       required:
         - symbol
         - bybitPrice
