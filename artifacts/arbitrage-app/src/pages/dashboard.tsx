@@ -557,10 +557,14 @@ function TokenDetailPanel({
 function PositionRow({
   position,
   onCloseSuccess,
+  onDismiss,
+  isLocalOnly,
   requestHeaders,
 }: {
   position: Position;
   onCloseSuccess: (symbol: string) => void;
+  onDismiss?: (symbol: string) => void;
+  isLocalOnly?: boolean;
   requestHeaders: ReturnType<ReturnType<typeof useApiCredentials>["getRequestHeaders"]>;
 }) {
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -635,13 +639,23 @@ function PositionRow({
         <span className="font-mono text-muted-foreground">
           {position.openedAt ? new Date(position.openedAt).toLocaleTimeString() : "-"}
         </span>
-        <button
-          onClick={() => setConfirmOpen(true)}
-          data-testid={`btn-close-position-${position.symbol}`}
-          className="text-xs text-destructive hover:bg-destructive/10 px-2 py-1 rounded transition-colors"
-        >
-          Close
-        </button>
+        {isLocalOnly ? (
+          <button
+            onClick={() => onDismiss?.(position.symbol)}
+            data-testid={`btn-dismiss-position-${position.symbol}`}
+            className="text-xs text-muted-foreground hover:bg-muted/50 px-2 py-1 rounded transition-colors"
+          >
+            Dismiss
+          </button>
+        ) : (
+          <button
+            onClick={() => setConfirmOpen(true)}
+            data-testid={`btn-close-position-${position.symbol}`}
+            className="text-xs text-destructive hover:bg-destructive/10 px-2 py-1 rounded transition-colors"
+          >
+            Close
+          </button>
+        )}
       </div>
 
       <Dialog open={confirmOpen} onOpenChange={(open) => { if (!isClosing) setConfirmOpen(open); }}>
@@ -750,10 +764,29 @@ export default function Dashboard() {
 
   const polledPositions = positionsQuery.data ?? [];
 
+  useEffect(() => {
+    if (!hasCredentials) return;
+    if (positionsQuery.isLoading || positionsQuery.isError) return;
+    if (!positionsQuery.dataUpdatedAt) return;
+    const polledSymbols = new Set(polledPositions.map((p) => p.symbol));
+    for (const lp of localPositions) {
+      if (!polledSymbols.has(lp.symbol)) {
+        removePosition(lp.symbol);
+      }
+    }
+  // localPositions intentionally omitted — including it would cause a remove→update→effect loop
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [polledPositions, hasCredentials, positionsQuery.isLoading, positionsQuery.isError, positionsQuery.dataUpdatedAt, removePosition]);
+
   const positions = useMemo(() => {
     const polledSymbols = new Set(polledPositions.map((p) => p.symbol));
     const localOnly = localPositions.filter((p) => !polledSymbols.has(p.symbol));
     return [...polledPositions, ...localOnly];
+  }, [polledPositions, localPositions]);
+
+  const localOnlySymbols = useMemo(() => {
+    const polledSymbols = new Set(polledPositions.map((p) => p.symbol));
+    return new Set(localPositions.filter((p) => !polledSymbols.has(p.symbol)).map((p) => p.symbol));
   }, [polledPositions, localPositions]);
 
   const filteredTokens = useMemo(() => {
@@ -843,6 +876,8 @@ export default function Dashboard() {
                   key={pos.id}
                   position={pos}
                   onCloseSuccess={removePosition}
+                  onDismiss={removePosition}
+                  isLocalOnly={!hasCredentials && localOnlySymbols.has(pos.symbol)}
                   requestHeaders={requestHeaders}
                 />
               ))}
