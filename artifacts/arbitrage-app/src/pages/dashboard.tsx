@@ -1,11 +1,14 @@
 import { useState, useMemo, useEffect } from "react";
 import { Link } from "wouter";
-import { Star, Search, TrendingUp, TrendingDown, Zap, AlertCircle, ChevronDown, ChevronUp, X } from "lucide-react";
+import { Star, Search, TrendingUp, TrendingDown, Zap, AlertCircle, ChevronDown, ChevronUp, X, Bell, BellOff } from "lucide-react";
 import { useGetExchangePrices, getGetExchangePricesQueryKey, useGetPositions, getGetPositionsQueryKey, useJumpIn, useClosePosition } from "@workspace/api-client-react";
 import type { TokenSpread, Position, ClosePositionResult, JumpInResult } from "@workspace/api-client-react";
 import { useLocalPositions } from "@/hooks/use-local-positions";
 import { useApiCredentials } from "@/hooks/use-api-credentials";
 import { useFavourites } from "@/hooks/use-favourites";
+import { useWatchedTokens } from "@/hooks/use-watched-tokens";
+import { useAlertSettings } from "@/hooks/use-alert-settings";
+import { useSpreadAlerts } from "@/hooks/use-spread-alerts";
 import { useToast } from "@/hooks/use-toast";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -73,14 +76,18 @@ function TokenCard({
   token,
   isSelected,
   isFavourite,
+  isWatched,
   onSelect,
   onToggleFavourite,
+  onToggleWatch,
 }: {
   token: TokenSpread;
   isSelected: boolean;
   isFavourite: boolean;
+  isWatched: boolean;
   onSelect: () => void;
   onToggleFavourite: (e: React.MouseEvent) => void;
+  onToggleWatch: (e: React.MouseEvent) => void;
 }) {
   return (
     <div
@@ -88,7 +95,7 @@ function TokenCard({
       data-testid={`card-token-${token.symbol}`}
       className={`bg-card border rounded p-3 cursor-pointer transition-all hover:border-primary/40 ${
         isSelected ? "border-primary/60 bg-primary/5" : "border-border"
-      }`}
+      } ${isWatched ? "border-primary/30" : ""}`}
     >
       <div className="flex items-start justify-between mb-2">
         <div className="flex items-center gap-1.5">
@@ -101,6 +108,16 @@ function TokenCard({
             <Star
               className={`w-3.5 h-3.5 ${isFavourite ? "fill-amber-400 text-amber-400" : ""}`}
             />
+          </button>
+          <button
+            onClick={onToggleWatch}
+            className={`transition-colors ${isWatched ? "text-primary" : "text-muted-foreground hover:text-primary"}`}
+            data-testid={`btn-watch-${token.symbol}`}
+            title={isWatched ? "Stop watching" : "Watch spread"}
+          >
+            {isWatched
+              ? <Bell className="w-3.5 h-3.5 fill-primary/20" />
+              : <BellOff className="w-3.5 h-3.5" />}
           </button>
         </div>
         <SpreadBadge spreadPct={token.spreadPct} bestSpreadPct={token.bestSpreadPct} bestSpreadLeg={token.bestSpreadLeg} />
@@ -583,6 +600,8 @@ function PositionRow({
 export default function Dashboard() {
   const { getRequestHeaders, hasCredentials } = useApiCredentials();
   const { isFavourite, toggleFavourite } = useFavourites();
+  const { watched, isWatched, getThreshold, toggleWatch } = useWatchedTokens();
+  const { settings } = useAlertSettings();
   const requestHeaders = getRequestHeaders();
   const { localPositions, savePosition, removePosition } = useLocalPositions();
   const { setDataSource } = useConnectionStatus();
@@ -627,6 +646,8 @@ export default function Dashboard() {
     if (tokens.length === 0) return;
     setDataSource(isDemoData ? "demo" : "live");
   }, [isDemoData, tokens.length, setDataSource]);
+
+  useSpreadAlerts(tokens, watched, settings);
 
   const polledPositions = positionsQuery.data ?? [];
 
@@ -798,10 +819,15 @@ export default function Dashboard() {
                   token={token}
                   isSelected={selectedSymbol === token.symbol}
                   isFavourite={isFavourite(token.symbol)}
+                  isWatched={isWatched(token.symbol)}
                   onSelect={() => setSelectedSymbol(selectedSymbol === token.symbol ? null : token.symbol)}
                   onToggleFavourite={(e) => {
                     e.stopPropagation();
                     toggleFavourite(token.symbol);
+                  }}
+                  onToggleWatch={(e) => {
+                    e.stopPropagation();
+                    toggleWatch(token.symbol, getThreshold(token.symbol));
                   }}
                 />
               ))}
