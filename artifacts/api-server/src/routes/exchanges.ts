@@ -200,6 +200,34 @@ function createBybitExchange(apiKey = "", secret = "") {
   });
 }
 
+// Bybit hedge-mode shim.
+// Some accounts use one-way mode (positionIdx=0, the default) and some use
+// hedge mode (positionIdx=1 for long slot, 2 for short slot).  If the first
+// attempt fails with Bybit retCode 10001 ("position idx not match position
+// mode"), we retry with the correct hedge-mode positionIdx derived from
+// `positionSide` — the slot we are opening OR the slot we are closing.
+async function bybitCreateOrder(
+  ex: InstanceType<typeof ccxt.bybit>,
+  symbol: string,
+  orderSide: "buy" | "sell",
+  qty: number,
+  params: Record<string, unknown>,
+  positionSide: "long" | "short"
+): Promise<ReturnType<InstanceType<typeof ccxt.bybit>["createMarketOrder"]>> {
+  try {
+    return await ex.createMarketOrder(symbol, orderSide, qty, undefined, params);
+  } catch (err) {
+    if (
+      err instanceof Error &&
+      (err.message.includes("position idx not match") || err.message.includes("10001"))
+    ) {
+      const positionIdx = positionSide === "long" ? 1 : 2;
+      return await ex.createMarketOrder(symbol, orderSide, qty, undefined, { ...params, positionIdx });
+    }
+    throw err;
+  }
+}
+
 function createBinanceExchange(apiKey = "", secret = "") {
   return new ccxt.binance({
     apiKey,
@@ -453,13 +481,7 @@ router.post("/exchanges/order", async (req: Request, res: Response) => {
       const qty = usdAmount / price;
       const ccxtSide = side === "long" ? "buy" : "sell";
 
-      const order = await ex.createMarketOrder(
-        `${symbol}/USDT:USDT`,
-        ccxtSide,
-        qty,
-        undefined,
-        { reduceOnly: false }
-      );
+      const order = await bybitCreateOrder(ex, `${symbol}/USDT:USDT`, ccxtSide, qty, { reduceOnly: false }, side as "long" | "short");
 
       result = {
         orderId: String(order.id),
@@ -534,13 +556,7 @@ router.post("/exchanges/close-position", async (req: Request, res: Response) => 
     const binanceCloseSide = binanceSide === "long" ? "sell" : "buy";
 
     const [bybitOrder, binanceOrder] = await Promise.allSettled([
-      bybit.createMarketOrder(
-        `${symbol}/USDT:USDT`,
-        bybitCloseSide,
-        bybitQty,
-        undefined,
-        { reduceOnly: true }
-      ),
+      bybitCreateOrder(bybit, `${symbol}/USDT:USDT`, bybitCloseSide, bybitQty, { reduceOnly: true }, bybitSide as "long" | "short"),
       binance.createMarketOrder(
         `${symbol}/USDT:USDT`,
         binanceCloseSide,
@@ -703,13 +719,9 @@ async function placeOrderInternal(
   const ccxtSide = side === "long" ? "buy" : "sell";
   const exchangeName = ex.id;
 
-  const order = await ex.createMarketOrder(
-    `${symbol}/USDT:USDT`,
-    ccxtSide,
-    qty,
-    undefined,
-    { reduceOnly: false }
-  );
+  const order = ex.id === "bybit"
+    ? await bybitCreateOrder(ex as InstanceType<typeof ccxt.bybit>, `${symbol}/USDT:USDT`, ccxtSide, qty, { reduceOnly: false }, side)
+    : await ex.createMarketOrder(`${symbol}/USDT:USDT`, ccxtSide, qty, undefined, { reduceOnly: false });
 
   return {
     orderId: String(order.id),
@@ -768,13 +780,7 @@ router.post("/exchanges/jump-in", async (req: Request, res: Response) => {
 
     const compensateSide = bybitSide === "long" ? "sell" : "buy";
     try {
-      await bybitEx.createMarketOrder(
-        `${symbol}/USDT:USDT`,
-        compensateSide,
-        bybitResult.filledQty,
-        undefined,
-        { reduceOnly: true }
-      );
+      await bybitCreateOrder(bybitEx, `${symbol}/USDT:USDT`, compensateSide, bybitResult.filledQty, { reduceOnly: true }, bybitSide as "long" | "short");
       req.log.info("Jump-in: Bybit compensation order placed successfully");
     } catch (compErr) {
       req.log.error({ compErr }, "Jump-in: Compensation order FAILED - manual intervention required");
