@@ -763,6 +763,15 @@ export default function Dashboard() {
   const [sort, setSort] = useState<SortOption>("spread_desc");
   const [favsOnly, setFavsOnly] = useState(false);
   const [maxSpread, setMaxSpread] = useState<string>("");
+  const ALL_EXCHANGES = ["bybit", "binance", "gate", "okx", "mexc"] as const;
+  const [selectedExchanges, setSelectedExchanges] = useState<Set<string>>(new Set(ALL_EXCHANGES));
+  const toggleExchange = (ex: string) =>
+    setSelectedExchanges((prev) => {
+      const next = new Set(prev);
+      if (next.has(ex)) { if (next.size > 2) next.delete(ex); }
+      else next.add(ex);
+      return next;
+    });
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
   const [showPositions, setShowPositions] = useState(true);
 
@@ -838,6 +847,16 @@ export default function Dashboard() {
       const cap = parseFloat(maxSpread);
       if (!isNaN(cap)) list = list.filter((t) => Math.abs(t.bestSpreadPct ?? t.spreadPct) <= cap);
     }
+    if (selectedExchanges.size < ALL_EXCHANGES.length) {
+      list = list.filter((t) => {
+        const leg = t.bestSpreadLeg;
+        if (leg) {
+          const [a, b] = leg.split("/");
+          return selectedExchanges.has(a) && selectedExchanges.has(b);
+        }
+        return selectedExchanges.has("bybit") && selectedExchanges.has("binance");
+      });
+    }
     switch (sort) {
       case "spread_desc":
         list.sort((a, b) => Math.abs(b.spreadPct) - Math.abs(a.spreadPct));
@@ -860,7 +879,7 @@ export default function Dashboard() {
       });
     }
     return list;
-  }, [tokens, favsOnly, search, sort, maxSpread, isFavourite]);
+  }, [tokens, favsOnly, search, sort, maxSpread, selectedExchanges, isFavourite]);
 
   const selectedToken = tokens.find((t) => t.symbol === selectedSymbol) ?? null;
 
@@ -981,6 +1000,29 @@ export default function Dashboard() {
           <option value="2">Max spread: 2%</option>
           <option value="5">Max spread: 5%</option>
         </select>
+
+        <div className="flex items-center gap-1" data-testid="exchange-toggles">
+          {([
+            { key: "bybit",   label: "BB",  on: "text-amber-400 border-amber-400/40 bg-amber-400/10" },
+            { key: "binance", label: "BN",  on: "text-violet-400 border-violet-400/40 bg-violet-400/10" },
+            { key: "gate",    label: "GT",  on: "text-sky-400 border-sky-400/40 bg-sky-400/10" },
+            { key: "okx",     label: "OKX", on: "text-emerald-400 border-emerald-400/40 bg-emerald-400/10" },
+            { key: "mexc",    label: "MX",  on: "text-rose-400 border-rose-400/40 bg-rose-400/10" },
+          ] as const).map(({ key, label, on }) => (
+            <button
+              key={key}
+              onClick={() => toggleExchange(key)}
+              title={selectedExchanges.has(key) ? `Hide ${label}` : `Show ${label}`}
+              className={`px-2 py-1 rounded text-[11px] font-semibold font-mono border transition-all ${
+                selectedExchanges.has(key)
+                  ? on
+                  : "text-muted-foreground/40 border-border bg-card opacity-50"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
 
         <div className="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground">
           <div className={`w-1.5 h-1.5 rounded-full live-dot ${isFetching ? "bg-primary" : "bg-muted-foreground"}`} />
