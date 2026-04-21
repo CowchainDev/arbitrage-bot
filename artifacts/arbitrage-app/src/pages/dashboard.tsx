@@ -340,44 +340,23 @@ function TokenDetailPanel({
         </button>
       </div>
 
-      {/* Side selector */}
+      {/* Direction display (auto-assigned, read-only) */}
       <div>
-        <label className="text-xs text-muted-foreground uppercase tracking-wider mb-1.5 block">Side (Bybit)</label>
+        <label className="text-xs text-muted-foreground uppercase tracking-wider mb-1.5 block">Direction (auto)</label>
         <div className="flex gap-2">
-          <button
-            onClick={() => setBybitSide("long")}
-            data-testid="btn-side-long"
-            className={`flex-1 py-1.5 rounded text-xs font-bold transition-all ${
-              bybitSide === "long"
-                ? "bg-primary text-primary-foreground"
-                : "bg-secondary text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            LONG
-          </button>
-          <button
-            onClick={() => setBybitSide("short")}
-            data-testid="btn-side-short"
-            className={`flex-1 py-1.5 rounded text-xs font-bold transition-all ${
-              bybitSide === "short"
-                ? "bg-destructive text-destructive-foreground"
-                : "bg-secondary text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            SHORT
-          </button>
+          <div className={`flex-1 py-1.5 rounded text-xs font-bold text-center ${bybitSide === "long" ? "bg-primary/20 text-primary border border-primary/40" : "bg-destructive/20 text-destructive border border-destructive/40"}`}>
+            BB {bybitSide.toUpperCase()}
+          </div>
+          <div className={`flex-1 py-1.5 rounded text-xs font-bold text-center ${binanceSide === "long" ? "bg-primary/20 text-primary border border-primary/40" : "bg-destructive/20 text-destructive border border-destructive/40"}`}>
+            BN {binanceSide.toUpperCase()}
+          </div>
         </div>
-        <p className="text-xs text-muted-foreground mt-1">
-          Bybit: <span className={bybitSide === "long" ? "text-primary" : "text-destructive"}>{bybitSide.toUpperCase()}</span>
-          {" / "}
-          Binance: <span className={binanceSide === "long" ? "text-primary" : "text-destructive"}>{binanceSide.toUpperCase()}</span>
-        </p>
         {token.bybitPrice != null && token.binancePrice != null && (
-          <p className="text-[11px] mt-0.5">
+          <p className="text-[11px] mt-1.5 text-muted-foreground">
             {token.bybitPrice > token.binancePrice ? (
-              <span className="text-amber-400/80">BB is more expensive → SHORT BB · LONG BN to profit from convergence</span>
+              <><span className="text-amber-400 font-semibold">BB</span> is expensive · <span className="text-violet-400 font-semibold">BN</span> is cheap — short expensive, long cheap</>
             ) : (
-              <span className="text-violet-400/80">BN is more expensive → LONG BB · SHORT BN to profit from convergence</span>
+              <><span className="text-violet-400 font-semibold">BN</span> is expensive · <span className="text-amber-400 font-semibold">BB</span> is cheap — short expensive, long cheap</>
             )}
           </p>
         )}
