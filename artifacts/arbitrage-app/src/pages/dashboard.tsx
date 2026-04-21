@@ -762,6 +762,7 @@ export default function Dashboard() {
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<SortOption>("spread_desc");
   const [favsOnly, setFavsOnly] = useState(false);
+  const [maxSpread, setMaxSpread] = useState<string>("");
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
   const [showPositions, setShowPositions] = useState(true);
 
@@ -833,6 +834,10 @@ export default function Dashboard() {
     let list = [...tokens];
     if (favsOnly) list = list.filter((t) => isFavourite(t.symbol));
     if (search) list = list.filter((t) => t.symbol.toLowerCase().includes(search.toLowerCase()));
+    if (maxSpread !== "") {
+      const cap = parseFloat(maxSpread);
+      if (!isNaN(cap)) list = list.filter((t) => Math.abs(t.bestSpreadPct ?? t.spreadPct) <= cap);
+    }
     switch (sort) {
       case "spread_desc":
         list.sort((a, b) => Math.abs(b.spreadPct) - Math.abs(a.spreadPct));
@@ -855,7 +860,7 @@ export default function Dashboard() {
       });
     }
     return list;
-  }, [tokens, favsOnly, search, sort, isFavourite]);
+  }, [tokens, favsOnly, search, sort, maxSpread, isFavourite]);
 
   const selectedToken = tokens.find((t) => t.symbol === selectedSymbol) ?? null;
 
@@ -962,6 +967,19 @@ export default function Dashboard() {
           <option value="spread_asc">Lowest Spread</option>
           <option value="volume_desc">Highest Volume</option>
           <option value="alpha">Alphabetical</option>
+        </select>
+
+        <select
+          value={maxSpread}
+          onChange={(e) => setMaxSpread(e.target.value)}
+          className="bg-card border border-border rounded text-xs px-2.5 py-1.5 text-foreground h-8 cursor-pointer"
+          data-testid="select-max-spread"
+        >
+          <option value="">Max spread: all</option>
+          <option value="0.5">Max spread: 0.5%</option>
+          <option value="1">Max spread: 1%</option>
+          <option value="2">Max spread: 2%</option>
+          <option value="5">Max spread: 5%</option>
         </select>
 
         <div className="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground">
