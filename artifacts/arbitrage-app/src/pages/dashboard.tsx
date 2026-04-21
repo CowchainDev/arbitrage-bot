@@ -182,10 +182,28 @@ function TokenDetailPanel({
   const [openSpread, setOpenSpread] = useState("0.5");
   const [closeSpread, setCloseSpread] = useState("0.2");
   const [orderSize, setOrderSize] = useState("10");
-  const [bybitLeverage, setBybitLeverage] = useState("1");
-  const [binanceLeverage, setBinanceLeverage] = useState("1");
-  const [useLeverage, setUseLeverage] = useState(false);
+  const [bybitLeverage, setBybitLeverage] = useState<string>(() => {
+    try { return localStorage.getItem("arbitrage-bybitLeverage") ?? "1"; } catch { return "1"; }
+  });
+  const [binanceLeverage, setBinanceLeverage] = useState<string>(() => {
+    try { return localStorage.getItem("arbitrage-binanceLeverage") ?? "1"; } catch { return "1"; }
+  });
+  const [useLeverage, setUseLeverage] = useState<boolean>(() => {
+    try { return localStorage.getItem("arbitrage-useLeverage") === "true"; } catch { return false; }
+  });
   const [isJumping, setIsJumping] = useState(false);
+
+  useEffect(() => {
+    try { localStorage.setItem("arbitrage-useLeverage", String(useLeverage)); } catch {}
+  }, [useLeverage]);
+
+  useEffect(() => {
+    try { localStorage.setItem("arbitrage-bybitLeverage", bybitLeverage); } catch {}
+  }, [bybitLeverage]);
+
+  useEffect(() => {
+    try { localStorage.setItem("arbitrage-binanceLeverage", binanceLeverage); } catch {}
+  }, [binanceLeverage]);
 
   const { toast } = useToast();
   const queryClient = useQueryClient();
