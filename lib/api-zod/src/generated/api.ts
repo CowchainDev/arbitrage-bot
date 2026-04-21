@@ -28,8 +28,14 @@ export const GetExchangePricesHeader = zod.object({
 
 export const GetExchangePricesResponseItem = zod.object({
   symbol: zod.string().describe("Token symbol e.g. BTC, ETH"),
-  bybitPrice: zod.number().describe("Last price on Bybit futures"),
-  binancePrice: zod.number().describe("Last price on Binance futures"),
+  bybitPrice: zod
+    .number()
+    .nullish()
+    .describe("Last price on Bybit futures (null if token not listed)"),
+  binancePrice: zod
+    .number()
+    .nullish()
+    .describe("Last price on Binance futures (null if token not listed)"),
   spreadPct: zod
     .number()
     .describe("Price spread percentage (bybit - binance) \/ binance \* 100"),

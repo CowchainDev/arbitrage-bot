@@ -125,25 +125,33 @@ function TokenCard({
 
       <div className="space-y-0.5 text-xs">
         {(([
-          ["BB", token.bybitPrice, "text-amber-400"],
-          ["BN", token.binancePrice, "text-violet-400"],
-          token.gatePrice != null ? ["GT", token.gatePrice, "text-sky-400"] : null,
-          token.okxPrice != null ? ["OKX", token.okxPrice, "text-emerald-400"] : null,
-          token.mexcPrice != null ? ["MX", token.mexcPrice, "text-rose-400"] : null,
+          token.bybitPrice != null   ? ["BB",  token.bybitPrice,   "text-amber-400"]   : null,
+          token.binancePrice != null ? ["BN",  token.binancePrice, "text-violet-400"]  : null,
+          token.gatePrice != null    ? ["GT",  token.gatePrice,    "text-sky-400"]     : null,
+          token.okxPrice != null     ? ["OKX", token.okxPrice,     "text-emerald-400"] : null,
+          token.mexcPrice != null    ? ["MX",  token.mexcPrice,    "text-rose-400"]    : null,
         ]).filter((x): x is [string, number, string] => x !== null)).map(([label, price, color]) => (
           <div key={label} className="flex items-center justify-between">
             <span className={`font-semibold w-8 ${color}`}>{label}</span>
             <span className="font-mono text-foreground">{formatPrice(price)}</span>
           </div>
         ))}
-        <div className="flex items-center justify-between mt-0.5 pt-0.5 border-t border-border/50 text-muted-foreground">
-          <span>FR BB/BN</span>
-          <span className="font-mono">
-            <span className={token.bybitFundingRate != null && token.bybitFundingRate > 0 ? "text-primary" : "text-destructive"}>{formatFunding(token.bybitFundingRate)}</span>
-            <span className="text-muted-foreground/50 mx-0.5">/</span>
-            <span className={token.binanceFundingRate != null && token.binanceFundingRate > 0 ? "text-primary" : "text-destructive"}>{formatFunding(token.binanceFundingRate)}</span>
-          </span>
-        </div>
+        {(token.bybitFundingRate != null || token.binanceFundingRate != null) && (
+          <div className="flex items-center justify-between mt-0.5 pt-0.5 border-t border-border/50 text-muted-foreground">
+            <span>FR {token.bybitFundingRate != null ? "BB" : ""}{token.bybitFundingRate != null && token.binanceFundingRate != null ? "/BN" : token.binanceFundingRate != null ? "BN" : ""}</span>
+            <span className="font-mono">
+              {token.bybitFundingRate != null && (
+                <span className={token.bybitFundingRate > 0 ? "text-primary" : "text-destructive"}>{formatFunding(token.bybitFundingRate)}</span>
+              )}
+              {token.bybitFundingRate != null && token.binanceFundingRate != null && (
+                <span className="text-muted-foreground/50 mx-0.5">/</span>
+              )}
+              {token.binanceFundingRate != null && (
+                <span className={token.binanceFundingRate > 0 ? "text-primary" : "text-destructive"}>{formatFunding(token.binanceFundingRate)}</span>
+              )}
+            </span>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -271,12 +279,16 @@ function TokenDetailPanel({
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <span className="font-bold text-base">{token.symbol}</span>
-          <span className="text-xs text-amber-400 font-semibold bg-amber-400/10 px-2 py-0.5 rounded">
-            BYBIT {token.bybitPrice > token.binancePrice ? "↑" : "↓"}
-          </span>
-          <span className="text-xs text-violet-400 font-semibold bg-violet-400/10 px-2 py-0.5 rounded">
-            BINANCE {token.binancePrice > token.bybitPrice ? "↑" : "↓"}
-          </span>
+          {token.bybitPrice != null && (
+            <span className="text-xs text-amber-400 font-semibold bg-amber-400/10 px-2 py-0.5 rounded">
+              BYBIT {token.binancePrice != null ? (token.bybitPrice > token.binancePrice ? "↑" : "↓") : ""}
+            </span>
+          )}
+          {token.binancePrice != null && (
+            <span className="text-xs text-violet-400 font-semibold bg-violet-400/10 px-2 py-0.5 rounded">
+              BINANCE {token.bybitPrice != null ? (token.binancePrice > token.bybitPrice ? "↑" : "↓") : ""}
+            </span>
+          )}
         </div>
         <button onClick={onClose} className="text-muted-foreground hover:text-foreground" data-testid="btn-close-detail">
           <X className="w-4 h-4" />
@@ -404,9 +416,14 @@ function TokenDetailPanel({
       )}
 
       {/* JUMP IN */}
+      {(!token.bybitPrice || !token.binancePrice) && (
+        <p className="text-xs text-muted-foreground text-center py-1">
+          <span className="text-amber-400">Trading unavailable</span> — not listed on both Bybit &amp; Binance
+        </p>
+      )}
       <Button
         onClick={handleJumpIn}
-        disabled={isJumping || !requestHeaders}
+        disabled={isJumping || !requestHeaders || !token.bybitPrice || !token.binancePrice}
         className="w-full bg-primary text-primary-foreground hover:bg-primary/90 font-bold text-sm py-5 tracking-wider"
         data-testid="button-jump-in"
       >
@@ -485,14 +502,16 @@ function TokenDetailPanel({
           </div>
           {(["gate", "okx", "mexc"] as const).map((ex, i) => {
             const exPrice = ex === "gate" ? token.gatePrice : ex === "okx" ? token.okxPrice : token.mexcPrice;
-            if (exPrice == null) return null;
-            const spread = ((exPrice - token.bybitPrice) / token.bybitPrice) * 100;
+            const refPrice = token.bybitPrice ?? token.binancePrice;
+            if (exPrice == null || refPrice == null) return null;
+            const spread = ((exPrice - refPrice) / refPrice) * 100;
             const color = Math.abs(spread) >= 1 ? (spread >= 0 ? "text-primary" : "text-destructive") : Math.abs(spread) >= 0.3 ? "text-amber-400" : "text-muted-foreground";
             const label = ex === "gate" ? "GT" : ex === "okx" ? "OKX" : "MX";
+            const refLabel = token.bybitPrice != null ? "BB" : "BN";
             const labelColor = EXCHANGE_COLORS[ex];
             return (
               <div key={ex} className={`grid grid-cols-3 text-xs px-2 py-1.5 ${i % 2 === 0 ? "bg-card" : "bg-background"}`}>
-                <span className={`font-semibold ${labelColor}`}>{label}/BB</span>
+                <span className={`font-semibold ${labelColor}`}>{label}/{refLabel}</span>
                 <span className={`font-mono font-semibold ${color}`}>{formatPct(spread)}</span>
                 <span className="text-muted-foreground font-mono text-[10px]">
                   {Math.abs(spread) >= 1 ? "HIGH" : Math.abs(spread) >= 0.3 ? "MED" : "LOW"}

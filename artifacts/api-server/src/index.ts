@@ -79,4 +79,8 @@ server.listen(port, (err?: Error) => {
   }
 
   logger.info({ port }, "Server listening");
+
+  fetchPriceSpreads()
+    .then(() => logger.info("Startup price cache warm-up complete"))
+    .catch((e) => logger.warn({ err: e }, "Startup price cache warm-up failed"));
 });

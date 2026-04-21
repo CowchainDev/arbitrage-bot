@@ -9,10 +9,10 @@
 export interface TokenSpread {
   /** Token symbol e.g. BTC, ETH */
   symbol: string;
-  /** Last price on Bybit futures */
-  bybitPrice: number;
-  /** Last price on Binance futures */
-  binancePrice: number;
+  /** Last price on Bybit futures (null if token not listed) */
+  bybitPrice?: number | null;
+  /** Last price on Binance futures (null if token not listed) */
+  binancePrice?: number | null;
   /** Price spread percentage (bybit - binance) / binance * 100 */
   spreadPct: number;
   /** Current funding rate on Bybit (8h) */

@@ -314,10 +314,12 @@ components:
           description: Token symbol e.g. BTC, ETH
         bybitPrice:
           type: number
-          description: Last price on Bybit futures
+          nullable: true
+          description: Last price on Bybit futures (null if token not listed)
         binancePrice:
           type: number
-          description: Last price on Binance futures
+          nullable: true
+          description: Last price on Binance futures (null if token not listed)
         spreadPct:
           type: number
           description: Price spread percentage (bybit - binance) / binance * 100
@@ -385,8 +387,6 @@ components:
           description: Label of the exchange pair with the best spread e.g. "gate/binance"
       required:
         - symbol
-        - bybitPrice
-        - binancePrice
         - spreadPct
 
     ExchangeBalances:

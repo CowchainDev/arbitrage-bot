@@ -12,6 +12,25 @@ let priceCache: { data: unknown[]; ts: number } | null = null;
 let priceFetchInFlight: Promise<unknown[]> | null = null;
 const PRICE_CACHE_TTL_MS = 9_000;
 
+const MIN_VOLUME_USD = 500_000;
+const MAX_RESULTS = 150;
+
+function extractBase(unifiedSymbol: string): string | null {
+  const match = unifiedSymbol.match(/^([^/]+)\/USDT:USDT$/);
+  return match ? match[1] : null;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function buildTickerMap(raw: Record<string, any>): Map<string, any> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const m = new Map<string, any>();
+  for (const [sym, t] of Object.entries(raw)) {
+    const base = extractBase(sym);
+    if (base && (t.last ?? t.bid ?? 0) > 0) m.set(base, t);
+  }
+  return m;
+}
+
 async function fetchAndCachePrices(): Promise<unknown[]> {
   const bybit = createBybitExchange();
   const binance = createBinanceExchange();
@@ -35,11 +54,11 @@ async function fetchAndCachePrices(): Promise<unknown[]> {
     mexc.fetchFundingRates(),
   ]);
 
-  const bybitTickerMap  = bybitTickers.status  === "fulfilled" ? bybitTickers.value  : {};
-  const binanceTickerMap = binanceTickers.status === "fulfilled" ? binanceTickers.value : {};
-  const gateTickerMap   = gateTickers.status   === "fulfilled" ? gateTickers.value   : {};
-  const okxTickerMap    = okxTickers.status    === "fulfilled" ? okxTickers.value    : {};
-  const mexcTickerMap   = mexcTickers.status   === "fulfilled" ? mexcTickers.value   : {};
+  const bybitMap   = buildTickerMap(bybitTickers.status   === "fulfilled" ? bybitTickers.value   : {});
+  const binanceMap = buildTickerMap(binanceTickers.status === "fulfilled" ? binanceTickers.value : {});
+  const gateMap    = buildTickerMap(gateTickers.status    === "fulfilled" ? gateTickers.value    : {});
+  const okxMap     = buildTickerMap(okxTickers.status     === "fulfilled" ? okxTickers.value     : {});
+  const mexcMap    = buildTickerMap(mexcTickers.status    === "fulfilled" ? mexcTickers.value    : {});
 
   const bybitFundingMap  = bybitFunding.status  === "fulfilled" ? bybitFunding.value  : {};
   const binanceFundingMap = binanceFunding.status === "fulfilled" ? binanceFunding.value : {};
@@ -47,78 +66,96 @@ async function fetchAndCachePrices(): Promise<unknown[]> {
   const okxFundingMap    = okxFunding.status    === "fulfilled" ? okxFunding.value    : {};
   const mexcFundingMap   = mexcFunding.status   === "fulfilled" ? mexcFunding.value   : {};
 
+  const allBases = new Set([
+    ...bybitMap.keys(), ...binanceMap.keys(), ...gateMap.keys(),
+    ...okxMap.keys(), ...mexcMap.keys(),
+  ]);
+
   const spreads = [];
 
-  for (const symbol of POPULAR_SYMBOLS) {
-    const key = `${symbol}/USDT:USDT`;
+  for (const base of allBases) {
+    const key = `${base}/USDT:USDT`;
 
-    const bybitTicker  = bybitTickerMap[key];
-    const binanceTicker = binanceTickerMap[key];
-    const gateTicker   = gateTickerMap[key];
-    const okxTicker    = okxTickerMap[key];
-    const mexcTicker   = mexcTickerMap[key];
+    const bybitT   = bybitMap.get(base);
+    const binanceT = binanceMap.get(base);
+    const gateT    = gateMap.get(base);
+    const okxT     = okxMap.get(base);
+    const mexcT    = mexcMap.get(base);
 
-    const bybitPrice  = bybitTicker  ? (bybitTicker.last  ?? bybitTicker.bid  ?? 0) : 0;
-    const binancePrice = binanceTicker ? (binanceTicker.last ?? binanceTicker.bid ?? 0) : 0;
-    const gatePrice   = gateTicker   ? (gateTicker.last   ?? gateTicker.bid   ?? 0) : 0;
-    const okxPrice    = okxTicker    ? (okxTicker.last    ?? okxTicker.bid    ?? 0) : 0;
-    const mexcPrice   = mexcTicker   ? (mexcTicker.last   ?? mexcTicker.bid   ?? 0) : 0;
+    const bybitPrice   = bybitT   ? (bybitT.last   ?? bybitT.bid   ?? 0) : 0;
+    const binancePrice = binanceT ? (binanceT.last  ?? binanceT.bid ?? 0) : 0;
+    const gatePrice    = gateT    ? (gateT.last     ?? gateT.bid    ?? 0) : 0;
+    const okxPrice     = okxT     ? (okxT.last      ?? okxT.bid     ?? 0) : 0;
+    const mexcPrice    = mexcT    ? (mexcT.last      ?? mexcT.bid    ?? 0) : 0;
 
-    if (!bybitPrice || !binancePrice) continue;
+    if (!bybitPrice && !binancePrice) continue;
 
-    const spreadPct = ((bybitPrice - binancePrice) / binancePrice) * 100;
+    const prices = [bybitPrice, binancePrice, gatePrice, okxPrice, mexcPrice];
+    const livePrices = prices.filter(p => p > 0);
+    if (livePrices.length < 2) continue;
+
+    const totalVolume =
+      (bybitT?.quoteVolume ?? 0) + (binanceT?.quoteVolume ?? 0) +
+      (gateT?.quoteVolume ?? 0) + (okxT?.quoteVolume ?? 0) + (mexcT?.quoteVolume ?? 0);
+    if (totalVolume < MIN_VOLUME_USD) continue;
+
+    const spreadPct = bybitPrice && binancePrice
+      ? ((bybitPrice - binancePrice) / binancePrice) * 100
+      : 0;
 
     const allPrices: Record<string, ExchangePrices | null> = {
-      bybit:   bybitPrice  ? { price: bybitPrice,  bid: bybitTicker?.bid  ?? bybitPrice,  ask: bybitTicker?.ask  ?? bybitPrice,  fundingRate: bybitFundingMap[key]?.fundingRate  ?? 0 } : null,
-      binance: binancePrice ? { price: binancePrice, bid: binanceTicker?.bid ?? binancePrice, ask: binanceTicker?.ask ?? binancePrice, fundingRate: binanceFundingMap[key]?.fundingRate ?? 0 } : null,
-      gate:    gatePrice   ? { price: gatePrice,   bid: gateTicker?.bid   ?? gatePrice,   ask: gateTicker?.ask   ?? gatePrice,   fundingRate: gateFundingMap[key]?.fundingRate   ?? 0 } : null,
-      okx:     okxPrice    ? { price: okxPrice,    bid: okxTicker?.bid    ?? okxPrice,    ask: okxTicker?.ask    ?? okxPrice,    fundingRate: okxFundingMap[key]?.fundingRate    ?? 0 } : null,
-      mexc:    mexcPrice   ? { price: mexcPrice,   bid: mexcTicker?.bid   ?? mexcPrice,   ask: mexcTicker?.ask   ?? mexcPrice,   fundingRate: mexcFundingMap[key]?.fundingRate   ?? 0 } : null,
+      bybit:   bybitPrice   ? { price: bybitPrice,   bid: bybitT?.bid   ?? bybitPrice,   ask: bybitT?.ask   ?? bybitPrice,   fundingRate: bybitFundingMap[key]?.fundingRate   ?? 0 } : null,
+      binance: binancePrice ? { price: binancePrice, bid: binanceT?.bid ?? binancePrice, ask: binanceT?.ask ?? binancePrice, fundingRate: binanceFundingMap[key]?.fundingRate ?? 0 } : null,
+      gate:    gatePrice    ? { price: gatePrice,    bid: gateT?.bid    ?? gatePrice,    ask: gateT?.ask    ?? gatePrice,    fundingRate: gateFundingMap[key]?.fundingRate    ?? 0 } : null,
+      okx:     okxPrice     ? { price: okxPrice,     bid: okxT?.bid     ?? okxPrice,     ask: okxT?.ask     ?? okxPrice,     fundingRate: okxFundingMap[key]?.fundingRate     ?? 0 } : null,
+      mexc:    mexcPrice    ? { price: mexcPrice,    bid: mexcT?.bid    ?? mexcPrice,    ask: mexcT?.ask    ?? mexcPrice,    fundingRate: mexcFundingMap[key]?.fundingRate    ?? 0 } : null,
     };
 
     const { bestSpreadPct, bestSpreadLeg } = computeBestSpread(allPrices);
 
     spreads.push({
-      symbol,
-      bybitPrice,
-      binancePrice,
+      symbol: base,
+      bybitPrice:  bybitPrice  || null,
+      binancePrice: binancePrice || null,
       spreadPct,
-      bybitFundingRate:  bybitFundingMap[key]?.fundingRate   ?? null,
+      bybitFundingRate:  bybitFundingMap[key]?.fundingRate    ?? null,
       binanceFundingRate: binanceFundingMap[key]?.fundingRate  ?? null,
       bybitNextFunding:  bybitFundingMap[key]?.fundingDatetime  ?? null,
       binanceNextFunding: binanceFundingMap[key]?.fundingDatetime ?? null,
-      bybitBid:  bybitTicker?.bid  ?? null,
-      bybitAsk:  bybitTicker?.ask  ?? null,
-      binanceBid: binanceTicker?.bid ?? null,
-      binanceAsk: binanceTicker?.ask ?? null,
+      bybitBid:   bybitT?.bid   ?? null,
+      bybitAsk:   bybitT?.ask   ?? null,
+      binanceBid: binanceT?.bid ?? null,
+      binanceAsk: binanceT?.ask ?? null,
       gatePrice:   gatePrice   || null,
       gateFundingRate:  gateFundingMap[key]?.fundingRate   ?? null,
       gateNextFunding:  gateFundingMap[key]?.fundingDatetime  ?? null,
-      gateBid:  gateTicker?.bid  ?? null,
-      gateAsk:  gateTicker?.ask  ?? null,
+      gateBid:  gateT?.bid  ?? null,
+      gateAsk:  gateT?.ask  ?? null,
       okxPrice:    okxPrice    || null,
       okxFundingRate:   okxFundingMap[key]?.fundingRate    ?? null,
       okxNextFunding:   okxFundingMap[key]?.fundingDatetime   ?? null,
-      okxBid:   okxTicker?.bid   ?? null,
-      okxAsk:   okxTicker?.ask   ?? null,
+      okxBid:   okxT?.bid   ?? null,
+      okxAsk:   okxT?.ask   ?? null,
       mexcPrice:   mexcPrice   || null,
       mexcFundingRate:  mexcFundingMap[key]?.fundingRate   ?? null,
       mexcNextFunding:  mexcFundingMap[key]?.fundingDatetime  ?? null,
-      mexcBid:  mexcTicker?.bid  ?? null,
-      mexcAsk:  mexcTicker?.ask  ?? null,
+      mexcBid:  mexcT?.bid  ?? null,
+      mexcAsk:  mexcT?.ask  ?? null,
       bestSpreadPct,
       bestSpreadLeg,
-      volume24h: (bybitTicker?.quoteVolume ?? 0) + (binanceTicker?.quoteVolume ?? 0),
+      volume24h: totalVolume,
     });
   }
 
-  spreads.sort((a, b) => Math.abs(b.bestSpreadPct) - Math.abs(a.bestSpreadPct));
+  spreads.sort((a, b) => b.bestSpreadPct - a.bestSpreadPct);
 
-  if (spreads.length > 0) {
-    priceCache = { data: spreads, ts: Date.now() };
+  const top = spreads.slice(0, MAX_RESULTS);
+
+  if (top.length > 0) {
+    priceCache = { data: top, ts: Date.now() };
   }
 
-  return spreads;
+  return top;
 }
 
 function getBybitCredentials(req: Request) {
@@ -173,13 +210,6 @@ function createMexcExchange() {
   });
 }
 
-const POPULAR_SYMBOLS = [
-  "BTC", "ETH", "SOL", "BNB", "XRP", "DOGE", "ADA", "AVAX", "DOT", "LINK",
-  "MATIC", "UNI", "ATOM", "LTC", "BCH", "ETC", "FIL", "APT", "ARB", "OP",
-  "SUI", "SEI", "TIA", "INJ", "NEAR", "ALGO", "SAND", "MANA", "AXS", "ENJ",
-  "CHZ", "1000SHIB", "PEPE", "WLD", "JTO", "PYTH", "RNDR", "FET", "AGIX",
-  "RUNE", "STX", "IMX", "GRT", "AAVE", "MKR", "SNX", "CRV", "LDO", "RPL",
-];
 
 const DEMO_BASE_PRICES: Record<string, number> = {
   BTC: 94800, ETH: 3480, SOL: 185, BNB: 615, XRP: 0.62, DOGE: 0.175,
