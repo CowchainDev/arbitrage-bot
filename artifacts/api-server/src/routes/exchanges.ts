@@ -629,13 +629,27 @@ router.get("/positions", async (req: Request, res: Response) => {
       binance.fetchPositions(undefined, { type: "future" }),
     ]);
 
-    const bybitMap: Map<string, Record<string, unknown>> = new Map();
+    // In hedge mode Bybit can have BOTH a long and short for the same symbol.
+    // Store them keyed by symbol + side so we can match the correct leg.
+    type BybitPos = {
+      id?: unknown;
+      side?: unknown;
+      contracts?: number;
+      entryPrice?: number;
+      markPrice?: number;
+      unrealizedPnl?: number;
+      timestamp?: number;
+      datetime?: string;
+    };
+    const bybitMap: Map<string, { long?: BybitPos; short?: BybitPos }> = new Map();
     if (bybitPositions.status === "fulfilled") {
       for (const pos of bybitPositions.value) {
-        if (pos.contracts && pos.contracts > 0) {
-          const sym = pos.symbol?.split("/")[0] ?? "";
-          bybitMap.set(sym, pos as unknown as Record<string, unknown>);
-        }
+        if (!pos.contracts || pos.contracts === 0) continue;
+        const sym = pos.symbol?.split("/")[0] ?? "";
+        const side = pos.side === "long" ? "long" : "short";
+        const existing = bybitMap.get(sym) ?? {};
+        existing[side] = pos as unknown as BybitPos;
+        bybitMap.set(sym, existing);
       }
     }
 
@@ -645,28 +659,30 @@ router.get("/positions", async (req: Request, res: Response) => {
       for (const binancePos of binancePositions.value) {
         if (!binancePos.contracts || binancePos.contracts === 0) continue;
         const sym = binancePos.symbol?.split("/")[0] ?? "";
-        const bybitPosRaw = bybitMap.get(sym);
-
-        if (!bybitPosRaw) continue;
-
-        const bybitPos = bybitPosRaw as {
-          id?: unknown;
-          side?: unknown;
-          contracts?: number;
-          entryPrice?: number;
-          markPrice?: number;
-          unrealizedPnl?: number;
-        };
-
-        const bybitSide = bybitPos.side === "long" ? "long" : "short";
         const binanceSide = binancePos.side === "long" ? "long" : "short";
 
+        // Arb positions: bybit side is opposite to binance side.
+        // If we can't find the exact opposite, fall back to whichever side exists.
+        const expectedBybitSide = binanceSide === "long" ? "short" : "long";
+        const bybitSides = bybitMap.get(sym);
+        if (!bybitSides) continue;
+        const bybitPos = bybitSides[expectedBybitSide] ?? bybitSides.long ?? bybitSides.short;
+        if (!bybitPos) continue;
+
+        const bybitSide = bybitPos.side === "long" ? "long" : "short";
         const bybitPnlVal = Number(bybitPos.unrealizedPnl ?? 0);
         const binancePnlVal = Number(binancePos.unrealizedPnl ?? 0);
         const bybitContracts = bybitPos.contracts ?? 0;
         const bybitEntry = bybitPos.entryPrice ?? 0;
         const bybitMark = bybitPos.markPrice ?? bybitEntry;
         const binanceMark = binancePos.markPrice ?? binancePos.entryPrice ?? 0;
+
+        // Use exchange timestamp when available; fall back to now only if missing
+        const openedAt =
+          bybitPos.datetime ??
+          (bybitPos.timestamp ? new Date(bybitPos.timestamp).toISOString() : null) ??
+          (binancePos.timestamp ? new Date(binancePos.timestamp).toISOString() : null) ??
+          new Date().toISOString();
 
         result.push({
           id: `${sym}-${String(bybitPos.id ?? "")}-${String(binancePos.id ?? "")}`,
@@ -686,9 +702,9 @@ router.get("/positions", async (req: Request, res: Response) => {
           currentSpread: bybitMark && binanceMark
             ? ((bybitMark - binanceMark) / binanceMark) * 100
             : 0,
-          usdSize: (bybitContracts * bybitEntry) +
-            ((binancePos.contracts ?? 0) * (binancePos.entryPrice ?? 0)),
-          openedAt: new Date().toISOString(),
+          usdSize: (bybitContracts * bybitMark) +
+            ((binancePos.contracts ?? 0) * binanceMark),
+          openedAt,
         });
       }
     }
