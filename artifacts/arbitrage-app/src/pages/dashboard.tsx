@@ -650,19 +650,22 @@ function PositionRow({
   isLocalOnly?: boolean;
   requestHeaders: ReturnType<ReturnType<typeof useApiCredentials>["getRequestHeaders"]>;
 }) {
-  const [confirmOpen, setConfirmOpen] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
+  const [closeResult, setCloseResult] = useState<ClosePositionResult | null>(null);
+  const [closeError, setCloseError] = useState<string | null>(null);
   const closePosition = useClosePosition({ request: requestHeaders });
-  const { toast } = useToast();
   const queryClient = useQueryClient();
 
   const longExchange = position.bybitSide === "long" ? "bybit" : "binance";
   const shortExchange = position.bybitSide === "short" ? "bybit" : "binance";
 
-  const handleConfirmClose = async () => {
+  const handleClose = async () => {
+    if (isClosing) return;
     setIsClosing(true);
+    setCloseResult(null);
+    setCloseError(null);
     try {
-      await new Promise<void>((resolve, reject) =>
+      const result = await new Promise<ClosePositionResult>((resolve, reject) =>
         closePosition.mutate(
           {
             data: {
@@ -680,26 +683,16 @@ function PositionRow({
               realizedPnl: position.totalPnl ?? 0,
             },
           },
-          {
-            onSuccess: (data: ClosePositionResult) => {
-              if (!data.success) {
-                reject(new Error("Close failed on one or both exchanges"));
-              } else {
-                resolve();
-              }
-            },
-            onError: reject,
-          }
+          { onSuccess: resolve, onError: reject }
         )
       );
-      setConfirmOpen(false);
-      onCloseSuccess(position.symbol);
-      toast({ title: "Position closed", description: `${position.symbol} position closed successfully` });
-      await queryClient.invalidateQueries({ queryKey: getGetPositionsQueryKey() });
+      setCloseResult(result);
+      if (result.success) {
+        onCloseSuccess(position.symbol);
+        await queryClient.invalidateQueries({ queryKey: getGetPositionsQueryKey() });
+      }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Close failed";
-      setConfirmOpen(false);
-      toast({ title: "Close failed", description: msg, variant: "destructive" });
+      setCloseError(err instanceof Error ? err.message : "Close failed");
     } finally {
       setIsClosing(false);
     }
@@ -761,59 +754,77 @@ function PositionRow({
           </button>
         ) : (
           <button
-            onClick={() => setConfirmOpen(true)}
+            onClick={handleClose}
+            disabled={isClosing}
             data-testid={`btn-close-position-${position.symbol}`}
-            className="text-xs text-destructive hover:bg-destructive/10 px-2 py-1 rounded transition-colors"
+            className="text-xs text-destructive hover:bg-destructive/10 px-2 py-1 rounded transition-colors disabled:opacity-50"
           >
-            Close
+            {isClosing ? "Closing…" : "Close"}
           </button>
         )}
       </div>
 
-      <Dialog open={confirmOpen} onOpenChange={(open) => { if (!isClosing) setConfirmOpen(open); }}>
+      {/* Result modal — shown after API responds */}
+      <Dialog open={closeResult != null || closeError != null} onOpenChange={(open) => { if (!open) { setCloseResult(null); setCloseError(null); } }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Close position?</DialogTitle>
+            <DialogTitle className={closeError || (closeResult && !closeResult.success) ? "text-destructive" : "text-primary"}>
+              {closeError ? "Close Failed" : closeResult?.success ? "Position Closed" : "Close Partially Failed"}
+            </DialogTitle>
             <DialogDescription>
-              This will close your <span className="font-semibold text-foreground">{position.symbol}</span> position on both exchanges.
+              {position.symbol} · {closeError ? closeError : "Order results from both exchanges"}
             </DialogDescription>
           </DialogHeader>
-          <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm py-2">
-            <span className="text-muted-foreground">Symbol</span>
-            <span className="font-semibold">{position.symbol}</span>
-            <span className="text-muted-foreground">Sides</span>
-            <span>
-              <span className={position.bybitSide === "long" ? "text-primary" : "text-destructive"}>
-                {position.bybitSide?.toUpperCase()}
-              </span>
-              {" / "}
-              <span className={position.binanceSide === "long" ? "text-primary" : "text-destructive"}>
-                {position.binanceSide?.toUpperCase()}
-              </span>
-            </span>
-            <span className="text-muted-foreground">Size</span>
-            <span className="font-mono">${(position.usdSize ?? 0).toFixed(2)}</span>
-            <span className="text-muted-foreground">Unrealised P/L</span>
-            <span className={`font-mono font-semibold ${pnlPositive ? "text-primary" : "text-destructive"}`}>
-              {formatPnlWithPct(position.totalPnl, position.usdSize)}
-            </span>
-          </div>
+
+          {closeResult && (
+            <div className="space-y-3 py-1">
+              {/* Bybit leg */}
+              {closeResult.bybitResult && (
+                <div className="rounded-md border border-border p-3 space-y-1.5">
+                  <p className="text-xs font-semibold text-amber-400 uppercase tracking-wider">Bybit</p>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+                    <span className="text-muted-foreground">Side</span>
+                    <span className={closeResult.bybitResult.side === "Buy" ? "text-primary font-semibold" : "text-destructive font-semibold"}>{closeResult.bybitResult.side}</span>
+                    <span className="text-muted-foreground">Avg Price</span>
+                    <span className="font-mono">{closeResult.bybitResult.avgPrice != null ? formatPrice(closeResult.bybitResult.avgPrice) : "—"}</span>
+                    <span className="text-muted-foreground">Filled Qty</span>
+                    <span className="font-mono">{closeResult.bybitResult.filledQty ?? "—"}</span>
+                    <span className="text-muted-foreground">Status</span>
+                    <span className="font-mono">{closeResult.bybitResult.status}</span>
+                  </div>
+                </div>
+              )}
+              {/* Binance leg */}
+              {closeResult.binanceResult && (
+                <div className="rounded-md border border-border p-3 space-y-1.5">
+                  <p className="text-xs font-semibold text-violet-400 uppercase tracking-wider">Binance</p>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+                    <span className="text-muted-foreground">Side</span>
+                    <span className={closeResult.binanceResult.side === "BUY" || closeResult.binanceResult.side === "Buy" ? "text-primary font-semibold" : "text-destructive font-semibold"}>{closeResult.binanceResult.side}</span>
+                    <span className="text-muted-foreground">Avg Price</span>
+                    <span className="font-mono">{closeResult.binanceResult.avgPrice != null ? formatPrice(closeResult.binanceResult.avgPrice) : "—"}</span>
+                    <span className="text-muted-foreground">Filled Qty</span>
+                    <span className="font-mono">{closeResult.binanceResult.filledQty ?? "—"}</span>
+                    <span className="text-muted-foreground">Status</span>
+                    <span className="font-mono">{closeResult.binanceResult.status}</span>
+                  </div>
+                </div>
+              )}
+              {/* Realized PnL */}
+              {closeResult.realizedPnl != null && (
+                <div className="flex items-center justify-between px-1 pt-1">
+                  <span className="text-sm text-muted-foreground">Realized P/L</span>
+                  <span className={`font-mono font-bold text-base ${closeResult.realizedPnl >= 0 ? "text-primary" : "text-destructive"}`}>
+                    {closeResult.realizedPnl >= 0 ? "+" : ""}${closeResult.realizedPnl.toFixed(4)}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+
           <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setConfirmOpen(false)}
-              disabled={isClosing}
-              data-testid="btn-cancel-close"
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={handleConfirmClose}
-              disabled={isClosing}
-              data-testid="btn-confirm-close"
-            >
-              {isClosing ? "Closing..." : "Confirm Close"}
+            <Button onClick={() => { setCloseResult(null); setCloseError(null); }} data-testid="btn-close-result-ok">
+              OK
             </Button>
           </DialogFooter>
         </DialogContent>
