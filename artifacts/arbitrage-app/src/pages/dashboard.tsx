@@ -12,6 +12,14 @@ import { useSpreadAlerts } from "@/hooks/use-spread-alerts";
 import { useToast } from "@/hooks/use-toast";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogFooter,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import { useQueryClient } from "@tanstack/react-query";
 import { usePriceStream } from "@/hooks/use-price-stream";
 import { useConnectionStatus } from "@/contexts/connection-status";
@@ -527,21 +535,20 @@ function TokenDetailPanel({
 
 function PositionRow({
   position,
-  onClose,
   onCloseSuccess,
   requestHeaders,
 }: {
   position: Position;
-  onClose: (pos: Position) => void;
   onCloseSuccess: (symbol: string) => void;
   requestHeaders: ReturnType<ReturnType<typeof useApiCredentials>["getRequestHeaders"]>;
 }) {
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
   const closePosition = useClosePosition({ request: requestHeaders });
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const handleClose = async () => {
+  const handleConfirmClose = async () => {
     setIsClosing(true);
     try {
       await new Promise<void>((resolve, reject) =>
@@ -568,11 +575,13 @@ function PositionRow({
           }
         )
       );
+      setConfirmOpen(false);
       onCloseSuccess(position.symbol);
       toast({ title: "Position closed", description: `${position.symbol} position closed successfully` });
       await queryClient.invalidateQueries({ queryKey: getGetPositionsQueryKey() });
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Close failed";
+      setConfirmOpen(false);
       toast({ title: "Close failed", description: msg, variant: "destructive" });
     } finally {
       setIsClosing(false);
@@ -582,37 +591,87 @@ function PositionRow({
   const pnlPositive = (position.totalPnl ?? 0) >= 0;
 
   return (
-    <div
-      data-testid={`position-row-${position.symbol}`}
-      className={`grid grid-cols-7 gap-2 px-3 py-2.5 text-xs border-b border-border/50 hover:bg-muted/30 transition-colors items-center`}
-    >
-      <span className="font-semibold">{position.symbol}</span>
-      <span>
-        <span className={position.bybitSide === "long" ? "text-primary" : "text-destructive"}>
-          {position.bybitSide?.toUpperCase()}
-        </span>
-        {" / "}
-        <span className={position.binanceSide === "long" ? "text-primary" : "text-destructive"}>
-          {position.binanceSide?.toUpperCase()}
-        </span>
-      </span>
-      <span className="font-mono">${(position.usdSize ?? 0).toFixed(2)}</span>
-      <span className="font-mono">{formatPct(position.currentSpread)}</span>
-      <span className={`font-mono font-semibold ${pnlPositive ? "text-primary" : "text-destructive"}`}>
-        {formatPnl(position.totalPnl)}
-      </span>
-      <span className="font-mono text-muted-foreground">
-        {position.openedAt ? new Date(position.openedAt).toLocaleTimeString() : "-"}
-      </span>
-      <button
-        onClick={handleClose}
-        disabled={isClosing}
-        data-testid={`btn-close-position-${position.symbol}`}
-        className="text-xs text-destructive hover:bg-destructive/10 px-2 py-1 rounded transition-colors disabled:opacity-50"
+    <>
+      <div
+        data-testid={`position-row-${position.symbol}`}
+        className={`grid grid-cols-7 gap-2 px-3 py-2.5 text-xs border-b border-border/50 hover:bg-muted/30 transition-colors items-center`}
       >
-        {isClosing ? "..." : "Close"}
-      </button>
-    </div>
+        <span className="font-semibold">{position.symbol}</span>
+        <span>
+          <span className={position.bybitSide === "long" ? "text-primary" : "text-destructive"}>
+            {position.bybitSide?.toUpperCase()}
+          </span>
+          {" / "}
+          <span className={position.binanceSide === "long" ? "text-primary" : "text-destructive"}>
+            {position.binanceSide?.toUpperCase()}
+          </span>
+        </span>
+        <span className="font-mono">${(position.usdSize ?? 0).toFixed(2)}</span>
+        <span className="font-mono">{formatPct(position.currentSpread)}</span>
+        <span className={`font-mono font-semibold ${pnlPositive ? "text-primary" : "text-destructive"}`}>
+          {formatPnl(position.totalPnl)}
+        </span>
+        <span className="font-mono text-muted-foreground">
+          {position.openedAt ? new Date(position.openedAt).toLocaleTimeString() : "-"}
+        </span>
+        <button
+          onClick={() => setConfirmOpen(true)}
+          data-testid={`btn-close-position-${position.symbol}`}
+          className="text-xs text-destructive hover:bg-destructive/10 px-2 py-1 rounded transition-colors"
+        >
+          Close
+        </button>
+      </div>
+
+      <Dialog open={confirmOpen} onOpenChange={(open) => { if (!isClosing) setConfirmOpen(open); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Close position?</DialogTitle>
+            <DialogDescription>
+              This will close your <span className="font-semibold text-foreground">{position.symbol}</span> position on both exchanges.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm py-2">
+            <span className="text-muted-foreground">Symbol</span>
+            <span className="font-semibold">{position.symbol}</span>
+            <span className="text-muted-foreground">Sides</span>
+            <span>
+              <span className={position.bybitSide === "long" ? "text-primary" : "text-destructive"}>
+                {position.bybitSide?.toUpperCase()}
+              </span>
+              {" / "}
+              <span className={position.binanceSide === "long" ? "text-primary" : "text-destructive"}>
+                {position.binanceSide?.toUpperCase()}
+              </span>
+            </span>
+            <span className="text-muted-foreground">Size</span>
+            <span className="font-mono">${(position.usdSize ?? 0).toFixed(2)}</span>
+            <span className="text-muted-foreground">Unrealised P/L</span>
+            <span className={`font-mono font-semibold ${pnlPositive ? "text-primary" : "text-destructive"}`}>
+              {formatPnl(position.totalPnl)}
+            </span>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setConfirmOpen(false)}
+              disabled={isClosing}
+              data-testid="btn-cancel-close"
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleConfirmClose}
+              disabled={isClosing}
+              data-testid="btn-confirm-close"
+            >
+              {isClosing ? "Closing..." : "Confirm Close"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
@@ -762,7 +821,6 @@ export default function Dashboard() {
                 <PositionRow
                   key={pos.id}
                   position={pos}
-                  onClose={() => {}}
                   onCloseSuccess={removePosition}
                   requestHeaders={requestHeaders}
                 />
