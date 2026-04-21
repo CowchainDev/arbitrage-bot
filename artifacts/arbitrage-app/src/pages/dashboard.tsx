@@ -567,32 +567,64 @@ function TokenDetailPanel({
               <span className="font-mono text-foreground">{row.mexc}</span>
             </div>
           ))}
-
-          {/* Cross-exchange spreads */}
-          <div className="bg-muted/30 px-2 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider border-t border-border">
-            Cross spreads vs BB
-          </div>
-          {(["gate", "okx", "mexc"] as const).map((ex, i) => {
-            const exPrice = ex === "gate" ? token.gatePrice : ex === "okx" ? token.okxPrice : token.mexcPrice;
-            const refPrice = token.bybitPrice ?? token.binancePrice;
-            if (exPrice == null || refPrice == null || refPrice === 0) return null;
-            const spread = ((exPrice - refPrice) / refPrice) * 100;
-            const color = Math.abs(spread) >= 1 ? (spread >= 0 ? "text-primary" : "text-destructive") : Math.abs(spread) >= 0.3 ? "text-amber-400" : "text-muted-foreground";
-            const label = ex === "gate" ? "GT" : ex === "okx" ? "OKX" : "MX";
-            const refLabel = token.bybitPrice != null ? "BB" : "BN";
-            const labelColor = EXCHANGE_COLORS[ex];
-            return (
-              <div key={ex} className={`grid grid-cols-3 text-xs px-2 py-1.5 ${i % 2 === 0 ? "bg-card" : "bg-background"}`}>
-                <span className={`font-semibold ${labelColor}`}>{label}/{refLabel}</span>
-                <span className={`font-mono font-semibold ${color}`}>{formatPct(spread)}</span>
-                <span className="text-muted-foreground font-mono text-[10px]">
-                  {Math.abs(spread) >= 1 ? "HIGH" : Math.abs(spread) >= 0.3 ? "MED" : "LOW"}
-                </span>
-              </div>
-            );
-          })}
         </div>
       )}
+
+      {/* Cross-exchange spreads */}
+      {(() => {
+        const allExchanges = [
+          { key: "bybit",   price: token.bybitPrice   ?? null },
+          { key: "binance", price: token.binancePrice ?? null },
+          { key: "gate",    price: token.gatePrice    ?? null },
+          { key: "okx",     price: token.okxPrice     ?? null },
+          { key: "mexc",    price: token.mexcPrice    ?? null },
+        ].filter((e): e is { key: string; price: number } => e.price != null && e.price !== 0);
+
+        if (allExchanges.length < 2) return null;
+
+        const pairs: { exA: string; exB: string; spread: number }[] = [];
+        for (let a = 0; a < allExchanges.length; a++) {
+          for (let b = a + 1; b < allExchanges.length; b++) {
+            const pA = allExchanges[a].price;
+            const pB = allExchanges[b].price;
+            const spread = ((pA - pB) / pB) * 100;
+            pairs.push({ exA: allExchanges[a].key, exB: allExchanges[b].key, spread });
+          }
+        }
+        pairs.sort((a, b) => Math.abs(b.spread) - Math.abs(a.spread));
+
+        return (
+          <div className="border border-border rounded overflow-hidden">
+            <div className="bg-muted/30 px-2 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              Cross Spreads
+            </div>
+            {pairs.map(({ exA, exB, spread }, i) => {
+              const isBest = i === 0;
+              const color = Math.abs(spread) >= 1 ? (spread >= 0 ? "text-primary" : "text-destructive") : Math.abs(spread) >= 0.3 ? "text-amber-400" : "text-muted-foreground";
+              const labelA = EXCHANGE_LABELS[exA] ?? exA.toUpperCase();
+              const labelB = EXCHANGE_LABELS[exB] ?? exB.toUpperCase();
+              const colorA = EXCHANGE_COLORS[exA] ?? "";
+              const colorB = EXCHANGE_COLORS[exB] ?? "";
+              return (
+                <div key={`${exA}-${exB}`} className={`grid grid-cols-3 text-xs px-2 py-1.5 items-center ${i % 2 === 0 ? "bg-card" : "bg-background"} ${isBest ? "ring-1 ring-inset ring-primary/30" : ""}`}>
+                  <span className="font-semibold flex items-center gap-1">
+                    <span className={colorA}>{labelA}</span>
+                    <span className="text-muted-foreground/50">/</span>
+                    <span className={colorB}>{labelB}</span>
+                    {isBest && (
+                      <span className="ml-1 px-1 py-px rounded text-[9px] font-bold bg-primary/20 text-primary leading-none">BEST</span>
+                    )}
+                  </span>
+                  <span className={`font-mono font-semibold ${color}`}>{formatPct(spread)}</span>
+                  <span className="text-muted-foreground font-mono text-[10px]">
+                    {Math.abs(spread) >= 1 ? "HIGH" : Math.abs(spread) >= 0.3 ? "MED" : "LOW"}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })()}
     </div>
   );
 }
