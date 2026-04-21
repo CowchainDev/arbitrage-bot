@@ -56,6 +56,18 @@ function formatPnlWithPct(pnl: number | null | undefined, usdSize: number | null
   return `${dollar} (${formatPct(pct)})`;
 }
 
+function parseVolume(v: string): number {
+  const s = v.trim().replace(/,/g, "").replace(/\$/g, "");
+  const m = s.match(/^(\d+(?:\.\d+)?)\s*([kmb])?$/i);
+  if (!m) return NaN;
+  const n = parseFloat(m[1]);
+  const suffix = (m[2] || "").toLowerCase();
+  if (suffix === "k") return n * 1_000;
+  if (suffix === "m") return n * 1_000_000;
+  if (suffix === "b") return n * 1_000_000_000;
+  return n;
+}
+
 const EXCHANGE_LABELS: Record<string, string> = {
   bybit: "BB", binance: "BN", gate: "GT", okx: "OKX", mexc: "MX",
 };
@@ -908,8 +920,8 @@ export default function Dashboard() {
       const cap = parseFloat(maxSpread);
       if (!isNaN(cap)) list = list.filter((t) => Math.abs(t.bestSpreadPct ?? t.spreadPct) <= cap);
     }
-    if (minVolume !== "") {
-      const floor = parseFloat(minVolume);
+    if (minVolume.trim() !== "") {
+      const floor = parseVolume(minVolume);
       if (!isNaN(floor)) list = list.filter((t) => (t.volume24h ?? 0) >= floor);
     }
     if (selectedExchanges.size < ALL_EXCHANGES.length) {
@@ -1055,32 +1067,15 @@ export default function Dashboard() {
           <option value="alpha">Alphabetical</option>
         </select>
 
-        <select
-          value={maxSpread}
-          onChange={(e) => setMaxSpread(e.target.value)}
-          className="bg-card border border-border rounded text-xs px-2.5 py-1.5 text-foreground h-8 cursor-pointer"
-          data-testid="select-max-spread"
-        >
-          <option value="">Max spread: all</option>
-          <option value="0.5">Max spread: 0.5%</option>
-          <option value="1">Max spread: 1%</option>
-          <option value="2">Max spread: 2%</option>
-          <option value="5">Max spread: 5%</option>
-        </select>
-
-        <select
+        <input
+          type="text"
           value={minVolume}
           onChange={(e) => setMinVolume(e.target.value)}
-          className="bg-card border border-border rounded text-xs px-2.5 py-1.5 text-foreground h-8 cursor-pointer"
+          placeholder="Min vol: $"
+          className="bg-card border border-border rounded text-xs px-2.5 py-1.5 text-foreground h-8 w-28 placeholder:text-muted-foreground"
           data-testid="select-min-volume"
-          title="Minimum 24h trading volume — higher volume = thicker order book = bigger fills"
-        >
-          <option value="">Min vol: any</option>
-          <option value="1000000">Min vol: $1M</option>
-          <option value="5000000">Min vol: $5M</option>
-          <option value="10000000">Min vol: $10M</option>
-          <option value="50000000">Min vol: $50M</option>
-        </select>
+          title="Minimum 24h trading volume — supports shorthand like 1M, 5M, 1B"
+        />
 
         <div className="flex items-center gap-1" data-testid="exchange-toggles">
           {([
