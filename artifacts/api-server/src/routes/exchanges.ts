@@ -287,7 +287,7 @@ function ensurePriceFetch(): Promise<unknown[]> {
   return priceFetchInFlight;
 }
 
-router.get("/exchanges/prices", async (req: Request, res: Response) => {
+export async function fetchPriceSpreads(): Promise<ReturnType<typeof generateDemoSpreads>> {
   try {
     const now = Date.now();
     const cacheAge = priceCache ? now - priceCache.ts : Infinity;
@@ -296,18 +296,29 @@ router.get("/exchanges/prices", async (req: Request, res: Response) => {
       if (!priceFetchInFlight && cacheAge > PRICE_CACHE_TTL_MS / 2) {
         ensurePriceFetch();
       }
-      res.json(priceCache!.data);
-      return;
+      return priceCache!.data as ReturnType<typeof generateDemoSpreads>;
     }
 
     let spreads = await ensurePriceFetch();
 
     if (spreads.length === 0) {
-      req.log.warn("Live exchange data unavailable, returning demo data");
-      spreads = generateDemoSpreads();
-      priceCache = { data: spreads, ts: Date.now() - PRICE_CACHE_TTL_MS + 15_000 };
+      const demo = generateDemoSpreads();
+      priceCache = { data: demo, ts: Date.now() - PRICE_CACHE_TTL_MS + 15_000 };
+      return demo;
     }
 
+    return spreads as ReturnType<typeof generateDemoSpreads>;
+  } catch {
+    return generateDemoSpreads();
+  }
+}
+
+router.get("/exchanges/prices", async (req: Request, res: Response) => {
+  try {
+    const spreads = await fetchPriceSpreads();
+    if (spreads.length > 0 && (spreads[0] as { demo?: boolean }).demo) {
+      req.log.warn("Live exchange data unavailable, returning demo data");
+    }
     res.json(spreads);
   } catch (err) {
     req.log.error({ err }, "Error fetching exchange prices, returning demo data");

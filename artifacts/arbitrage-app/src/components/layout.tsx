@@ -2,6 +2,7 @@ import { Link } from "wouter";
 import { Settings, LayoutDashboard, Activity } from "lucide-react";
 import { useApiCredentials } from "@/hooks/use-api-credentials";
 import { useGetExchangeBalances, getGetExchangeBalancesQueryKey } from "@workspace/api-client-react";
+import { useConnectionStatus } from "@/contexts/connection-status";
 
 function HeaderBalances() {
   const { getRequestHeaders, hasCredentials } = useApiCredentials();
@@ -51,6 +52,22 @@ function HeaderBalances() {
   );
 }
 
+function ConnectionBadge() {
+  const { dataSource } = useConnectionStatus();
+  if (!dataSource) return null;
+  return dataSource === "live" ? (
+    <div className="flex items-center gap-1.5 bg-primary/10 border border-primary/30 rounded px-2 py-0.5 text-xs font-semibold text-primary">
+      <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+      LIVE
+    </div>
+  ) : (
+    <div className="flex items-center gap-1.5 bg-violet-500/10 border border-violet-500/30 rounded px-2 py-0.5 text-xs font-semibold text-violet-400">
+      <div className="w-1.5 h-1.5 rounded-full bg-violet-400" />
+      DEMO
+    </div>
+  );
+}
+
 export function Layout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col font-mono text-sm">
@@ -70,6 +87,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               Settings
             </Link>
           </nav>
+          <ConnectionBadge />
         </div>
         <HeaderBalances />
       </header>

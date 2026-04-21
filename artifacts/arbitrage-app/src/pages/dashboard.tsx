@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Link } from "wouter";
 import { Star, Search, TrendingUp, TrendingDown, Zap, AlertCircle, ChevronDown, ChevronUp, X } from "lucide-react";
 import { useGetExchangePrices, getGetExchangePricesQueryKey, useGetPositions, getGetPositionsQueryKey, useJumpIn, useClosePosition } from "@workspace/api-client-react";
@@ -10,6 +10,8 @@ import { useToast } from "@/hooks/use-toast";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useQueryClient } from "@tanstack/react-query";
+import { usePriceStream } from "@/hooks/use-price-stream";
+import { useConnectionStatus } from "@/contexts/connection-status";
 
 type SortOption = "spread_desc" | "spread_asc" | "volume_desc" | "alpha";
 
@@ -573,6 +575,7 @@ export default function Dashboard() {
   const { isFavourite, toggleFavourite } = useFavourites();
   const requestHeaders = getRequestHeaders();
   const { localPositions, savePosition, removePosition } = useLocalPositions();
+  const { setDataSource } = useConnectionStatus();
 
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<SortOption>("spread_desc");
@@ -580,8 +583,16 @@ export default function Dashboard() {
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
   const [showPositions, setShowPositions] = useState(true);
 
+  const { tokens: streamTokens, isDemoData: streamIsDemo, streamStatus, isFetching: streamFetching } = usePriceStream();
+
+  const wsActive = streamTokens.length > 0 && (streamStatus === "open" || streamStatus === "connecting");
+
   const pricesQuery = useGetExchangePrices({
-    query: { refetchInterval: 8000, queryKey: getGetExchangePricesQueryKey() },
+    query: {
+      refetchInterval: wsActive ? false : 8000,
+      queryKey: getGetExchangePricesQueryKey(),
+      enabled: !wsActive,
+    },
     request: requestHeaders ?? undefined,
   });
 
@@ -594,7 +605,19 @@ export default function Dashboard() {
     request: requestHeaders ?? undefined,
   });
 
-  const tokens = pricesQuery.data ?? [];
+  const tokens: TokenSpread[] = wsActive && streamTokens.length > 0
+    ? streamTokens
+    : (pricesQuery.data ?? []);
+  const isDemoData = wsActive ? streamIsDemo : (tokens.length > 0 && tokens[0].demo === true);
+  const isFetching = wsActive ? streamFetching : pricesQuery.isFetching;
+  const isLoading = wsActive ? (streamTokens.length === 0 && streamStatus === "connecting") : pricesQuery.isLoading;
+  const isError = !wsActive && pricesQuery.isError;
+
+  useEffect(() => {
+    if (tokens.length === 0) return;
+    setDataSource(isDemoData ? "demo" : "live");
+  }, [isDemoData, tokens.length, setDataSource]);
+
   const polledPositions = positionsQuery.data ?? [];
 
   const positions = useMemo(() => {
@@ -602,7 +625,6 @@ export default function Dashboard() {
     const localOnly = localPositions.filter((p) => !polledSymbols.has(p.symbol));
     return [...polledPositions, ...localOnly];
   }, [polledPositions, localPositions]);
-  const isDemoData = tokens.length > 0 && tokens[0].demo === true;
 
   const filteredTokens = useMemo(() => {
     let list = [...tokens];
@@ -739,21 +761,21 @@ export default function Dashboard() {
         </select>
 
         <div className="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground">
-          <div className={`w-1.5 h-1.5 rounded-full live-dot ${pricesQuery.isFetching ? "bg-primary" : "bg-muted-foreground"}`} />
-          {pricesQuery.isLoading ? "Loading..." : `${filteredTokens.length} pairs`}
+          <div className={`w-1.5 h-1.5 rounded-full live-dot ${isFetching ? "bg-primary" : "bg-muted-foreground"}`} />
+          {isLoading ? "Loading..." : `${filteredTokens.length} pairs`}
         </div>
       </div>
 
       {/* Main grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 xl:grid-cols-4 gap-3">
         <div className={`${selectedToken ? "lg:col-span-2 xl:col-span-3" : "lg:col-span-3 xl:col-span-4"}`}>
-          {pricesQuery.isLoading ? (
+          {isLoading ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
               {Array.from({ length: 12 }).map((_, i) => (
                 <div key={i} className="bg-card border border-border rounded p-3 h-24 animate-pulse" />
               ))}
             </div>
-          ) : pricesQuery.isError ? (
+          ) : isError ? (
             <div className="flex items-center justify-center h-40 text-destructive gap-2">
               <AlertCircle className="w-5 h-5" />
               Failed to load prices. Check your connection.

@@ -6,6 +6,7 @@ import { Layout } from "@/components/layout";
 import Dashboard from "@/pages/dashboard";
 import Settings from "@/pages/settings";
 import NotFound from "@/pages/not-found";
+import { ConnectionStatusProvider } from "@/contexts/connection-status";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -32,10 +33,12 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-          <Router />
-        </WouterRouter>
-        <Toaster />
+        <ConnectionStatusProvider>
+          <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+            <Router />
+          </WouterRouter>
+          <Toaster />
+        </ConnectionStatusProvider>
       </TooltipProvider>
     </QueryClientProvider>
   );
