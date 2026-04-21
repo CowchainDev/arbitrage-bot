@@ -462,6 +462,21 @@ function TokenDetailPanel({
         </div>
       )}
 
+      {/* Leverage summary */}
+      {(() => {
+        const effBybit = useLeverage ? (Number(bybitLeverage) || 1) : 1;
+        const effBinance = useLeverage ? (Number(binanceLeverage) || 1) : 1;
+        return useLeverage ? (
+          <p className="text-xs text-center text-amber-400 font-mono" data-testid="leverage-summary">
+            Leverage: Bybit {effBybit}x / Binance {effBinance}x
+          </p>
+        ) : (
+          <p className="text-xs text-center text-muted-foreground" data-testid="leverage-summary">
+            No leverage (1x)
+          </p>
+        );
+      })()}
+
       {/* JUMP IN */}
       {(!token.bybitPrice || !token.binancePrice) && (
         <p className="text-xs text-muted-foreground text-center py-1">
