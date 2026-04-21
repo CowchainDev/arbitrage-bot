@@ -532,7 +532,7 @@ function TokenDetailPanel({
           { label: "Ask",     bybit: formatPrice(token.bybitAsk),     binance: formatPrice(token.binanceAsk) },
           { label: "Funding", bybit: formatFunding(token.bybitFundingRate), binance: formatFunding(token.binanceFundingRate) },
           { label: "Next FR", bybit: token.bybitNextFunding ? new Date(token.bybitNextFunding).toLocaleTimeString() : "-", binance: token.binanceNextFunding ? new Date(token.binanceNextFunding).toLocaleTimeString() : "-" },
-          { label: "Spread",  bybit: formatPct(token.spreadPct),      binance: "-" },
+          { label: "Spread",  bybit: (token.bybitPrice != null && token.binancePrice != null && isFinite(token.spreadPct)) ? formatPct(token.spreadPct) : "-",      binance: "-" },
         ].map((row, i) => (
           <div key={row.label} className={`grid grid-cols-3 text-xs px-2 py-1.5 ${i % 2 === 0 ? "bg-card" : "bg-background"}`}>
             <span className="text-muted-foreground">{row.label}</span>
