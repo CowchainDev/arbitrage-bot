@@ -182,8 +182,9 @@ function TokenDetailPanel({
   const [openSpread, setOpenSpread] = useState("0.5");
   const [closeSpread, setCloseSpread] = useState("0.2");
   const [orderSize, setOrderSize] = useState("10");
-  const [bybitLeverage, setBybitLeverage] = useState("5");
-  const [binanceLeverage, setBinanceLeverage] = useState("5");
+  const [bybitLeverage, setBybitLeverage] = useState("1");
+  const [binanceLeverage, setBinanceLeverage] = useState("1");
+  const [useLeverage, setUseLeverage] = useState(false);
   const [isJumping, setIsJumping] = useState(false);
 
   const { toast } = useToast();
@@ -221,8 +222,8 @@ function TokenDetailPanel({
               bybitSide,
               binanceSide: computedBinanceSide,
               usdAmount: size,
-              bybitLeverage: Number(bybitLeverage),
-              binanceLeverage: Number(binanceLeverage),
+              bybitLeverage: useLeverage ? Number(bybitLeverage) : 1,
+              binanceLeverage: useLeverage ? Number(binanceLeverage) : 1,
             },
           },
           {
@@ -380,31 +381,51 @@ function TokenDetailPanel({
       </div>
 
       {/* Leverage */}
-      <div className="grid grid-cols-2 gap-2">
-        <div>
-          <label className="text-xs text-muted-foreground uppercase tracking-wider mb-1 block">Bybit Leverage</label>
-          <div className="flex gap-1">
-            <Input
-              value={bybitLeverage}
-              onChange={(e) => setBybitLeverage(e.target.value)}
-              className="font-mono text-sm bg-background"
-              data-testid="input-bybit-leverage"
-            />
-            <span className="flex items-center text-xs text-muted-foreground px-1">x</span>
+      <div className="space-y-2">
+        <label className="flex items-center gap-2 cursor-pointer w-fit">
+          <input
+            type="checkbox"
+            checked={useLeverage}
+            onChange={(e) => {
+              setUseLeverage(e.target.checked);
+              if (!e.target.checked) {
+                setBybitLeverage("1");
+                setBinanceLeverage("1");
+              }
+            }}
+            className="w-3.5 h-3.5 accent-primary cursor-pointer"
+            data-testid="checkbox-use-leverage"
+          />
+          <span className="text-xs text-muted-foreground uppercase tracking-wider">Use leverage</span>
+        </label>
+        {useLeverage && (
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-xs text-muted-foreground uppercase tracking-wider mb-1 block">Bybit Leverage</label>
+              <div className="flex gap-1">
+                <Input
+                  value={bybitLeverage}
+                  onChange={(e) => setBybitLeverage(e.target.value)}
+                  className="font-mono text-sm bg-background"
+                  data-testid="input-bybit-leverage"
+                />
+                <span className="flex items-center text-xs text-muted-foreground px-1">x</span>
+              </div>
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground uppercase tracking-wider mb-1 block">Binance Leverage</label>
+              <div className="flex gap-1">
+                <Input
+                  value={binanceLeverage}
+                  onChange={(e) => setBinanceLeverage(e.target.value)}
+                  className="font-mono text-sm bg-background"
+                  data-testid="input-binance-leverage"
+                />
+                <span className="flex items-center text-xs text-muted-foreground px-1">x</span>
+              </div>
+            </div>
           </div>
-        </div>
-        <div>
-          <label className="text-xs text-muted-foreground uppercase tracking-wider mb-1 block">Binance Leverage</label>
-          <div className="flex gap-1">
-            <Input
-              value={binanceLeverage}
-              onChange={(e) => setBinanceLeverage(e.target.value)}
-              className="font-mono text-sm bg-background"
-              data-testid="input-binance-leverage"
-            />
-            <span className="flex items-center text-xs text-muted-foreground px-1">x</span>
-          </div>
-        </div>
+        )}
       </div>
 
       {/* Active position P&L */}
