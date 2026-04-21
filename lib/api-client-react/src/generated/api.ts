@@ -5,18 +5,31 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import type {
+  MutationFunction,
   QueryFunction,
   QueryKey,
+  UseMutationOptions,
+  UseMutationResult,
   UseQueryOptions,
   UseQueryResult,
 } from "@tanstack/react-query";
 
-import type { HealthStatus } from "./api.schemas";
+import type {
+  ApiError,
+  ClosePositionRequest,
+  ClosePositionResult,
+  ExchangeBalances,
+  HealthStatus,
+  OrderRequest,
+  OrderResult,
+  Position,
+  TokenSpread,
+} from "./api.schemas";
 
 import { customFetch } from "../custom-fetch";
-import type { ErrorType } from "../custom-fetch";
+import type { ErrorType, BodyType } from "../custom-fetch";
 
 type AwaitedInput<T> = PromiseLike<T> | T;
 
@@ -99,3 +112,401 @@ export function useHealthCheck<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * Returns live price data from both Bybit and Binance futures markets with calculated spread
+ * @summary Get price spread data for all tracked tokens
+ */
+export const getGetExchangePricesUrl = () => {
+  return `/api/exchanges/prices`;
+};
+
+export const getExchangePrices = async (
+  options?: RequestInit,
+): Promise<TokenSpread[]> => {
+  return customFetch<TokenSpread[]>(getGetExchangePricesUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetExchangePricesQueryKey = () => {
+  return [`/api/exchanges/prices`] as const;
+};
+
+export const getGetExchangePricesQueryOptions = <
+  TData = Awaited<ReturnType<typeof getExchangePrices>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getExchangePrices>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetExchangePricesQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getExchangePrices>>
+  > = ({ signal }) => getExchangePrices({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getExchangePrices>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetExchangePricesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getExchangePrices>>
+>;
+export type GetExchangePricesQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get price spread data for all tracked tokens
+ */
+
+export function useGetExchangePrices<
+  TData = Awaited<ReturnType<typeof getExchangePrices>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getExchangePrices>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetExchangePricesQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Get futures wallet balances for both exchanges
+ */
+export const getGetExchangeBalancesUrl = () => {
+  return `/api/exchanges/balances`;
+};
+
+export const getExchangeBalances = async (
+  options?: RequestInit,
+): Promise<ExchangeBalances> => {
+  return customFetch<ExchangeBalances>(getGetExchangeBalancesUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetExchangeBalancesQueryKey = () => {
+  return [`/api/exchanges/balances`] as const;
+};
+
+export const getGetExchangeBalancesQueryOptions = <
+  TData = Awaited<ReturnType<typeof getExchangeBalances>>,
+  TError = ErrorType<ApiError>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getExchangeBalances>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetExchangeBalancesQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getExchangeBalances>>
+  > = ({ signal }) => getExchangeBalances({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getExchangeBalances>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetExchangeBalancesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getExchangeBalances>>
+>;
+export type GetExchangeBalancesQueryError = ErrorType<ApiError>;
+
+/**
+ * @summary Get futures wallet balances for both exchanges
+ */
+
+export function useGetExchangeBalances<
+  TData = Awaited<ReturnType<typeof getExchangeBalances>>,
+  TError = ErrorType<ApiError>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getExchangeBalances>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetExchangeBalancesQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Place a futures order on a specific exchange
+ */
+export const getPlaceOrderUrl = () => {
+  return `/api/exchanges/order`;
+};
+
+export const placeOrder = async (
+  orderRequest: OrderRequest,
+  options?: RequestInit,
+): Promise<OrderResult> => {
+  return customFetch<OrderResult>(getPlaceOrderUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(orderRequest),
+  });
+};
+
+export const getPlaceOrderMutationOptions = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof placeOrder>>,
+    TError,
+    { data: BodyType<OrderRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof placeOrder>>,
+  TError,
+  { data: BodyType<OrderRequest> },
+  TContext
+> => {
+  const mutationKey = ["placeOrder"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof placeOrder>>,
+    { data: BodyType<OrderRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return placeOrder(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type PlaceOrderMutationResult = NonNullable<
+  Awaited<ReturnType<typeof placeOrder>>
+>;
+export type PlaceOrderMutationBody = BodyType<OrderRequest>;
+export type PlaceOrderMutationError = ErrorType<ApiError>;
+
+/**
+ * @summary Place a futures order on a specific exchange
+ */
+export const usePlaceOrder = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof placeOrder>>,
+    TError,
+    { data: BodyType<OrderRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof placeOrder>>,
+  TError,
+  { data: BodyType<OrderRequest> },
+  TContext
+> => {
+  return useMutation(getPlaceOrderMutationOptions(options));
+};
+
+/**
+ * @summary Get all open positions with live P&L
+ */
+export const getGetPositionsUrl = () => {
+  return `/api/exchanges/positions`;
+};
+
+export const getPositions = async (
+  options?: RequestInit,
+): Promise<Position[]> => {
+  return customFetch<Position[]>(getGetPositionsUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetPositionsQueryKey = () => {
+  return [`/api/exchanges/positions`] as const;
+};
+
+export const getGetPositionsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getPositions>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getPositions>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetPositionsQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getPositions>>> = ({
+    signal,
+  }) => getPositions({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getPositions>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetPositionsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getPositions>>
+>;
+export type GetPositionsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get all open positions with live P&L
+ */
+
+export function useGetPositions<
+  TData = Awaited<ReturnType<typeof getPositions>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getPositions>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetPositionsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Close both sides of an arbitrage position
+ */
+export const getClosePositionUrl = () => {
+  return `/api/exchanges/close-position`;
+};
+
+export const closePosition = async (
+  closePositionRequest: ClosePositionRequest,
+  options?: RequestInit,
+): Promise<ClosePositionResult> => {
+  return customFetch<ClosePositionResult>(getClosePositionUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(closePositionRequest),
+  });
+};
+
+export const getClosePositionMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof closePosition>>,
+    TError,
+    { data: BodyType<ClosePositionRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof closePosition>>,
+  TError,
+  { data: BodyType<ClosePositionRequest> },
+  TContext
+> => {
+  const mutationKey = ["closePosition"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof closePosition>>,
+    { data: BodyType<ClosePositionRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return closePosition(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ClosePositionMutationResult = NonNullable<
+  Awaited<ReturnType<typeof closePosition>>
+>;
+export type ClosePositionMutationBody = BodyType<ClosePositionRequest>;
+export type ClosePositionMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Close both sides of an arbitrage position
+ */
+export const useClosePosition = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof closePosition>>,
+    TError,
+    { data: BodyType<ClosePositionRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof closePosition>>,
+  TError,
+  { data: BodyType<ClosePositionRequest> },
+  TContext
+> => {
+  return useMutation(getClosePositionMutationOptions(options));
+};

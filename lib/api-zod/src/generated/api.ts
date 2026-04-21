@@ -14,3 +14,172 @@ import * as zod from "zod";
 export const HealthCheckResponse = zod.object({
   status: zod.string(),
 });
+
+/**
+ * Returns live price data from both Bybit and Binance futures markets with calculated spread
+ * @summary Get price spread data for all tracked tokens
+ */
+export const GetExchangePricesHeader = zod.object({
+  "x-bybit-api-key": zod.string().optional(),
+  "x-bybit-api-secret": zod.string().optional(),
+  "x-binance-api-key": zod.string().optional(),
+  "x-binance-api-secret": zod.string().optional(),
+});
+
+export const GetExchangePricesResponseItem = zod.object({
+  symbol: zod.string().describe("Token symbol e.g. BTC, ETH"),
+  bybitPrice: zod.number().describe("Last price on Bybit futures"),
+  binancePrice: zod.number().describe("Last price on Binance futures"),
+  spreadPct: zod
+    .number()
+    .describe("Price spread percentage (bybit - binance) \/ binance \* 100"),
+  bybitFundingRate: zod
+    .number()
+    .optional()
+    .describe("Current funding rate on Bybit (8h)"),
+  binanceFundingRate: zod
+    .number()
+    .optional()
+    .describe("Current funding rate on Binance (8h)"),
+  bybitNextFunding: zod
+    .string()
+    .optional()
+    .describe("Next funding time on Bybit"),
+  binanceNextFunding: zod
+    .string()
+    .optional()
+    .describe("Next funding time on Binance"),
+  bybitBid: zod.number().optional(),
+  bybitAsk: zod.number().optional(),
+  binanceBid: zod.number().optional(),
+  binanceAsk: zod.number().optional(),
+  volume24h: zod
+    .number()
+    .optional()
+    .describe("24h volume in USD (approximate)"),
+});
+export const GetExchangePricesResponse = zod.array(
+  GetExchangePricesResponseItem,
+);
+
+/**
+ * @summary Get futures wallet balances for both exchanges
+ */
+export const GetExchangeBalancesHeader = zod.object({
+  "x-bybit-api-key": zod.string(),
+  "x-bybit-api-secret": zod.string(),
+  "x-binance-api-key": zod.string(),
+  "x-binance-api-secret": zod.string(),
+});
+
+export const GetExchangeBalancesResponse = zod.object({
+  bybit: zod.number().describe("USDT balance in Bybit futures wallet"),
+  binance: zod.number().describe("USDT balance in Binance futures wallet"),
+  bybitPnl: zod.number().optional().describe("Unrealized P&L on Bybit"),
+  binancePnl: zod.number().optional().describe("Unrealized P&L on Binance"),
+});
+
+/**
+ * @summary Place a futures order on a specific exchange
+ */
+export const PlaceOrderHeader = zod.object({
+  "x-bybit-api-key": zod.string().optional(),
+  "x-bybit-api-secret": zod.string().optional(),
+  "x-binance-api-key": zod.string().optional(),
+  "x-binance-api-secret": zod.string().optional(),
+});
+
+export const PlaceOrderBody = zod.object({
+  exchange: zod.enum(["bybit", "binance"]),
+  symbol: zod.string().describe("Token symbol e.g. BTC"),
+  side: zod.enum(["long", "short"]),
+  usdAmount: zod.number().describe("Order size in USD"),
+  leverage: zod.number().optional().describe("Leverage multiplier (default 1)"),
+});
+
+export const PlaceOrderResponse = zod.object({
+  orderId: zod.string(),
+  exchange: zod.string(),
+  symbol: zod.string(),
+  side: zod.string(),
+  filledQty: zod.number().optional(),
+  avgPrice: zod.number().optional(),
+  status: zod.string(),
+});
+
+/**
+ * @summary Get all open positions with live P&L
+ */
+export const GetPositionsHeader = zod.object({
+  "x-bybit-api-key": zod.string().optional(),
+  "x-bybit-api-secret": zod.string().optional(),
+  "x-binance-api-key": zod.string().optional(),
+  "x-binance-api-secret": zod.string().optional(),
+});
+
+export const GetPositionsResponseItem = zod.object({
+  id: zod.string(),
+  symbol: zod.string(),
+  bybitSide: zod.enum(["long", "short"]),
+  binanceSide: zod.enum(["long", "short"]),
+  bybitQty: zod.number().optional(),
+  binanceQty: zod.number().optional(),
+  bybitEntryPrice: zod.number().optional(),
+  binanceEntryPrice: zod.number().optional(),
+  bybitCurrentPrice: zod.number().optional(),
+  binanceCurrentPrice: zod.number().optional(),
+  bybitPnl: zod.number().optional(),
+  binancePnl: zod.number().optional(),
+  totalPnl: zod.number(),
+  spreadAtEntry: zod.number().optional(),
+  currentSpread: zod.number(),
+  usdSize: zod.number().optional(),
+  openedAt: zod.string().optional(),
+});
+export const GetPositionsResponse = zod.array(GetPositionsResponseItem);
+
+/**
+ * @summary Close both sides of an arbitrage position
+ */
+export const ClosePositionHeader = zod.object({
+  "x-bybit-api-key": zod.string().optional(),
+  "x-bybit-api-secret": zod.string().optional(),
+  "x-binance-api-key": zod.string().optional(),
+  "x-binance-api-secret": zod.string().optional(),
+});
+
+export const ClosePositionBody = zod.object({
+  positionId: zod.string(),
+  symbol: zod.string(),
+  bybitSide: zod.enum(["long", "short"]).optional(),
+  binanceSide: zod.enum(["long", "short"]).optional(),
+  bybitQty: zod.number(),
+  binanceQty: zod.number(),
+});
+
+export const ClosePositionResponse = zod.object({
+  success: zod.boolean(),
+  bybitResult: zod
+    .object({
+      orderId: zod.string(),
+      exchange: zod.string(),
+      symbol: zod.string(),
+      side: zod.string(),
+      filledQty: zod.number().optional(),
+      avgPrice: zod.number().optional(),
+      status: zod.string(),
+    })
+    .optional(),
+  binanceResult: zod
+    .object({
+      orderId: zod.string(),
+      exchange: zod.string(),
+      symbol: zod.string(),
+      side: zod.string(),
+      filledQty: zod.number().optional(),
+      avgPrice: zod.number().optional(),
+      status: zod.string(),
+    })
+    .optional(),
+  realizedPnl: zod.number().optional(),
+});

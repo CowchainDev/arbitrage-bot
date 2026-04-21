@@ -10,6 +10,8 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: exchanges
+    description: Exchange data and trading operations
 paths:
   /healthz:
     get:
@@ -24,6 +26,212 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /exchanges/prices:
+    get:
+      operationId: getExchangePrices
+      tags: [exchanges]
+      summary: Get price spread data for all tracked tokens
+      description: Returns live price data from both Bybit and Binance futures markets with calculated spread
+      parameters:
+        - in: header
+          name: x-bybit-api-key
+          schema:
+            type: string
+          required: false
+        - in: header
+          name: x-bybit-api-secret
+          schema:
+            type: string
+          required: false
+        - in: header
+          name: x-binance-api-key
+          schema:
+            type: string
+          required: false
+        - in: header
+          name: x-binance-api-secret
+          schema:
+            type: string
+          required: false
+      responses:
+        "200":
+          description: Price spread data
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TokenSpread"
+
+  /exchanges/balances:
+    get:
+      operationId: getExchangeBalances
+      tags: [exchanges]
+      summary: Get futures wallet balances for both exchanges
+      parameters:
+        - in: header
+          name: x-bybit-api-key
+          schema:
+            type: string
+          required: true
+        - in: header
+          name: x-bybit-api-secret
+          schema:
+            type: string
+          required: true
+        - in: header
+          name: x-binance-api-key
+          schema:
+            type: string
+          required: true
+        - in: header
+          name: x-binance-api-secret
+          schema:
+            type: string
+          required: true
+      responses:
+        "200":
+          description: Wallet balances
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExchangeBalances"
+        "401":
+          description: Invalid API credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+  /exchanges/order:
+    post:
+      operationId: placeOrder
+      tags: [exchanges]
+      summary: Place a futures order on a specific exchange
+      parameters:
+        - in: header
+          name: x-bybit-api-key
+          schema:
+            type: string
+          required: false
+        - in: header
+          name: x-bybit-api-secret
+          schema:
+            type: string
+          required: false
+        - in: header
+          name: x-binance-api-key
+          schema:
+            type: string
+          required: false
+        - in: header
+          name: x-binance-api-secret
+          schema:
+            type: string
+          required: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrderRequest"
+      responses:
+        "200":
+          description: Order placed successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderResult"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Invalid API credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+  /exchanges/positions:
+    get:
+      operationId: getPositions
+      tags: [exchanges]
+      summary: Get all open positions with live P&L
+      parameters:
+        - in: header
+          name: x-bybit-api-key
+          schema:
+            type: string
+          required: false
+        - in: header
+          name: x-bybit-api-secret
+          schema:
+            type: string
+          required: false
+        - in: header
+          name: x-binance-api-key
+          schema:
+            type: string
+          required: false
+        - in: header
+          name: x-binance-api-secret
+          schema:
+            type: string
+          required: false
+      responses:
+        "200":
+          description: Open positions with P&L
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Position"
+
+  /exchanges/close-position:
+    post:
+      operationId: closePosition
+      tags: [exchanges]
+      summary: Close both sides of an arbitrage position
+      parameters:
+        - in: header
+          name: x-bybit-api-key
+          schema:
+            type: string
+          required: false
+        - in: header
+          name: x-bybit-api-secret
+          schema:
+            type: string
+          required: false
+        - in: header
+          name: x-binance-api-key
+          schema:
+            type: string
+          required: false
+        - in: header
+          name: x-binance-api-secret
+          schema:
+            type: string
+          required: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClosePositionRequest"
+      responses:
+        "200":
+          description: Position closed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClosePositionResult"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +242,208 @@ components:
       required:
         - status
 
+    ApiError:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+      required:
+        - error
+        - message
+
+    TokenSpread:
+      type: object
+      properties:
+        symbol:
+          type: string
+          description: Token symbol e.g. BTC, ETH
+        bybitPrice:
+          type: number
+          description: Last price on Bybit futures
+        binancePrice:
+          type: number
+          description: Last price on Binance futures
+        spreadPct:
+          type: number
+          description: Price spread percentage (bybit - binance) / binance * 100
+        bybitFundingRate:
+          type: number
+          description: Current funding rate on Bybit (8h)
+        binanceFundingRate:
+          type: number
+          description: Current funding rate on Binance (8h)
+        bybitNextFunding:
+          type: string
+          description: Next funding time on Bybit
+        binanceNextFunding:
+          type: string
+          description: Next funding time on Binance
+        bybitBid:
+          type: number
+        bybitAsk:
+          type: number
+        binanceBid:
+          type: number
+        binanceAsk:
+          type: number
+        volume24h:
+          type: number
+          description: 24h volume in USD (approximate)
+      required:
+        - symbol
+        - bybitPrice
+        - binancePrice
+        - spreadPct
+
+    ExchangeBalances:
+      type: object
+      properties:
+        bybit:
+          type: number
+          description: USDT balance in Bybit futures wallet
+        binance:
+          type: number
+          description: USDT balance in Binance futures wallet
+        bybitPnl:
+          type: number
+          description: Unrealized P&L on Bybit
+        binancePnl:
+          type: number
+          description: Unrealized P&L on Binance
+      required:
+        - bybit
+        - binance
+
+    OrderRequest:
+      type: object
+      properties:
+        exchange:
+          type: string
+          enum: [bybit, binance]
+        symbol:
+          type: string
+          description: Token symbol e.g. BTC
+        side:
+          type: string
+          enum: [long, short]
+        usdAmount:
+          type: number
+          description: Order size in USD
+        leverage:
+          type: number
+          description: Leverage multiplier (default 1)
+      required:
+        - exchange
+        - symbol
+        - side
+        - usdAmount
+
+    OrderResult:
+      type: object
+      properties:
+        orderId:
+          type: string
+        exchange:
+          type: string
+        symbol:
+          type: string
+        side:
+          type: string
+        filledQty:
+          type: number
+        avgPrice:
+          type: number
+        status:
+          type: string
+      required:
+        - orderId
+        - exchange
+        - symbol
+        - side
+        - status
+
+    Position:
+      type: object
+      properties:
+        id:
+          type: string
+        symbol:
+          type: string
+        bybitSide:
+          type: string
+          enum: [long, short]
+        binanceSide:
+          type: string
+          enum: [long, short]
+        bybitQty:
+          type: number
+        binanceQty:
+          type: number
+        bybitEntryPrice:
+          type: number
+        binanceEntryPrice:
+          type: number
+        bybitCurrentPrice:
+          type: number
+        binanceCurrentPrice:
+          type: number
+        bybitPnl:
+          type: number
+        binancePnl:
+          type: number
+        totalPnl:
+          type: number
+        spreadAtEntry:
+          type: number
+        currentSpread:
+          type: number
+        usdSize:
+          type: number
+        openedAt:
+          type: string
+      required:
+        - id
+        - symbol
+        - bybitSide
+        - binanceSide
+        - totalPnl
+        - currentSpread
+
+    ClosePositionRequest:
+      type: object
+      properties:
+        positionId:
+          type: string
+        symbol:
+          type: string
+        bybitSide:
+          type: string
+          enum: [long, short]
+        binanceSide:
+          type: string
+          enum: [long, short]
+        bybitQty:
+          type: number
+        binanceQty:
+          type: number
+      required:
+        - positionId
+        - symbol
+        - bybitQty
+        - binanceQty
+
+    ClosePositionResult:
+      type: object
+      properties:
+        success:
+          type: boolean
+        bybitResult:
+          $ref: "#/components/schemas/OrderResult"
+        binanceResult:
+          $ref: "#/components/schemas/OrderResult"
+        realizedPnl:
+          type: number
+      required:
+        - success

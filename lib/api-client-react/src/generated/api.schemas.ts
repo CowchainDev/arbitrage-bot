@@ -8,3 +8,149 @@
 export interface HealthStatus {
   status: string;
 }
+
+export interface ApiError {
+  error: string;
+  message: string;
+}
+
+export interface TokenSpread {
+  /** Token symbol e.g. BTC, ETH */
+  symbol: string;
+  /** Last price on Bybit futures */
+  bybitPrice: number;
+  /** Last price on Binance futures */
+  binancePrice: number;
+  /** Price spread percentage (bybit - binance) / binance * 100 */
+  spreadPct: number;
+  /** Current funding rate on Bybit (8h) */
+  bybitFundingRate?: number;
+  /** Current funding rate on Binance (8h) */
+  binanceFundingRate?: number;
+  /** Next funding time on Bybit */
+  bybitNextFunding?: string;
+  /** Next funding time on Binance */
+  binanceNextFunding?: string;
+  bybitBid?: number;
+  bybitAsk?: number;
+  binanceBid?: number;
+  binanceAsk?: number;
+  /** 24h volume in USD (approximate) */
+  volume24h?: number;
+}
+
+export interface ExchangeBalances {
+  /** USDT balance in Bybit futures wallet */
+  bybit: number;
+  /** USDT balance in Binance futures wallet */
+  binance: number;
+  /** Unrealized P&L on Bybit */
+  bybitPnl?: number;
+  /** Unrealized P&L on Binance */
+  binancePnl?: number;
+}
+
+export type OrderRequestExchange =
+  (typeof OrderRequestExchange)[keyof typeof OrderRequestExchange];
+
+export const OrderRequestExchange = {
+  bybit: "bybit",
+  binance: "binance",
+} as const;
+
+export type OrderRequestSide =
+  (typeof OrderRequestSide)[keyof typeof OrderRequestSide];
+
+export const OrderRequestSide = {
+  long: "long",
+  short: "short",
+} as const;
+
+export interface OrderRequest {
+  exchange: OrderRequestExchange;
+  /** Token symbol e.g. BTC */
+  symbol: string;
+  side: OrderRequestSide;
+  /** Order size in USD */
+  usdAmount: number;
+  /** Leverage multiplier (default 1) */
+  leverage?: number;
+}
+
+export interface OrderResult {
+  orderId: string;
+  exchange: string;
+  symbol: string;
+  side: string;
+  filledQty?: number;
+  avgPrice?: number;
+  status: string;
+}
+
+export type PositionBybitSide =
+  (typeof PositionBybitSide)[keyof typeof PositionBybitSide];
+
+export const PositionBybitSide = {
+  long: "long",
+  short: "short",
+} as const;
+
+export type PositionBinanceSide =
+  (typeof PositionBinanceSide)[keyof typeof PositionBinanceSide];
+
+export const PositionBinanceSide = {
+  long: "long",
+  short: "short",
+} as const;
+
+export interface Position {
+  id: string;
+  symbol: string;
+  bybitSide: PositionBybitSide;
+  binanceSide: PositionBinanceSide;
+  bybitQty?: number;
+  binanceQty?: number;
+  bybitEntryPrice?: number;
+  binanceEntryPrice?: number;
+  bybitCurrentPrice?: number;
+  binanceCurrentPrice?: number;
+  bybitPnl?: number;
+  binancePnl?: number;
+  totalPnl: number;
+  spreadAtEntry?: number;
+  currentSpread: number;
+  usdSize?: number;
+  openedAt?: string;
+}
+
+export type ClosePositionRequestBybitSide =
+  (typeof ClosePositionRequestBybitSide)[keyof typeof ClosePositionRequestBybitSide];
+
+export const ClosePositionRequestBybitSide = {
+  long: "long",
+  short: "short",
+} as const;
+
+export type ClosePositionRequestBinanceSide =
+  (typeof ClosePositionRequestBinanceSide)[keyof typeof ClosePositionRequestBinanceSide];
+
+export const ClosePositionRequestBinanceSide = {
+  long: "long",
+  short: "short",
+} as const;
+
+export interface ClosePositionRequest {
+  positionId: string;
+  symbol: string;
+  bybitSide?: ClosePositionRequestBybitSide;
+  binanceSide?: ClosePositionRequestBinanceSide;
+  bybitQty: number;
+  binanceQty: number;
+}
+
+export interface ClosePositionResult {
+  success: boolean;
+  bybitResult?: OrderResult;
+  binanceResult?: OrderResult;
+  realizedPnl?: number;
+}
