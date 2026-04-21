@@ -865,7 +865,7 @@ export default function Dashboard() {
 
   const pricesQuery = useGetExchangePrices({
     query: {
-      refetchInterval: wsActive ? false : 8000,
+      refetchInterval: wsActive ? false : 2000,
       queryKey: getGetExchangePricesQueryKey(),
       enabled: !wsActive,
     },
@@ -874,7 +874,7 @@ export default function Dashboard() {
 
   const positionsQuery = useGetPositions({
     query: {
-      refetchInterval: 5000,
+      refetchInterval: 2000,
       queryKey: getGetPositionsQueryKey(),
       enabled: hasCredentials,
     },
