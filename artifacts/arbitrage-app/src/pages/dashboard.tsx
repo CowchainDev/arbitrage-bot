@@ -65,15 +65,16 @@ const EXCHANGE_COLORS: Record<string, string> = {
 
 function SpreadBadge({ spreadPct, bestSpreadPct, bestSpreadLeg }: { spreadPct: number; bestSpreadPct?: number; bestSpreadLeg?: string }) {
   const raw = bestSpreadPct != null ? bestSpreadPct : Math.abs(spreadPct);
-  const value = isFinite(raw) ? raw : 0;
+  const available = isFinite(raw);
+  const value = available ? raw : null;
   let colorClass = "text-muted-foreground";
-  if (value >= 1) colorClass = "text-primary";
-  else if (value >= 0.3) colorClass = "text-amber-400";
+  if (value != null && value >= 1) colorClass = "text-primary";
+  else if (value != null && value >= 0.3) colorClass = "text-amber-400";
 
   return (
     <div className="text-right">
       <span className={`font-mono font-semibold text-sm ${colorClass}`}>
-        +{value.toFixed(4)}%
+        {value != null ? `+${value.toFixed(4)}%` : "-"}
       </span>
       {bestSpreadLeg && (
         <div className="text-[10px] text-muted-foreground font-mono leading-tight">
