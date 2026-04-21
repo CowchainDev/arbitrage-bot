@@ -188,7 +188,15 @@ function TokenDetailPanel({
   activePosition?: Position;
   onJumpInSuccess: (position: Position) => void;
 }) {
-  const [bybitSide, setBybitSide] = useState<"long" | "short">("long");
+  // Auto-select: SHORT the expensive side, LONG the cheap side (convergence arb)
+  // spreadPct = (bybitPrice - binancePrice) / binancePrice → positive means Bybit is more expensive
+  const correctBybitSide = (token.spreadPct ?? 0) > 0 ? "short" : "long";
+  const [bybitSide, setBybitSide] = useState<"long" | "short">(correctBybitSide);
+
+  // Re-auto-select whenever the token changes
+  useEffect(() => {
+    setBybitSide((token.spreadPct ?? 0) > 0 ? "short" : "long");
+  }, [token.symbol, token.spreadPct]);
   const [openSpread, setOpenSpread] = useState("0.5");
   const [closeSpread, setCloseSpread] = useState("0.2");
   const [orderSize, setOrderSize] = useState("10");
@@ -364,6 +372,15 @@ function TokenDetailPanel({
           {" / "}
           Binance: <span className={binanceSide === "long" ? "text-primary" : "text-destructive"}>{binanceSide.toUpperCase()}</span>
         </p>
+        {token.bybitPrice != null && token.binancePrice != null && (
+          <p className="text-[11px] mt-0.5">
+            {token.bybitPrice > token.binancePrice ? (
+              <span className="text-amber-400/80">BB is more expensive → SHORT BB · LONG BN to profit from convergence</span>
+            ) : (
+              <span className="text-violet-400/80">BN is more expensive → LONG BB · SHORT BN to profit from convergence</span>
+            )}
+          </p>
+        )}
       </div>
 
       {/* Spread settings */}
