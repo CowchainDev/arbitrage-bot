@@ -457,8 +457,16 @@ router.post("/exchanges/close-position", async (req: Request, res: Response) => 
         }
       : null;
 
+    const bothClosed = bybitOrder.status === "fulfilled" && binanceOrder.status === "fulfilled";
+    const bybitError = bybitOrder.status === "rejected" ? String(bybitOrder.reason) : undefined;
+    const binanceError = binanceOrder.status === "rejected" ? String(binanceOrder.reason) : undefined;
+
+    if (!bothClosed) {
+      req.log.warn({ bybitError, binanceError }, "close-position: partial failure");
+    }
+
     res.json({
-      success: bybitOrder.status === "fulfilled" || binanceOrder.status === "fulfilled",
+      success: bothClosed,
       bybitResult,
       binanceResult,
       realizedPnl: 0,

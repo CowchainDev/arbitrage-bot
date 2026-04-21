@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, type ControllerRenderProps } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { KeyRound, Eye, EyeOff, CheckCircle, Trash2, ExternalLink } from "lucide-react";
@@ -71,7 +71,7 @@ export default function Settings() {
     placeholder,
     name,
   }: {
-    field: Parameters<typeof FormControl>[0]["children"] extends never ? never : React.ComponentProps<typeof FormControl>["children"] extends never ? never : { value: string; onChange: (e: React.ChangeEvent<HTMLInputElement>) => void; name: string };
+    field: ControllerRenderProps<CredentialsForm, keyof CredentialsForm>;
     placeholder: string;
     name: string;
   }) => (
@@ -168,7 +168,7 @@ export default function Settings() {
                 <FormItem>
                   <FormLabel className="text-xs text-muted-foreground uppercase tracking-wider">API Secret</FormLabel>
                   <FormControl>
-                    <SecretInput field={field as unknown as { value: string; onChange: (e: React.ChangeEvent<HTMLInputElement>) => void; name: string }} placeholder="Enter Bybit API Secret" name="bybitApiSecret" />
+                    <SecretInput field={field} placeholder="Enter Bybit API Secret" name="bybitApiSecret" />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -221,7 +221,7 @@ export default function Settings() {
                 <FormItem>
                   <FormLabel className="text-xs text-muted-foreground uppercase tracking-wider">API Secret</FormLabel>
                   <FormControl>
-                    <SecretInput field={field as unknown as { value: string; onChange: (e: React.ChangeEvent<HTMLInputElement>) => void; name: string }} placeholder="Enter Binance API Secret" name="binanceApiSecret" />
+                    <SecretInput field={field} placeholder="Enter Binance API Secret" name="binanceApiSecret" />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
