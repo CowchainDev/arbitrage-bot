@@ -48,6 +48,13 @@ function formatPnl(pnl: number | null | undefined): string {
   return (pnl >= 0 ? "+" : "") + "$" + Math.abs(pnl).toFixed(4);
 }
 
+function formatPnlWithPct(pnl: number | null | undefined, usdSize: number | null | undefined): string {
+  const dollar = formatPnl(pnl);
+  if (pnl == null || !usdSize || usdSize === 0) return dollar;
+  const pct = (pnl / usdSize) * 100;
+  return `${dollar} (${formatPct(pct)})`;
+}
+
 const EXCHANGE_LABELS: Record<string, string> = {
   bybit: "BB", binance: "BN", gate: "GT", okx: "OKX", mexc: "MX",
 };
@@ -452,7 +459,7 @@ function TokenDetailPanel({
           <div className="flex items-center justify-between text-xs">
             <span className="text-muted-foreground uppercase tracking-wider font-semibold">Active Position</span>
             <span className={`font-mono font-bold text-base ${(activePosition.totalPnl ?? 0) >= 0 ? "text-primary" : "text-destructive"}`}>
-              {formatPnl(activePosition.totalPnl)}
+              {formatPnlWithPct(activePosition.totalPnl, activePosition.usdSize)}
             </span>
           </div>
           <div className="flex items-center justify-between text-xs text-muted-foreground">
@@ -667,7 +674,7 @@ function PositionRow({
         <span className="font-mono">${(position.usdSize ?? 0).toFixed(2)}</span>
         <span className="font-mono">{formatPct(position.currentSpread)}</span>
         <span className={`font-mono font-semibold ${pnlPositive ? "text-primary" : "text-destructive"}`}>
-          {formatPnl(position.totalPnl)}
+          {formatPnlWithPct(position.totalPnl, position.usdSize)}
         </span>
         <span className="font-mono text-muted-foreground">
           {position.openedAt ? new Date(position.openedAt).toLocaleTimeString() : "-"}
@@ -716,7 +723,7 @@ function PositionRow({
             <span className="font-mono">${(position.usdSize ?? 0).toFixed(2)}</span>
             <span className="text-muted-foreground">Unrealised P/L</span>
             <span className={`font-mono font-semibold ${pnlPositive ? "text-primary" : "text-destructive"}`}>
-              {formatPnl(position.totalPnl)}
+              {formatPnlWithPct(position.totalPnl, position.usdSize)}
             </span>
           </div>
           <DialogFooter>
