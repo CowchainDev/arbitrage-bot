@@ -572,7 +572,7 @@ function TokenDetailPanel({
           {(["gate", "okx", "mexc"] as const).map((ex, i) => {
             const exPrice = ex === "gate" ? token.gatePrice : ex === "okx" ? token.okxPrice : token.mexcPrice;
             const refPrice = token.bybitPrice ?? token.binancePrice;
-            if (exPrice == null || refPrice == null) return null;
+            if (exPrice == null || refPrice == null || refPrice === 0) return null;
             const spread = ((exPrice - refPrice) / refPrice) * 100;
             const color = Math.abs(spread) >= 1 ? (spread >= 0 ? "text-primary" : "text-destructive") : Math.abs(spread) >= 0.3 ? "text-amber-400" : "text-muted-foreground";
             const label = ex === "gate" ? "GT" : ex === "okx" ? "OKX" : "MX";
