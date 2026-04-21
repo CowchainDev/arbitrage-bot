@@ -1,5 +1,5 @@
 import { Link } from "wouter";
-import { Settings, LayoutDashboard, Activity } from "lucide-react";
+import { Settings, LayoutDashboard, Activity, History } from "lucide-react";
 import { useApiCredentials } from "@/hooks/use-api-credentials";
 import { useGetExchangeBalances, getGetExchangeBalancesQueryKey } from "@workspace/api-client-react";
 import { useConnectionStatus } from "@/contexts/connection-status";
@@ -81,6 +81,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <Link href="/" className="px-3 py-1.5 rounded hover:bg-muted transition-colors flex items-center gap-2 text-muted-foreground hover:text-foreground">
               <LayoutDashboard className="w-4 h-4" />
               Dashboard
+            </Link>
+            <Link href="/history" className="px-3 py-1.5 rounded hover:bg-muted transition-colors flex items-center gap-2 text-muted-foreground hover:text-foreground">
+              <History className="w-4 h-4" />
+              History
             </Link>
             <Link href="/settings" className="px-3 py-1.5 rounded hover:bg-muted transition-colors flex items-center gap-2 text-muted-foreground hover:text-foreground">
               <Settings className="w-4 h-4" />

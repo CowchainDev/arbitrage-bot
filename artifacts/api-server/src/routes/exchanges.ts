@@ -5,6 +5,8 @@ import {
   ClosePositionBody,
   JumpInBody,
 } from "@workspace/api-zod";
+import { db } from "@workspace/db";
+import { closedTradesTable } from "@workspace/db";
 
 const router: IRouter = Router();
 
@@ -545,6 +547,14 @@ router.post("/exchanges/close-position", async (req: Request, res: Response) => 
   }
 
   const { symbol, bybitSide, binanceSide, bybitQty, binanceQty } = parsed.data;
+  const body = req.body as Record<string, unknown>;
+  const longExchange = typeof body["longExchange"] === "string" ? body["longExchange"] : "bybit";
+  const shortExchange = typeof body["shortExchange"] === "string" ? body["shortExchange"] : "binance";
+  const spreadAtEntry = typeof body["spreadAtEntry"] === "number" ? body["spreadAtEntry"] : 0;
+  const entryTime = typeof body["entryTime"] === "string" ? body["entryTime"] : undefined;
+  const quantity = typeof body["quantity"] === "number" ? body["quantity"] : 0;
+  const clientRealizedPnl = typeof body["realizedPnl"] === "number" ? body["realizedPnl"] : null;
+
   const bybitCreds = getBybitCredentials(req);
   const binanceCreds = getBinanceCredentials(req);
 
@@ -598,11 +608,30 @@ router.post("/exchanges/close-position", async (req: Request, res: Response) => 
       req.log.warn({ bybitError, binanceError }, "close-position: partial failure");
     }
 
+    const realizedPnl = clientRealizedPnl ?? 0;
+
+    if (bothClosed) {
+      try {
+        await db.insert(closedTradesTable).values({
+          symbol,
+          longExchange,
+          shortExchange,
+          spreadAtEntry: String(spreadAtEntry),
+          realizedPnl: String(realizedPnl),
+          quantity: String(quantity),
+          entryTime: entryTime ? new Date(entryTime) : new Date(),
+          closeTime: new Date(),
+        });
+      } catch (dbErr) {
+        req.log.error({ dbErr }, "close-position: failed to record trade to DB");
+      }
+    }
+
     res.json({
       success: bothClosed,
       bybitResult,
       binanceResult,
-      realizedPnl: 0,
+      realizedPnl,
     });
   } catch (err) {
     req.log.error({ err }, "Error closing position");

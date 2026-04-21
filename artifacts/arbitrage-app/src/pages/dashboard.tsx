@@ -644,6 +644,9 @@ function PositionRow({
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
+  const longExchange = position.bybitSide === "long" ? "bybit" : "binance";
+  const shortExchange = position.bybitSide === "short" ? "bybit" : "binance";
+
   const handleConfirmClose = async () => {
     setIsClosing(true);
     try {
@@ -657,6 +660,12 @@ function PositionRow({
               binanceSide: position.binanceSide as "long" | "short",
               bybitQty: position.bybitQty ?? 0,
               binanceQty: position.binanceQty ?? 0,
+              longExchange,
+              shortExchange,
+              spreadAtEntry: position.spreadAtEntry ?? 0,
+              entryTime: position.openedAt ?? new Date().toISOString(),
+              quantity: position.usdSize ?? 0,
+              realizedPnl: position.totalPnl ?? 0,
             },
           },
           {

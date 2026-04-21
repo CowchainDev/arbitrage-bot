@@ -167,6 +167,18 @@ export interface ClosePositionRequest {
   binanceSide?: ClosePositionRequestBinanceSide;
   bybitQty: number;
   binanceQty: number;
+  /** Which exchange holds the long leg (for trade recording) */
+  longExchange?: string;
+  /** Which exchange holds the short leg (for trade recording) */
+  shortExchange?: string;
+  /** Spread percentage when position was opened */
+  spreadAtEntry?: number;
+  /** ISO timestamp when position was opened */
+  entryTime?: string;
+  /** Position size in USD */
+  quantity?: number;
+  /** Realized PnL in USD at time of close */
+  realizedPnl?: number;
 }
 
 export interface ClosePositionResult {
@@ -221,4 +233,29 @@ export interface JumpInResult {
   compensated?: boolean;
   /** Error message if success is false */
   error?: string;
+}
+
+export interface ClosedTrade {
+  id: number;
+  symbol: string;
+  longExchange: string;
+  shortExchange: string;
+  spreadAtEntry: number;
+  realizedPnl: number;
+  quantity: number;
+  entryTime: string;
+  closeTime: string;
+}
+
+export interface TradeStats {
+  totalTrades: number;
+  winningTrades: number;
+  totalPnl: number;
+  bestTrade: number;
+  worstTrade: number;
+}
+
+export interface TradeHistoryResponse {
+  trades: ClosedTrade[];
+  stats: TradeStats;
 }

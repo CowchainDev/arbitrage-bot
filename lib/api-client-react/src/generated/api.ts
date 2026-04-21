@@ -28,6 +28,7 @@ import type {
   OrderResult,
   Position,
   TokenSpread,
+  TradeHistoryResponse,
 } from "./api.schemas";
 
 import { customFetch } from "../custom-fetch";
@@ -599,3 +600,70 @@ export const useClosePosition = <
 > => {
   return useMutation(getClosePositionMutationOptions(options));
 };
+
+/**
+ * @summary Get trade history with aggregate stats
+ */
+export const getGetTradesUrl = () => {
+  return `/api/trades`;
+};
+
+export const getTrades = async (
+  options?: RequestInit,
+): Promise<TradeHistoryResponse> => {
+  return customFetch<TradeHistoryResponse>(getGetTradesUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetTradesQueryKey = () => {
+  return [`/api/trades`] as const;
+};
+
+export const getGetTradesQueryOptions = <
+  TData = Awaited<ReturnType<typeof getTrades>>,
+  TError = ErrorType<ApiError>,
+>(options?: {
+  query?: UseQueryOptions<Awaited<ReturnType<typeof getTrades>>, TError, TData>;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetTradesQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getTrades>>> = ({
+    signal,
+  }) => getTrades({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getTrades>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetTradesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getTrades>>
+>;
+export type GetTradesQueryError = ErrorType<ApiError>;
+
+/**
+ * @summary Get trade history with aggregate stats
+ */
+
+export function useGetTrades<
+  TData = Awaited<ReturnType<typeof getTrades>>,
+  TError = ErrorType<ApiError>,
+>(options?: {
+  query?: UseQueryOptions<Awaited<ReturnType<typeof getTrades>>, TError, TData>;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetTradesQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}

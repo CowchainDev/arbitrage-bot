@@ -7,6 +7,7 @@
  */
 
 export * from "./apiError";
+export * from "./closedTrade";
 export * from "./closePositionRequest";
 export * from "./closePositionRequestBinanceSide";
 export * from "./closePositionRequestBybitSide";
@@ -25,3 +26,5 @@ export * from "./position";
 export * from "./positionBinanceSide";
 export * from "./positionBybitSide";
 export * from "./tokenSpread";
+export * from "./tradeHistoryResponse";
+export * from "./tradeStats";

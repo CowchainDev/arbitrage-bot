@@ -1,0 +1,317 @@
+import { useMemo } from "react";
+import { useGetTrades, getGetTradesQueryKey } from "@workspace/api-client-react";
+import type { ClosedTrade } from "@workspace/api-client-react";
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+} from "recharts";
+import { format } from "date-fns";
+import { TrendingUp, BarChart2, Activity } from "lucide-react";
+
+function StatCard({
+  label,
+  value,
+  sub,
+  positive,
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+  positive?: boolean | null;
+}) {
+  const colorClass =
+    positive === true
+      ? "text-primary"
+      : positive === false
+        ? "text-destructive"
+        : "text-foreground";
+
+  return (
+    <div className="bg-card border border-border rounded-lg p-4 flex flex-col gap-1">
+      <span className="text-xs text-muted-foreground uppercase tracking-wider">{label}</span>
+      <span className={`text-xl font-bold font-mono ${colorClass}`}>{value}</span>
+      {sub && <span className="text-xs text-muted-foreground">{sub}</span>}
+    </div>
+  );
+}
+
+function formatPnl(val: number) {
+  const sign = val >= 0 ? "+" : "";
+  return `${sign}$${Math.abs(val).toFixed(2)}`;
+}
+
+function formatDuration(entryTime: string, closeTime: string) {
+  const ms = new Date(closeTime).getTime() - new Date(entryTime).getTime();
+  if (ms < 0) return "—";
+  const hours = Math.floor(ms / 3600000);
+  const minutes = Math.floor((ms % 3600000) / 60000);
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  return `${minutes}m`;
+}
+
+interface CumulativePoint {
+  closeTime: string;
+  cumPnl: number;
+  pnl: number;
+  symbol: string;
+}
+
+function CumulativePnlChart({ trades }: { trades: ClosedTrade[] }) {
+  const chartData = useMemo<CumulativePoint[]>(() => {
+    const sorted = [...trades].sort(
+      (a, b) => new Date(a.closeTime).getTime() - new Date(b.closeTime).getTime()
+    );
+    let cumPnl = 0;
+    return sorted.map((t) => {
+      cumPnl += t.realizedPnl;
+      return {
+        closeTime: format(new Date(t.closeTime), "MM/dd HH:mm"),
+        cumPnl: parseFloat(cumPnl.toFixed(2)),
+        pnl: t.realizedPnl,
+        symbol: t.symbol,
+      };
+    });
+  }, [trades]);
+
+  if (chartData.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-40 text-muted-foreground text-sm">
+        No trade data yet
+      </div>
+    );
+  }
+
+  const finalPnl = chartData[chartData.length - 1]?.cumPnl ?? 0;
+  const lineColor = finalPnl >= 0 ? "hsl(var(--primary))" : "hsl(var(--destructive))";
+
+  return (
+    <ResponsiveContainer width="100%" height={200}>
+      <LineChart data={chartData} margin={{ top: 4, right: 16, left: 4, bottom: 4 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+        <XAxis
+          dataKey="closeTime"
+          tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+          tickLine={false}
+          axisLine={false}
+        />
+        <YAxis
+          tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+          tickLine={false}
+          axisLine={false}
+          tickFormatter={(v) => `$${v}`}
+        />
+        <Tooltip
+          contentStyle={{
+            background: "hsl(var(--card))",
+            border: "1px solid hsl(var(--border))",
+            borderRadius: "6px",
+            fontSize: "12px",
+            fontFamily: "monospace",
+          }}
+          formatter={(value: number, _name: string, props: { payload?: CumulativePoint }) => [
+            `$${value.toFixed(2)}`,
+            `Cumulative PnL (${props.payload?.symbol ?? ""})`,
+          ]}
+          labelStyle={{ color: "hsl(var(--muted-foreground))" }}
+        />
+        <Line
+          type="monotone"
+          dataKey="cumPnl"
+          stroke={lineColor}
+          strokeWidth={2}
+          dot={{ r: 3, fill: lineColor }}
+          activeDot={{ r: 5 }}
+        />
+      </LineChart>
+    </ResponsiveContainer>
+  );
+}
+
+function TradeTable({ trades }: { trades: ClosedTrade[] }) {
+  if (trades.length === 0) {
+    return (
+      <div className="text-center py-12 text-muted-foreground text-sm">
+        No closed trades recorded yet. Close a position to see it here.
+      </div>
+    );
+  }
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-xs font-mono">
+        <thead>
+          <tr className="border-b border-border text-muted-foreground">
+            <th className="text-left px-3 py-2 font-medium">Symbol</th>
+            <th className="text-left px-3 py-2 font-medium">Long / Short</th>
+            <th className="text-right px-3 py-2 font-medium">Entry Spread</th>
+            <th className="text-right px-3 py-2 font-medium">Size (USD)</th>
+            <th className="text-right px-3 py-2 font-medium">Realized PnL ($)</th>
+            <th className="text-right px-3 py-2 font-medium">PnL (%)</th>
+            <th className="text-right px-3 py-2 font-medium">Duration</th>
+            <th className="text-right px-3 py-2 font-medium">Closed At</th>
+          </tr>
+        </thead>
+        <tbody>
+          {trades.map((trade) => {
+            const pnlPositive = trade.realizedPnl >= 0;
+            const pnlPct =
+              trade.quantity > 0
+                ? (trade.realizedPnl / trade.quantity) * 100
+                : null;
+            return (
+              <tr
+                key={trade.id}
+                className="border-b border-border/40 hover:bg-muted/30 transition-colors"
+              >
+                <td className="px-3 py-2.5 font-semibold">{trade.symbol}</td>
+                <td className="px-3 py-2.5">
+                  <span className="capitalize text-primary">{trade.longExchange}</span>
+                  {" / "}
+                  <span className="capitalize text-destructive">{trade.shortExchange}</span>
+                </td>
+                <td className="px-3 py-2.5 text-right">
+                  {trade.spreadAtEntry !== 0
+                    ? `${trade.spreadAtEntry >= 0 ? "+" : ""}${trade.spreadAtEntry.toFixed(3)}%`
+                    : "—"}
+                </td>
+                <td className="px-3 py-2.5 text-right">
+                  {trade.quantity > 0 ? `$${trade.quantity.toFixed(2)}` : "—"}
+                </td>
+                <td
+                  className={`px-3 py-2.5 text-right font-semibold ${pnlPositive ? "text-primary" : "text-destructive"}`}
+                >
+                  {formatPnl(trade.realizedPnl)}
+                </td>
+                <td
+                  className={`px-3 py-2.5 text-right ${pnlPositive ? "text-primary" : "text-destructive"}`}
+                >
+                  {pnlPct !== null
+                    ? `${pnlPct >= 0 ? "+" : ""}${pnlPct.toFixed(2)}%`
+                    : "—"}
+                </td>
+                <td className="px-3 py-2.5 text-right text-muted-foreground">
+                  {formatDuration(trade.entryTime, trade.closeTime)}
+                </td>
+                <td className="px-3 py-2.5 text-right text-muted-foreground">
+                  {format(new Date(trade.closeTime), "MM/dd HH:mm")}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+export default function History() {
+  const tradesQuery = useGetTrades({
+    query: {
+      queryKey: getGetTradesQueryKey(),
+      refetchInterval: 30000,
+    },
+  });
+
+  const data = tradesQuery.data;
+  const trades = data?.trades ?? [];
+  const stats = data?.stats;
+
+  const winRate =
+    stats && stats.totalTrades > 0
+      ? ((stats.winningTrades / stats.totalTrades) * 100).toFixed(1)
+      : null;
+
+  const avgPnl =
+    stats && stats.totalTrades > 0
+      ? stats.totalPnl / stats.totalTrades
+      : 0;
+
+  return (
+    <div className="max-w-6xl mx-auto space-y-6">
+      <div className="flex items-center gap-2">
+        <Activity className="w-5 h-5 text-primary" />
+        <h1 className="text-lg font-bold">Trade History</h1>
+        {tradesQuery.isFetching && (
+          <span className="text-xs text-muted-foreground animate-pulse">Refreshing…</span>
+        )}
+      </div>
+
+      {tradesQuery.isError && (
+        <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-4 text-sm text-destructive">
+          Failed to load trade history.
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+        <StatCard
+          label="Total Trades"
+          value={stats ? String(stats.totalTrades) : "—"}
+          sub="all time"
+        />
+        <StatCard
+          label="Win Rate"
+          value={winRate !== null ? `${winRate}%` : "—"}
+          sub={stats ? `${stats.winningTrades} winning` : undefined}
+          positive={winRate !== null ? parseFloat(winRate) >= 50 : null}
+        />
+        <StatCard
+          label="Total PnL"
+          value={stats ? formatPnl(stats.totalPnl) : "—"}
+          positive={stats ? stats.totalPnl >= 0 : null}
+        />
+        <StatCard
+          label="Best Trade"
+          value={stats && stats.totalTrades > 0 ? formatPnl(stats.bestTrade) : "—"}
+          positive={stats && stats.totalTrades > 0 ? stats.bestTrade >= 0 : null}
+        />
+        <StatCard
+          label="Worst Trade"
+          value={stats && stats.totalTrades > 0 ? formatPnl(stats.worstTrade) : "—"}
+          positive={stats && stats.totalTrades > 0 ? stats.worstTrade >= 0 : null}
+        />
+        <StatCard
+          label="Avg PnL"
+          value={stats && stats.totalTrades > 0 ? formatPnl(avgPnl) : "—"}
+          sub="per trade"
+          positive={stats && stats.totalTrades > 0 ? avgPnl >= 0 : null}
+        />
+      </div>
+
+      <div className="bg-card border border-border rounded-lg p-4">
+        <div className="flex items-center gap-2 mb-4">
+          <TrendingUp className="w-4 h-4 text-primary" />
+          <h2 className="text-sm font-semibold">Cumulative Realized PnL</h2>
+        </div>
+        {tradesQuery.isLoading ? (
+          <div className="flex items-center justify-center h-40 text-muted-foreground text-sm animate-pulse">
+            Loading…
+          </div>
+        ) : (
+          <CumulativePnlChart trades={trades} />
+        )}
+      </div>
+
+      <div className="bg-card border border-border rounded-lg overflow-hidden">
+        <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
+          <BarChart2 className="w-4 h-4 text-muted-foreground" />
+          <h2 className="text-sm font-semibold">Trade Log</h2>
+          {trades.length > 0 && (
+            <span className="ml-auto text-xs text-muted-foreground">{trades.length} entries</span>
+          )}
+        </div>
+        {tradesQuery.isLoading ? (
+          <div className="flex items-center justify-center py-12 text-muted-foreground text-sm animate-pulse">
+            Loading…
+          </div>
+        ) : (
+          <TradeTable trades={trades} />
+        )}
+      </div>
+    </div>
+  );
+}

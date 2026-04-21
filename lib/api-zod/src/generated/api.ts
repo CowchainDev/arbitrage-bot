@@ -247,6 +247,27 @@ export const ClosePositionBody = zod.object({
   binanceSide: zod.enum(["long", "short"]).optional(),
   bybitQty: zod.number(),
   binanceQty: zod.number(),
+  longExchange: zod
+    .string()
+    .optional()
+    .describe("Which exchange holds the long leg (for trade recording)"),
+  shortExchange: zod
+    .string()
+    .optional()
+    .describe("Which exchange holds the short leg (for trade recording)"),
+  spreadAtEntry: zod
+    .number()
+    .optional()
+    .describe("Spread percentage when position was opened"),
+  entryTime: zod
+    .string()
+    .optional()
+    .describe("ISO timestamp when position was opened"),
+  quantity: zod.number().optional().describe("Position size in USD"),
+  realizedPnl: zod
+    .number()
+    .optional()
+    .describe("Realized PnL in USD at time of close"),
 });
 
 export const ClosePositionResponse = zod.object({
@@ -274,4 +295,30 @@ export const ClosePositionResponse = zod.object({
     })
     .optional(),
   realizedPnl: zod.number().optional(),
+});
+
+/**
+ * @summary Get trade history with aggregate stats
+ */
+export const GetTradesResponse = zod.object({
+  trades: zod.array(
+    zod.object({
+      id: zod.number(),
+      symbol: zod.string(),
+      longExchange: zod.string(),
+      shortExchange: zod.string(),
+      spreadAtEntry: zod.number(),
+      realizedPnl: zod.number(),
+      quantity: zod.number(),
+      entryTime: zod.string(),
+      closeTime: zod.string(),
+    }),
+  ),
+  stats: zod.object({
+    totalTrades: zod.number(),
+    winningTrades: zod.number(),
+    totalPnl: zod.number(),
+    bestTrade: zod.number(),
+    worstTrade: zod.number(),
+  }),
 });

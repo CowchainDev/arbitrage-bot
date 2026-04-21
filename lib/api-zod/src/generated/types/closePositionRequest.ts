@@ -15,4 +15,16 @@ export interface ClosePositionRequest {
   binanceSide?: ClosePositionRequestBinanceSide;
   bybitQty: number;
   binanceQty: number;
+  /** Which exchange holds the long leg (for trade recording) */
+  longExchange?: string;
+  /** Which exchange holds the short leg (for trade recording) */
+  shortExchange?: string;
+  /** Spread percentage when position was opened */
+  spreadAtEntry?: number;
+  /** ISO timestamp when position was opened */
+  entryTime?: string;
+  /** Position size in USD */
+  quantity?: number;
+  /** Realized PnL in USD at time of close */
+  realizedPnl?: number;
 }
