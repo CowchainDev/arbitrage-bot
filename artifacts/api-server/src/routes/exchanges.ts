@@ -256,6 +256,7 @@ function computeBestSpread(prices: Record<string, ExchangePrices | null>): { bes
     for (let j = i + 1; j < entries.length; j++) {
       const [nameA, a] = entries[i];
       const [nameB, b] = entries[j];
+      if (!b.price) continue;
       const pct = ((a.price - b.price) / b.price) * 100;
       if (Math.abs(pct) > bestAbs) {
         bestAbs = Math.abs(pct);
@@ -277,7 +278,7 @@ function generateDemoSpreads() {
     const gatePrice = basePrice * (1 + n() + (Math.random() - 0.5) * 0.015);
     const okxPrice = basePrice * (1 + n() + (Math.random() - 0.5) * 0.015);
     const mexcPrice = basePrice * (1 + n() + (Math.random() - 0.5) * 0.015);
-    const spreadPct = ((bybitPrice - binancePrice) / binancePrice) * 100;
+    const spreadPct = binancePrice ? ((bybitPrice - binancePrice) / binancePrice) * 100 : 0;
     const spread = basePrice * 0.0001;
 
     const allPrices: Record<string, ExchangePrices | null> = {

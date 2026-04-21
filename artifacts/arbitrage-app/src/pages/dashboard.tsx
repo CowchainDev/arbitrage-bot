@@ -35,6 +35,7 @@ function formatPrice(price: number | null | undefined): string {
 
 function formatPct(pct: number | null | undefined): string {
   if (pct == null) return "-";
+  if (!isFinite(pct)) return "-";
   return (pct >= 0 ? "+" : "") + pct.toFixed(4) + "%";
 }
 
@@ -63,7 +64,8 @@ const EXCHANGE_COLORS: Record<string, string> = {
 };
 
 function SpreadBadge({ spreadPct, bestSpreadPct, bestSpreadLeg }: { spreadPct: number; bestSpreadPct?: number; bestSpreadLeg?: string }) {
-  const value = bestSpreadPct != null ? bestSpreadPct : Math.abs(spreadPct);
+  const raw = bestSpreadPct != null ? bestSpreadPct : Math.abs(spreadPct);
+  const value = isFinite(raw) ? raw : 0;
   let colorClass = "text-muted-foreground";
   if (value >= 1) colorClass = "text-primary";
   else if (value >= 0.3) colorClass = "text-amber-400";
