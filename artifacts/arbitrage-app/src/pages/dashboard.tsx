@@ -798,6 +798,7 @@ export default function Dashboard() {
   const [sort, setSort] = useState<SortOption>("spread_desc");
   const [favsOnly, setFavsOnly] = useState(false);
   const [maxSpread, setMaxSpread] = useState<string>("");
+  const [minVolume, setMinVolume] = useState<string>("");
   const ALL_EXCHANGES = ["bybit", "binance", "gate", "okx", "mexc"] as const;
   const [selectedExchanges, setSelectedExchanges] = useState<Set<string>>(new Set(ALL_EXCHANGES));
   const toggleExchange = (ex: string) =>
@@ -882,6 +883,10 @@ export default function Dashboard() {
       const cap = parseFloat(maxSpread);
       if (!isNaN(cap)) list = list.filter((t) => Math.abs(t.bestSpreadPct ?? t.spreadPct) <= cap);
     }
+    if (minVolume !== "") {
+      const floor = parseFloat(minVolume);
+      if (!isNaN(floor)) list = list.filter((t) => (t.volume24h ?? 0) >= floor);
+    }
     if (selectedExchanges.size < ALL_EXCHANGES.length) {
       list = list.filter((t) => {
         const leg = t.bestSpreadLeg;
@@ -914,7 +919,7 @@ export default function Dashboard() {
       });
     }
     return list;
-  }, [tokens, favsOnly, search, sort, maxSpread, selectedExchanges, isFavourite]);
+  }, [tokens, favsOnly, search, sort, maxSpread, minVolume, selectedExchanges, isFavourite]);
 
   const selectedToken = tokens.find((t) => t.symbol === selectedSymbol) ?? null;
 
@@ -1034,6 +1039,20 @@ export default function Dashboard() {
           <option value="1">Max spread: 1%</option>
           <option value="2">Max spread: 2%</option>
           <option value="5">Max spread: 5%</option>
+        </select>
+
+        <select
+          value={minVolume}
+          onChange={(e) => setMinVolume(e.target.value)}
+          className="bg-card border border-border rounded text-xs px-2.5 py-1.5 text-foreground h-8 cursor-pointer"
+          data-testid="select-min-volume"
+          title="Minimum 24h trading volume — higher volume = thicker order book = bigger fills"
+        >
+          <option value="">Min vol: any</option>
+          <option value="1000000">Min vol: $1M</option>
+          <option value="5000000">Min vol: $5M</option>
+          <option value="10000000">Min vol: $10M</option>
+          <option value="50000000">Min vol: $50M</option>
         </select>
 
         <div className="flex items-center gap-1" data-testid="exchange-toggles">
