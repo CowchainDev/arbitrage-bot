@@ -90,33 +90,51 @@ async function fetchAndCachePrices(): Promise<unknown[]> {
 
     if (!bybitPrice && !binancePrice) continue;
 
-    const prices = [bybitPrice, binancePrice, gatePrice, okxPrice, mexcPrice];
-    const livePrices = prices.filter(p => p > 0);
+    const rawPriceList = [bybitPrice, binancePrice, gatePrice, okxPrice, mexcPrice];
+    const livePrices = rawPriceList.filter(p => p > 0);
     if (livePrices.length < 2) continue;
+
+    // Median outlier filter: discard any exchange price that deviates >10% from
+    // the median across all live prices (catches bad ccxt mappings / wrong contracts)
+    const sorted = [...livePrices].sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    const median = sorted.length % 2 === 0
+      ? (sorted[mid - 1] + sorted[mid]) / 2
+      : sorted[mid];
+    const OUTLIER_PCT = 0.10;
+    const clean = (p: number) => p > 0 && Math.abs(p - median) / median <= OUTLIER_PCT ? p : 0;
+    const bybitPriceC   = clean(bybitPrice);
+    const binancePriceC = clean(binancePrice);
+    const gatePriceC    = clean(gatePrice);
+    const okxPriceC     = clean(okxPrice);
+    const mexcPriceC    = clean(mexcPrice);
+
+    const cleanPrices = [bybitPriceC, binancePriceC, gatePriceC, okxPriceC, mexcPriceC];
+    if (cleanPrices.filter(p => p > 0).length < 2) continue;
 
     const totalVolume =
       (bybitT?.quoteVolume ?? 0) + (binanceT?.quoteVolume ?? 0) +
       (gateT?.quoteVolume ?? 0) + (okxT?.quoteVolume ?? 0) + (mexcT?.quoteVolume ?? 0);
     if (totalVolume < MIN_VOLUME_USD) continue;
 
-    const spreadPct = bybitPrice && binancePrice
-      ? ((bybitPrice - binancePrice) / binancePrice) * 100
+    const spreadPct = bybitPriceC && binancePriceC
+      ? ((bybitPriceC - binancePriceC) / binancePriceC) * 100
       : 0;
 
     const allPrices: Record<string, ExchangePrices | null> = {
-      bybit:   bybitPrice   ? { price: bybitPrice,   bid: bybitT?.bid   ?? bybitPrice,   ask: bybitT?.ask   ?? bybitPrice,   fundingRate: bybitFundingMap[key]?.fundingRate   ?? 0 } : null,
-      binance: binancePrice ? { price: binancePrice, bid: binanceT?.bid ?? binancePrice, ask: binanceT?.ask ?? binancePrice, fundingRate: binanceFundingMap[key]?.fundingRate ?? 0 } : null,
-      gate:    gatePrice    ? { price: gatePrice,    bid: gateT?.bid    ?? gatePrice,    ask: gateT?.ask    ?? gatePrice,    fundingRate: gateFundingMap[key]?.fundingRate    ?? 0 } : null,
-      okx:     okxPrice     ? { price: okxPrice,     bid: okxT?.bid     ?? okxPrice,     ask: okxT?.ask     ?? okxPrice,     fundingRate: okxFundingMap[key]?.fundingRate     ?? 0 } : null,
-      mexc:    mexcPrice    ? { price: mexcPrice,    bid: mexcT?.bid    ?? mexcPrice,    ask: mexcT?.ask    ?? mexcPrice,    fundingRate: mexcFundingMap[key]?.fundingRate    ?? 0 } : null,
+      bybit:   bybitPriceC   ? { price: bybitPriceC,   bid: bybitT?.bid   ?? bybitPriceC,   ask: bybitT?.ask   ?? bybitPriceC,   fundingRate: bybitFundingMap[key]?.fundingRate   ?? 0 } : null,
+      binance: binancePriceC ? { price: binancePriceC, bid: binanceT?.bid ?? binancePriceC, ask: binanceT?.ask ?? binancePriceC, fundingRate: binanceFundingMap[key]?.fundingRate ?? 0 } : null,
+      gate:    gatePriceC    ? { price: gatePriceC,    bid: gateT?.bid    ?? gatePriceC,    ask: gateT?.ask    ?? gatePriceC,    fundingRate: gateFundingMap[key]?.fundingRate    ?? 0 } : null,
+      okx:     okxPriceC     ? { price: okxPriceC,     bid: okxT?.bid     ?? okxPriceC,     ask: okxT?.ask     ?? okxPriceC,     fundingRate: okxFundingMap[key]?.fundingRate     ?? 0 } : null,
+      mexc:    mexcPriceC    ? { price: mexcPriceC,    bid: mexcT?.bid    ?? mexcPriceC,    ask: mexcT?.ask    ?? mexcPriceC,    fundingRate: mexcFundingMap[key]?.fundingRate    ?? 0 } : null,
     };
 
     const { bestSpreadPct, bestSpreadLeg } = computeBestSpread(allPrices);
 
     spreads.push({
       symbol: base,
-      bybitPrice:  bybitPrice  || null,
-      binancePrice: binancePrice || null,
+      bybitPrice:  bybitPriceC  || null,
+      binancePrice: binancePriceC || null,
       spreadPct,
       bybitFundingRate:  bybitFundingMap[key]?.fundingRate    ?? null,
       binanceFundingRate: binanceFundingMap[key]?.fundingRate  ?? null,
@@ -126,21 +144,21 @@ async function fetchAndCachePrices(): Promise<unknown[]> {
       bybitAsk:   bybitT?.ask   ?? null,
       binanceBid: binanceT?.bid ?? null,
       binanceAsk: binanceT?.ask ?? null,
-      gatePrice:   gatePrice   || null,
+      gatePrice:   gatePriceC   || null,
       gateFundingRate:  gateFundingMap[key]?.fundingRate   ?? null,
       gateNextFunding:  gateFundingMap[key]?.fundingDatetime  ?? null,
-      gateBid:  gateT?.bid  ?? null,
-      gateAsk:  gateT?.ask  ?? null,
-      okxPrice:    okxPrice    || null,
+      gateBid:  gatePriceC ? (gateT?.bid  ?? null) : null,
+      gateAsk:  gatePriceC ? (gateT?.ask  ?? null) : null,
+      okxPrice:    okxPriceC    || null,
       okxFundingRate:   okxFundingMap[key]?.fundingRate    ?? null,
       okxNextFunding:   okxFundingMap[key]?.fundingDatetime   ?? null,
-      okxBid:   okxT?.bid   ?? null,
-      okxAsk:   okxT?.ask   ?? null,
-      mexcPrice:   mexcPrice   || null,
+      okxBid:   okxPriceC ? (okxT?.bid   ?? null) : null,
+      okxAsk:   okxPriceC ? (okxT?.ask   ?? null) : null,
+      mexcPrice:   mexcPriceC   || null,
       mexcFundingRate:  mexcFundingMap[key]?.fundingRate   ?? null,
       mexcNextFunding:  mexcFundingMap[key]?.fundingDatetime  ?? null,
-      mexcBid:  mexcT?.bid  ?? null,
-      mexcAsk:  mexcT?.ask  ?? null,
+      mexcBid:  mexcPriceC ? (mexcT?.bid  ?? null) : null,
+      mexcAsk:  mexcPriceC ? (mexcT?.ask  ?? null) : null,
       bestSpreadPct,
       bestSpreadLeg,
       volume24h: totalVolume,
