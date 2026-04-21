@@ -158,10 +158,16 @@ function TokenDetailPanel({
 
   const jumpIn = useJumpIn({ request: requestHeaders ?? undefined });
 
+  const MIN_ORDER_USD = 10;
+
   const handleJumpIn = async () => {
     const size = Number(orderSize);
     if (!size || size <= 0) {
       toast({ title: "Invalid size", description: "Enter a valid USD amount", variant: "destructive" });
+      return;
+    }
+    if (size < MIN_ORDER_USD) {
+      toast({ title: "Order too small", description: `Minimum order is $${MIN_ORDER_USD} total ($5 per exchange)`, variant: "destructive" });
       return;
     }
     if (!requestHeaders) {
@@ -325,9 +331,13 @@ function TokenDetailPanel({
           className="font-mono text-sm bg-background"
           data-testid="input-order-size"
         />
-        <p className="text-xs text-muted-foreground mt-1">
-          {Number(orderSize) > 0 && (
-            <>~${(Number(orderSize) / 2).toFixed(2)} per exchange</>
+        <p className="text-xs mt-1">
+          {Number(orderSize) > 0 && Number(orderSize) < MIN_ORDER_USD ? (
+            <span className="text-destructive">Min $10 total ($5 per exchange)</span>
+          ) : Number(orderSize) >= MIN_ORDER_USD ? (
+            <span className="text-muted-foreground">~${(Number(orderSize) / 2).toFixed(2)} per exchange</span>
+          ) : (
+            <span className="text-muted-foreground">Min $10 total ($5 per exchange)</span>
           )}
         </p>
       </div>

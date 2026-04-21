@@ -683,6 +683,11 @@ router.post("/exchanges/jump-in", async (req: Request, res: Response) => {
   const { symbol, bybitSide, binanceSide, usdAmount, bybitLeverage, binanceLeverage } = parsed.data;
   const halfSize = usdAmount / 2;
 
+  if (halfSize < 5) {
+    res.status(400).json({ success: false, error: "Order size too small. Minimum is $10 total ($5 per exchange leg)." });
+    return;
+  }
+
   const bybitCreds = getBybitCredentials(req);
   const binanceCreds = getBinanceCredentials(req);
 
