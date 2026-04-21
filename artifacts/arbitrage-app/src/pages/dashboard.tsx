@@ -1,8 +1,9 @@
 import { useState, useMemo } from "react";
 import { Link } from "wouter";
 import { Star, Search, TrendingUp, TrendingDown, Zap, AlertCircle, ChevronDown, ChevronUp, X } from "lucide-react";
-import { useGetExchangePrices, getGetExchangePricesQueryKey, useGetExchangeBalances, getGetExchangeBalancesQueryKey, useGetPositions, getGetPositionsQueryKey, useJumpIn, useClosePosition } from "@workspace/api-client-react";
-import type { TokenSpread, Position, ClosePositionResult } from "@workspace/api-client-react";
+import { useGetExchangePrices, getGetExchangePricesQueryKey, useGetPositions, getGetPositionsQueryKey, useJumpIn, useClosePosition } from "@workspace/api-client-react";
+import type { TokenSpread, Position, ClosePositionResult, JumpInResult } from "@workspace/api-client-react";
+import { useLocalPositions } from "@/hooks/use-local-positions";
 import { useApiCredentials } from "@/hooks/use-api-credentials";
 import { useFavourites } from "@/hooks/use-favourites";
 import { useToast } from "@/hooks/use-toast";
@@ -45,31 +46,6 @@ function SpreadBadge({ spreadPct }: { spreadPct: number }) {
     <span className={`font-mono font-semibold text-sm ${colorClass}`}>
       {formatPct(spreadPct)}
     </span>
-  );
-}
-
-function BalanceHeader({ bybit, binance, bybitPnl, binancePnl }: {
-  bybit: number; binance: number; bybitPnl: number; binancePnl: number;
-}) {
-  return (
-    <div className="flex items-center gap-3 flex-wrap">
-      <div className="flex items-center gap-2 bg-card border border-amber-500/20 rounded px-3 py-1.5 text-xs">
-        <div className="w-2 h-2 rounded-full bg-amber-400 live-dot" />
-        <span className="text-muted-foreground">BYBIT</span>
-        <span className="font-mono font-semibold text-foreground">${bybit.toFixed(2)}</span>
-        <span className={`font-mono ${bybitPnl >= 0 ? "text-primary" : "text-destructive"}`}>
-          P/L: {formatPnl(bybitPnl)}
-        </span>
-      </div>
-      <div className="flex items-center gap-2 bg-card border border-violet-500/20 rounded px-3 py-1.5 text-xs">
-        <div className="w-2 h-2 rounded-full bg-violet-400 live-dot" />
-        <span className="text-muted-foreground">BINANCE</span>
-        <span className="font-mono font-semibold text-foreground">${binance.toFixed(2)}</span>
-        <span className={`font-mono ${binancePnl >= 0 ? "text-primary" : "text-destructive"}`}>
-          P/L: {formatPnl(binancePnl)}
-        </span>
-      </div>
-    </div>
   );
 }
 
@@ -139,11 +115,13 @@ function TokenDetailPanel({
   onClose,
   requestHeaders,
   activePosition,
+  onJumpInSuccess,
 }: {
   token: TokenSpread;
   onClose: () => void;
   requestHeaders: ReturnType<ReturnType<typeof useApiCredentials>["getRequestHeaders"]>;
   activePosition?: Position;
+  onJumpInSuccess: (position: Position) => void;
 }) {
   const [bybitSide, setBybitSide] = useState<"long" | "short">("long");
   const [openSpread, setOpenSpread] = useState("0.5");
@@ -174,7 +152,7 @@ function TokenDetailPanel({
     const computedBinanceSide = bybitSide === "long" ? "short" : "long";
 
     try {
-      await new Promise<void>((resolve, reject) =>
+      const jumpResult = await new Promise<JumpInResult>((resolve, reject) =>
         jumpIn.mutate(
           {
             data: {
@@ -191,13 +169,41 @@ function TokenDetailPanel({
               if (!data.success) {
                 reject(new Error(data.error ?? (data.compensated ? "Binance leg failed (Bybit position was closed)" : "Order failed")));
               } else {
-                resolve();
+                resolve(data);
               }
             },
             onError: reject,
           }
         )
       );
+
+      const bybitEntry = jumpResult.bybitResult?.avgPrice ?? 0;
+      const binanceEntry = jumpResult.binanceResult?.avgPrice ?? 0;
+      const bybitQty = jumpResult.bybitResult?.filledQty ?? halfSize / Math.max(bybitEntry, 1);
+      const binanceQty = jumpResult.binanceResult?.filledQty ?? halfSize / Math.max(binanceEntry, 1);
+      const spreadAtEntry = bybitEntry && binanceEntry
+        ? ((bybitEntry - binanceEntry) / binanceEntry) * 100
+        : token.spreadPct;
+
+      onJumpInSuccess({
+        id: `local-${token.symbol}-${Date.now()}`,
+        symbol: token.symbol,
+        bybitSide,
+        binanceSide: computedBinanceSide,
+        bybitQty,
+        binanceQty,
+        bybitEntryPrice: bybitEntry,
+        binanceEntryPrice: binanceEntry,
+        bybitCurrentPrice: bybitEntry,
+        binanceCurrentPrice: binanceEntry,
+        bybitPnl: 0,
+        binancePnl: 0,
+        totalPnl: 0,
+        spreadAtEntry,
+        currentSpread: spreadAtEntry,
+        usdSize: size,
+        openedAt: new Date().toISOString(),
+      });
 
       toast({
         title: "Position opened",
@@ -407,10 +413,12 @@ function TokenDetailPanel({
 function PositionRow({
   position,
   onClose,
+  onCloseSuccess,
   requestHeaders,
 }: {
   position: Position;
   onClose: (pos: Position) => void;
+  onCloseSuccess: (symbol: string) => void;
   requestHeaders: ReturnType<ReturnType<typeof useApiCredentials>["getRequestHeaders"]>;
 }) {
   const [isClosing, setIsClosing] = useState(false);
@@ -445,6 +453,7 @@ function PositionRow({
           }
         )
       );
+      onCloseSuccess(position.symbol);
       toast({ title: "Position closed", description: `${position.symbol} position closed successfully` });
       await queryClient.invalidateQueries({ queryKey: getGetPositionsQueryKey() });
     } catch (err) {
@@ -496,6 +505,7 @@ export default function Dashboard() {
   const { getRequestHeaders, hasCredentials } = useApiCredentials();
   const { isFavourite, toggleFavourite } = useFavourites();
   const requestHeaders = getRequestHeaders();
+  const { localPositions, savePosition, removePosition } = useLocalPositions();
 
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<SortOption>("spread_desc");
@@ -505,15 +515,6 @@ export default function Dashboard() {
 
   const pricesQuery = useGetExchangePrices({
     query: { refetchInterval: 3000, queryKey: getGetExchangePricesQueryKey() },
-    request: requestHeaders ?? undefined,
-  });
-
-  const balancesQuery = useGetExchangeBalances({
-    query: {
-      refetchInterval: 5000,
-      queryKey: getGetExchangeBalancesQueryKey(),
-      enabled: hasCredentials,
-    },
     request: requestHeaders ?? undefined,
   });
 
@@ -527,8 +528,13 @@ export default function Dashboard() {
   });
 
   const tokens = pricesQuery.data ?? [];
-  const balances = balancesQuery.data;
-  const positions = positionsQuery.data ?? [];
+  const polledPositions = positionsQuery.data ?? [];
+
+  const positions = useMemo(() => {
+    const polledSymbols = new Set(polledPositions.map((p) => p.symbol));
+    const localOnly = localPositions.filter((p) => !polledSymbols.has(p.symbol));
+    return [...polledPositions, ...localOnly];
+  }, [polledPositions, localPositions]);
   const isDemoData = tokens.length > 0 && tokens[0].demo === true;
 
   const filteredTokens = useMemo(() => {
@@ -563,16 +569,6 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-3">
-      {/* Balance header */}
-      {hasCredentials && balances && (
-        <BalanceHeader
-          bybit={balances.bybit}
-          binance={balances.binance}
-          bybitPnl={balances.bybitPnl ?? 0}
-          binancePnl={balances.binancePnl ?? 0}
-        />
-      )}
-
       {/* No credentials banner */}
       {!hasCredentials && (
         <div className="flex items-center gap-3 bg-card border border-amber-500/20 rounded px-4 py-3 text-sm">
@@ -628,6 +624,7 @@ export default function Dashboard() {
                   key={pos.id}
                   position={pos}
                   onClose={() => {}}
+                  onCloseSuccess={removePosition}
                   requestHeaders={requestHeaders}
                 />
               ))}
@@ -725,6 +722,7 @@ export default function Dashboard() {
               onClose={() => setSelectedSymbol(null)}
               requestHeaders={requestHeaders}
               activePosition={positions.find((p) => p.symbol === selectedToken.symbol)}
+              onJumpInSuccess={savePosition}
             />
           </div>
         )}
