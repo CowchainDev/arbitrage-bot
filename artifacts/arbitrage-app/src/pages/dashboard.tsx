@@ -45,7 +45,7 @@ function formatFunding(rate: number | null | undefined): string {
 
 function formatPnl(pnl: number | null | undefined): string {
   if (pnl == null) return "-";
-  return (pnl >= 0 ? "+" : "") + "$" + Math.abs(pnl).toFixed(2);
+  return (pnl >= 0 ? "+" : "") + "$" + Math.abs(pnl).toFixed(4);
 }
 
 const EXCHANGE_LABELS: Record<string, string> = {
