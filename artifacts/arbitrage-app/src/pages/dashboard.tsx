@@ -694,7 +694,7 @@ function PositionRow({
     <>
       <div
         data-testid={`position-row-${position.symbol}`}
-        className={`grid grid-cols-7 gap-2 px-3 py-2.5 text-xs border-b border-border/50 hover:bg-muted/30 transition-colors items-center`}
+        className={`grid grid-cols-8 gap-2 px-3 py-2.5 text-xs border-b border-border/50 hover:bg-muted/30 transition-colors items-center`}
       >
         <span className="font-semibold">{position.symbol}</span>
         <span>
@@ -707,6 +707,16 @@ function PositionRow({
           </span>
         </span>
         <span className="font-mono">${(position.usdSize ?? 0).toFixed(2)}</span>
+        <span className="font-mono leading-tight">
+          <span className="flex flex-col gap-0.5">
+            <span className="text-amber-400">
+              {position.bybitCurrentPrice != null ? formatPrice(position.bybitCurrentPrice) : "-"}
+            </span>
+            <span className="text-violet-400">
+              {position.binanceCurrentPrice != null ? formatPrice(position.binanceCurrentPrice) : "-"}
+            </span>
+          </span>
+        </span>
         <span className="font-mono">{formatPct(position.currentSpread)}</span>
         <span className={`font-mono font-semibold ${pnlPositive ? "text-primary" : "text-destructive"}`}>
           {formatPnlWithPct(position.totalPnl, position.usdSize)}
@@ -966,10 +976,11 @@ export default function Dashboard() {
 
           {showPositions && (
             <div>
-              <div className="grid grid-cols-7 gap-2 px-3 py-2 text-xs text-muted-foreground uppercase tracking-wider bg-muted/30 font-semibold">
+              <div className="grid grid-cols-8 gap-2 px-3 py-2 text-xs text-muted-foreground uppercase tracking-wider bg-muted/30 font-semibold">
                 <span>Symbol</span>
                 <span>Side</span>
                 <span>Size</span>
+                <span>Price (BB/BN)</span>
                 <span>Spread</span>
                 <span>P/L</span>
                 <span>Opened</span>
