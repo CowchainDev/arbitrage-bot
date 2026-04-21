@@ -845,7 +845,7 @@ export default function Dashboard() {
       )}
 
       {/* Open Positions */}
-      {hasCredentials && positions.length > 0 && (
+      {positions.length > 0 && (
         <div className="bg-card border border-border rounded-md overflow-hidden">
           <button
             onClick={() => setShowPositions(!showPositions)}
