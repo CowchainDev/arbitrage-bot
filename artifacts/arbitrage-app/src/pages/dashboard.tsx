@@ -1,8 +1,8 @@
 import { useState, useMemo } from "react";
 import { Link } from "wouter";
 import { Star, Search, TrendingUp, TrendingDown, Zap, AlertCircle, ChevronDown, ChevronUp, X } from "lucide-react";
-import { useGetExchangePrices, getGetExchangePricesQueryKey, useGetExchangeBalances, getGetExchangeBalancesQueryKey, useGetPositions, getGetPositionsQueryKey, usePlaceOrder, useClosePosition } from "@workspace/api-client-react";
-import type { TokenSpread, Position } from "@workspace/api-client-react";
+import { useGetExchangePrices, getGetExchangePricesQueryKey, useGetExchangeBalances, getGetExchangeBalancesQueryKey, useGetPositions, getGetPositionsQueryKey, useJumpIn, useClosePosition } from "@workspace/api-client-react";
+import type { TokenSpread, Position, ClosePositionResult } from "@workspace/api-client-react";
 import { useApiCredentials } from "@/hooks/use-api-credentials";
 import { useFavourites } from "@/hooks/use-favourites";
 import { useToast } from "@/hooks/use-toast";
@@ -156,7 +156,7 @@ function TokenDetailPanel({
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const placeOrder = usePlaceOrder({ request: requestHeaders ?? undefined });
+  const jumpIn = useJumpIn({ request: requestHeaders ?? undefined });
 
   const handleJumpIn = async () => {
     const size = Number(orderSize);
@@ -171,27 +171,37 @@ function TokenDetailPanel({
 
     setIsJumping(true);
     const halfSize = size / 2;
-    const binanceSide = bybitSide === "long" ? "short" : "long";
+    const computedBinanceSide = bybitSide === "long" ? "short" : "long";
 
     try {
-      await Promise.all([
-        new Promise<void>((resolve, reject) =>
-          placeOrder.mutate(
-            { data: { exchange: "bybit", symbol: token.symbol, side: bybitSide, usdAmount: halfSize, leverage: Number(bybitLeverage) } },
-            { onSuccess: () => resolve(), onError: reject }
-          )
-        ),
-        new Promise<void>((resolve, reject) =>
-          placeOrder.mutate(
-            { data: { exchange: "binance", symbol: token.symbol, side: binanceSide, usdAmount: halfSize, leverage: Number(binanceLeverage) } },
-            { onSuccess: () => resolve(), onError: reject }
-          )
-        ),
-      ]);
+      await new Promise<void>((resolve, reject) =>
+        jumpIn.mutate(
+          {
+            data: {
+              symbol: token.symbol,
+              bybitSide,
+              binanceSide: computedBinanceSide,
+              usdAmount: size,
+              bybitLeverage: Number(bybitLeverage),
+              binanceLeverage: Number(binanceLeverage),
+            },
+          },
+          {
+            onSuccess: (data) => {
+              if (!data.success) {
+                reject(new Error(data.error ?? (data.compensated ? "Binance leg failed (Bybit position was closed)" : "Order failed")));
+              } else {
+                resolve();
+              }
+            },
+            onError: reject,
+          }
+        )
+      );
 
       toast({
         title: "Position opened",
-        description: `${bybitSide.toUpperCase()} $${halfSize} on Bybit, ${binanceSide.toUpperCase()} $${halfSize} on Binance`,
+        description: `${bybitSide.toUpperCase()} $${halfSize} on Bybit, ${computedBinanceSide.toUpperCase()} $${halfSize} on Binance`,
       });
 
       await queryClient.invalidateQueries({ queryKey: getGetPositionsQueryKey() });
@@ -424,8 +434,8 @@ function PositionRow({
             },
           },
           {
-            onSuccess: (data) => {
-              if (data && !(data as unknown as Record<string, unknown>).success) {
+            onSuccess: (data: ClosePositionResult) => {
+              if (!data.success) {
                 reject(new Error("Close failed on one or both exchanges"));
               } else {
                 resolve();
@@ -519,7 +529,7 @@ export default function Dashboard() {
   const tokens = pricesQuery.data ?? [];
   const balances = balancesQuery.data;
   const positions = positionsQuery.data ?? [];
-  const isDemoData = tokens.length > 0 && (tokens[0] as unknown as Record<string, unknown>)?.demo === true;
+  const isDemoData = tokens.length > 0 && tokens[0].demo === true;
 
   const filteredTokens = useMemo(() => {
     let list = [...tokens];

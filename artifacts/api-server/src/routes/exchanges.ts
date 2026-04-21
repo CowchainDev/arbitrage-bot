@@ -3,6 +3,7 @@ import ccxt from "ccxt";
 import {
   PlaceOrderBody,
   ClosePositionBody,
+  JumpInBody,
 } from "@workspace/api-zod";
 
 const router: IRouter = Router();
@@ -466,6 +467,195 @@ router.post("/exchanges/close-position", async (req: Request, res: Response) => 
     req.log.error({ err }, "Error closing position");
     const msg = err instanceof Error ? err.message : "Unknown error";
     res.status(500).json({ error: "close_failed", message: msg });
+  }
+});
+
+router.get("/positions", async (req: Request, res: Response) => {
+  const bybitCreds = getBybitCredentials(req);
+  const binanceCreds = getBinanceCredentials(req);
+
+  if (!bybitCreds.apiKey || !bybitCreds.secret || !binanceCreds.apiKey || !binanceCreds.secret) {
+    res.json([]);
+    return;
+  }
+
+  try {
+    const bybit = createBybitExchange(bybitCreds.apiKey, bybitCreds.secret);
+    const binance = createBinanceExchange(binanceCreds.apiKey, binanceCreds.secret);
+
+    const [bybitPositions, binancePositions] = await Promise.allSettled([
+      bybit.fetchPositions(undefined, { type: "linear" }),
+      binance.fetchPositions(undefined, { type: "future" }),
+    ]);
+
+    const bybitMap: Map<string, Record<string, unknown>> = new Map();
+    if (bybitPositions.status === "fulfilled") {
+      for (const pos of bybitPositions.value) {
+        if (pos.contracts && pos.contracts > 0) {
+          const sym = pos.symbol?.split("/")[0] ?? "";
+          bybitMap.set(sym, pos as unknown as Record<string, unknown>);
+        }
+      }
+    }
+
+    const result = [];
+
+    if (binancePositions.status === "fulfilled") {
+      for (const binancePos of binancePositions.value) {
+        if (!binancePos.contracts || binancePos.contracts === 0) continue;
+        const sym = binancePos.symbol?.split("/")[0] ?? "";
+        const bybitPosRaw = bybitMap.get(sym);
+
+        if (!bybitPosRaw) continue;
+
+        const bybitPos = bybitPosRaw as {
+          id?: unknown;
+          side?: unknown;
+          contracts?: number;
+          entryPrice?: number;
+          markPrice?: number;
+          unrealizedPnl?: number;
+        };
+
+        const bybitSide = bybitPos.side === "long" ? "long" : "short";
+        const binanceSide = binancePos.side === "long" ? "long" : "short";
+
+        const bybitPnlVal = Number(bybitPos.unrealizedPnl ?? 0);
+        const binancePnlVal = Number(binancePos.unrealizedPnl ?? 0);
+        const bybitContracts = bybitPos.contracts ?? 0;
+        const bybitEntry = bybitPos.entryPrice ?? 0;
+        const bybitMark = bybitPos.markPrice ?? bybitEntry;
+        const binanceMark = binancePos.markPrice ?? binancePos.entryPrice ?? 0;
+
+        result.push({
+          id: `${sym}-${String(bybitPos.id ?? "")}-${String(binancePos.id ?? "")}`,
+          symbol: sym,
+          bybitSide,
+          binanceSide,
+          bybitQty: bybitContracts,
+          binanceQty: binancePos.contracts ?? 0,
+          bybitEntryPrice: bybitEntry,
+          binanceEntryPrice: binancePos.entryPrice ?? 0,
+          bybitCurrentPrice: bybitMark,
+          binanceCurrentPrice: binanceMark,
+          bybitPnl: bybitPnlVal,
+          binancePnl: binancePnlVal,
+          totalPnl: bybitPnlVal + binancePnlVal,
+          spreadAtEntry: 0,
+          currentSpread: bybitMark && binanceMark
+            ? ((bybitMark - binanceMark) / binanceMark) * 100
+            : 0,
+          usdSize: (bybitContracts * bybitEntry) +
+            ((binancePos.contracts ?? 0) * (binancePos.entryPrice ?? 0)),
+          openedAt: new Date().toISOString(),
+        });
+      }
+    }
+
+    res.json(result);
+  } catch (err) {
+    req.log.error({ err }, "Error fetching positions (canonical)");
+    res.json([]);
+  }
+});
+
+async function placeOrderInternal(
+  ex: ReturnType<typeof createBybitExchange> | ReturnType<typeof createBinanceExchange>,
+  symbol: string,
+  side: "long" | "short",
+  usdAmount: number,
+  leverage: number | undefined
+): Promise<{ orderId: string; exchange: string; symbol: string; side: string; filledQty: number; avgPrice: number; status: string }> {
+  if (leverage && leverage !== 1) {
+    try {
+      await ex.setLeverage(leverage, `${symbol}/USDT:USDT`);
+    } catch (_) {}
+  }
+
+  const ticker = await ex.fetchTicker(`${symbol}/USDT:USDT`);
+  const price = ticker.last ?? ticker.bid ?? 1;
+  const qty = usdAmount / price;
+  const ccxtSide = side === "long" ? "buy" : "sell";
+  const exchangeName = ex.id;
+
+  const order = await ex.createMarketOrder(
+    `${symbol}/USDT:USDT`,
+    ccxtSide,
+    qty,
+    undefined,
+    { reduceOnly: false }
+  );
+
+  return {
+    orderId: String(order.id),
+    exchange: exchangeName,
+    symbol,
+    side,
+    filledQty: order.filled ?? qty,
+    avgPrice: order.average ?? price,
+    status: order.status ?? "closed",
+  };
+}
+
+router.post("/exchanges/jump-in", async (req: Request, res: Response) => {
+  const parsed = JumpInBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "bad_request", message: parsed.error.message });
+    return;
+  }
+
+  const { symbol, bybitSide, binanceSide, usdAmount, bybitLeverage, binanceLeverage } = parsed.data;
+  const halfSize = usdAmount / 2;
+
+  const bybitCreds = getBybitCredentials(req);
+  const binanceCreds = getBinanceCredentials(req);
+
+  if (!bybitCreds.apiKey || !bybitCreds.secret || !binanceCreds.apiKey || !binanceCreds.secret) {
+    res.status(401).json({ error: "unauthorized", message: "Both exchange API credentials are required" });
+    return;
+  }
+
+  const bybitEx = createBybitExchange(bybitCreds.apiKey, bybitCreds.secret);
+  const binanceEx = createBinanceExchange(binanceCreds.apiKey, binanceCreds.secret);
+
+  let bybitResult: Awaited<ReturnType<typeof placeOrderInternal>> | null = null;
+
+  try {
+    bybitResult = await placeOrderInternal(bybitEx, symbol, bybitSide as "long" | "short", halfSize, bybitLeverage);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Bybit order failed";
+    req.log.error({ err }, "Jump-in: Bybit leg failed");
+    res.status(400).json({ success: false, error: msg });
+    return;
+  }
+
+  try {
+    const binanceResult = await placeOrderInternal(binanceEx, symbol, binanceSide as "long" | "short", halfSize, binanceLeverage);
+    res.json({ success: true, bybitResult, binanceResult });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Binance order failed";
+    req.log.error({ err }, "Jump-in: Binance leg failed, compensating Bybit");
+
+    const compensateSide = bybitSide === "long" ? "sell" : "buy";
+    try {
+      await bybitEx.createMarketOrder(
+        `${symbol}/USDT:USDT`,
+        compensateSide,
+        bybitResult.filledQty,
+        undefined,
+        { reduceOnly: true }
+      );
+      req.log.info("Jump-in: Bybit compensation order placed successfully");
+    } catch (compErr) {
+      req.log.error({ compErr }, "Jump-in: Compensation order FAILED - manual intervention required");
+    }
+
+    res.status(400).json({
+      success: false,
+      bybitResult,
+      compensated: true,
+      error: `Binance leg failed: ${msg}. Bybit position was closed as compensation.`,
+    });
   }
 });
 

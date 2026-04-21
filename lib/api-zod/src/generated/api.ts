@@ -57,6 +57,12 @@ export const GetExchangePricesResponseItem = zod.object({
     .number()
     .optional()
     .describe("24h volume in USD (approximate)"),
+  demo: zod
+    .boolean()
+    .optional()
+    .describe(
+      "True when response contains simulated data due to exchange unavailability",
+    ),
 });
 export const GetExchangePricesResponse = zod.array(
   GetExchangePricesResponseItem,
@@ -137,6 +143,61 @@ export const GetPositionsResponseItem = zod.object({
   openedAt: zod.string().optional(),
 });
 export const GetPositionsResponse = zod.array(GetPositionsResponseItem);
+
+/**
+ * Places hedge orders on both exchanges. If the second leg fails, the first is immediately closed as compensation.
+ * @summary Atomically open a long on one exchange and short on the other
+ */
+export const JumpInHeader = zod.object({
+  "x-bybit-api-key": zod.string().optional(),
+  "x-bybit-api-secret": zod.string().optional(),
+  "x-binance-api-key": zod.string().optional(),
+  "x-binance-api-secret": zod.string().optional(),
+});
+
+export const JumpInBody = zod.object({
+  symbol: zod.string().describe("Token symbol e.g. BTC"),
+  bybitSide: zod.enum(["long", "short"]).describe("Side for Bybit leg"),
+  binanceSide: zod
+    .enum(["long", "short"])
+    .describe("Side for Binance leg (opposite of bybitSide)"),
+  usdAmount: zod
+    .number()
+    .describe("Total USD size split 50\/50 across both exchanges"),
+  bybitLeverage: zod.number().optional().describe("Leverage for Bybit leg"),
+  binanceLeverage: zod.number().optional().describe("Leverage for Binance leg"),
+});
+
+export const JumpInResponse = zod.object({
+  success: zod.boolean(),
+  bybitResult: zod
+    .object({
+      orderId: zod.string(),
+      exchange: zod.string(),
+      symbol: zod.string(),
+      side: zod.string(),
+      filledQty: zod.number().optional(),
+      avgPrice: zod.number().optional(),
+      status: zod.string(),
+    })
+    .optional(),
+  binanceResult: zod
+    .object({
+      orderId: zod.string(),
+      exchange: zod.string(),
+      symbol: zod.string(),
+      side: zod.string(),
+      filledQty: zod.number().optional(),
+      avgPrice: zod.number().optional(),
+      status: zod.string(),
+    })
+    .optional(),
+  compensated: zod
+    .boolean()
+    .optional()
+    .describe("True if the first leg was closed due to second leg failure"),
+  error: zod.string().optional().describe("Error message if success is false"),
+});
 
 /**
  * @summary Close both sides of an arbitrage position

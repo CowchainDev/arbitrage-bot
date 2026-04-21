@@ -37,6 +37,8 @@ export interface TokenSpread {
   binanceAsk?: number;
   /** 24h volume in USD (approximate) */
   volume24h?: number;
+  /** True when response contains simulated data due to exchange unavailability */
+  demo?: boolean;
 }
 
 export interface ExchangeBalances {
@@ -153,4 +155,51 @@ export interface ClosePositionResult {
   bybitResult?: OrderResult;
   binanceResult?: OrderResult;
   realizedPnl?: number;
+}
+
+/**
+ * Side for Bybit leg
+ */
+export type JumpInRequestBybitSide =
+  (typeof JumpInRequestBybitSide)[keyof typeof JumpInRequestBybitSide];
+
+export const JumpInRequestBybitSide = {
+  long: "long",
+  short: "short",
+} as const;
+
+/**
+ * Side for Binance leg (opposite of bybitSide)
+ */
+export type JumpInRequestBinanceSide =
+  (typeof JumpInRequestBinanceSide)[keyof typeof JumpInRequestBinanceSide];
+
+export const JumpInRequestBinanceSide = {
+  long: "long",
+  short: "short",
+} as const;
+
+export interface JumpInRequest {
+  /** Token symbol e.g. BTC */
+  symbol: string;
+  /** Side for Bybit leg */
+  bybitSide: JumpInRequestBybitSide;
+  /** Side for Binance leg (opposite of bybitSide) */
+  binanceSide: JumpInRequestBinanceSide;
+  /** Total USD size split 50/50 across both exchanges */
+  usdAmount: number;
+  /** Leverage for Bybit leg */
+  bybitLeverage?: number;
+  /** Leverage for Binance leg */
+  binanceLeverage?: number;
+}
+
+export interface JumpInResult {
+  success: boolean;
+  bybitResult?: OrderResult;
+  binanceResult?: OrderResult;
+  /** True if the first leg was closed due to second leg failure */
+  compensated?: boolean;
+  /** Error message if success is false */
+  error?: string;
 }

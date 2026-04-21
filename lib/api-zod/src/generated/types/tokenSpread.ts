@@ -29,4 +29,6 @@ export interface TokenSpread {
   binanceAsk?: number;
   /** 24h volume in USD (approximate) */
   volume24h?: number;
+  /** True when response contains simulated data due to exchange unavailability */
+  demo?: boolean;
 }

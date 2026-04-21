@@ -22,6 +22,8 @@ import type {
   ClosePositionResult,
   ExchangeBalances,
   HealthStatus,
+  JumpInRequest,
+  JumpInResult,
   OrderRequest,
   OrderResult,
   Position,
@@ -354,7 +356,7 @@ export const usePlaceOrder = <
  * @summary Get all open positions with live P&L
  */
 export const getGetPositionsUrl = () => {
-  return `/api/exchanges/positions`;
+  return `/api/positions`;
 };
 
 export const getPositions = async (
@@ -367,7 +369,7 @@ export const getPositions = async (
 };
 
 export const getGetPositionsQueryKey = () => {
-  return [`/api/exchanges/positions`] as const;
+  return [`/api/positions`] as const;
 };
 
 export const getGetPositionsQueryOptions = <
@@ -424,6 +426,93 @@ export function useGetPositions<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * Places hedge orders on both exchanges. If the second leg fails, the first is immediately closed as compensation.
+ * @summary Atomically open a long on one exchange and short on the other
+ */
+export const getJumpInUrl = () => {
+  return `/api/exchanges/jump-in`;
+};
+
+export const jumpIn = async (
+  jumpInRequest: JumpInRequest,
+  options?: RequestInit,
+): Promise<JumpInResult> => {
+  return customFetch<JumpInResult>(getJumpInUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(jumpInRequest),
+  });
+};
+
+export const getJumpInMutationOptions = <
+  TError = ErrorType<JumpInResult | ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof jumpIn>>,
+    TError,
+    { data: BodyType<JumpInRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof jumpIn>>,
+  TError,
+  { data: BodyType<JumpInRequest> },
+  TContext
+> => {
+  const mutationKey = ["jumpIn"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof jumpIn>>,
+    { data: BodyType<JumpInRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return jumpIn(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type JumpInMutationResult = NonNullable<
+  Awaited<ReturnType<typeof jumpIn>>
+>;
+export type JumpInMutationBody = BodyType<JumpInRequest>;
+export type JumpInMutationError = ErrorType<JumpInResult | ApiError>;
+
+/**
+ * @summary Atomically open a long on one exchange and short on the other
+ */
+export const useJumpIn = <
+  TError = ErrorType<JumpInResult | ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof jumpIn>>,
+    TError,
+    { data: BodyType<JumpInRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof jumpIn>>,
+  TError,
+  { data: BodyType<JumpInRequest> },
+  TContext
+> => {
+  return useMutation(getJumpInMutationOptions(options));
+};
 
 /**
  * @summary Close both sides of an arbitrage position

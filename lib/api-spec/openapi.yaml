@@ -156,7 +156,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ApiError"
 
-  /exchanges/positions:
+  /positions:
     get:
       operationId: getPositions
       tags: [exchanges]
@@ -191,6 +191,59 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Position"
+
+  /exchanges/jump-in:
+    post:
+      operationId: jumpIn
+      tags: [exchanges]
+      summary: Atomically open a long on one exchange and short on the other
+      description: Places hedge orders on both exchanges. If the second leg fails, the first is immediately closed as compensation.
+      parameters:
+        - in: header
+          name: x-bybit-api-key
+          schema:
+            type: string
+          required: false
+        - in: header
+          name: x-bybit-api-secret
+          schema:
+            type: string
+          required: false
+        - in: header
+          name: x-binance-api-key
+          schema:
+            type: string
+          required: false
+        - in: header
+          name: x-binance-api-secret
+          schema:
+            type: string
+          required: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/JumpInRequest"
+      responses:
+        "200":
+          description: Both legs placed successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JumpInResult"
+        "400":
+          description: Bad request or partial failure with compensation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JumpInResult"
+        "401":
+          description: Invalid API credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
 
   /exchanges/close-position:
     post:
@@ -291,6 +344,9 @@ components:
         volume24h:
           type: number
           description: 24h volume in USD (approximate)
+        demo:
+          type: boolean
+          description: True when response contains simulated data due to exchange unavailability
       required:
         - symbol
         - bybitPrice
@@ -445,5 +501,52 @@ components:
           $ref: "#/components/schemas/OrderResult"
         realizedPnl:
           type: number
+      required:
+        - success
+
+    JumpInRequest:
+      type: object
+      properties:
+        symbol:
+          type: string
+          description: Token symbol e.g. BTC
+        bybitSide:
+          type: string
+          enum: [long, short]
+          description: Side for Bybit leg
+        binanceSide:
+          type: string
+          enum: [long, short]
+          description: Side for Binance leg (opposite of bybitSide)
+        usdAmount:
+          type: number
+          description: Total USD size split 50/50 across both exchanges
+        bybitLeverage:
+          type: number
+          description: Leverage for Bybit leg
+        binanceLeverage:
+          type: number
+          description: Leverage for Binance leg
+      required:
+        - symbol
+        - bybitSide
+        - binanceSide
+        - usdAmount
+
+    JumpInResult:
+      type: object
+      properties:
+        success:
+          type: boolean
+        bybitResult:
+          $ref: "#/components/schemas/OrderResult"
+        binanceResult:
+          $ref: "#/components/schemas/OrderResult"
+        compensated:
+          type: boolean
+          description: True if the first leg was closed due to second leg failure
+        error:
+          type: string
+          description: Error message if success is false
       required:
         - success
