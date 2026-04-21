@@ -159,7 +159,8 @@ router.get("/exchanges/prices", async (req: Request, res: Response) => {
 
     if (spreads.length === 0) {
       req.log.warn("Live exchange data unavailable, returning demo data");
-      return res.json(generateDemoSpreads());
+      res.json(generateDemoSpreads());
+      return;
     }
 
     res.json(spreads);

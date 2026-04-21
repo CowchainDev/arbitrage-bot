@@ -138,10 +138,12 @@ function TokenDetailPanel({
   token,
   onClose,
   requestHeaders,
+  activePosition,
 }: {
   token: TokenSpread;
   onClose: () => void;
   requestHeaders: ReturnType<ReturnType<typeof useApiCredentials>["getRequestHeaders"]>;
+  activePosition?: Position;
 }) {
   const [bybitSide, setBybitSide] = useState<"long" | "short">("long");
   const [openSpread, setOpenSpread] = useState("0.5");
@@ -320,6 +322,22 @@ function TokenDetailPanel({
         </div>
       </div>
 
+      {/* Active position P&L */}
+      {activePosition && (
+        <div className="rounded border border-primary/20 bg-primary/5 px-3 py-2 space-y-1">
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-muted-foreground uppercase tracking-wider font-semibold">Active Position</span>
+            <span className={`font-mono font-bold text-base ${(activePosition.totalPnl ?? 0) >= 0 ? "text-primary" : "text-destructive"}`}>
+              {formatPnl(activePosition.totalPnl)}
+            </span>
+          </div>
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <span>Entry spread: <span className="font-mono text-foreground">{formatPct(activePosition.spreadAtEntry)}</span></span>
+            <span>Now: <span className="font-mono text-foreground">{formatPct(activePosition.currentSpread)}</span></span>
+          </div>
+        </div>
+      )}
+
       {/* JUMP IN */}
       <Button
         onClick={handleJumpIn}
@@ -376,9 +394,17 @@ function TokenDetailPanel({
   );
 }
 
-function PositionRow({ position, onClose }: { position: Position; onClose: (pos: Position) => void }) {
+function PositionRow({
+  position,
+  onClose,
+  requestHeaders,
+}: {
+  position: Position;
+  onClose: (pos: Position) => void;
+  requestHeaders: ReturnType<ReturnType<typeof useApiCredentials>["getRequestHeaders"]>;
+}) {
   const [isClosing, setIsClosing] = useState(false);
-  const closePosition = useClosePosition();
+  const closePosition = useClosePosition({ request: requestHeaders });
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -397,7 +423,16 @@ function PositionRow({ position, onClose }: { position: Position; onClose: (pos:
               binanceQty: position.binanceQty ?? 0,
             },
           },
-          { onSuccess: () => resolve(), onError: reject }
+          {
+            onSuccess: (data) => {
+              if (data && !(data as unknown as Record<string, unknown>).success) {
+                reject(new Error("Close failed on one or both exchanges"));
+              } else {
+                resolve();
+              }
+            },
+            onError: reject,
+          }
         )
       );
       toast({ title: "Position closed", description: `${position.symbol} position closed successfully` });
@@ -484,7 +519,7 @@ export default function Dashboard() {
   const tokens = pricesQuery.data ?? [];
   const balances = balancesQuery.data;
   const positions = positionsQuery.data ?? [];
-  const isDemoData = tokens.length > 0 && (tokens[0] as Record<string, unknown>)?.demo === true;
+  const isDemoData = tokens.length > 0 && (tokens[0] as unknown as Record<string, unknown>)?.demo === true;
 
   const filteredTokens = useMemo(() => {
     let list = [...tokens];
@@ -503,6 +538,13 @@ export default function Dashboard() {
       case "alpha":
         list.sort((a, b) => a.symbol.localeCompare(b.symbol));
         break;
+    }
+    if (!favsOnly) {
+      list.sort((a, b) => {
+        const af = isFavourite(a.symbol) ? 0 : 1;
+        const bf = isFavourite(b.symbol) ? 0 : 1;
+        return af - bf;
+      });
     }
     return list;
   }, [tokens, favsOnly, search, sort, isFavourite]);
@@ -576,6 +618,7 @@ export default function Dashboard() {
                   key={pos.id}
                   position={pos}
                   onClose={() => {}}
+                  requestHeaders={requestHeaders}
                 />
               ))}
             </div>
@@ -671,6 +714,7 @@ export default function Dashboard() {
               token={selectedToken}
               onClose={() => setSelectedSymbol(null)}
               requestHeaders={requestHeaders}
+              activePosition={positions.find((p) => p.symbol === selectedToken.symbol)}
             />
           </div>
         )}
