@@ -50,6 +50,7 @@ async function fetchAndCachePrices(): Promise<unknown[]> {
   const [
     bybitTickers, binanceTickers, gateTickers, okxTickers, mexcTickers,
     bybitFunding, binanceFunding, gateFunding, okxFunding, mexcFunding,
+    bybitOIResult, binanceOIResult,
   ] = await Promise.allSettled([
     bybit.fetchTickers(undefined, { type: "linear" }),
     binance.fetchTickers(undefined, { type: "future" }),
@@ -61,6 +62,8 @@ async function fetchAndCachePrices(): Promise<unknown[]> {
     gate.fetchFundingRates(),
     okx.fetchFundingRates(),
     mexc.fetchFundingRates(),
+    bybit.fetchOpenInterests(undefined, { type: "linear" }),
+    binance.fetchOpenInterests(undefined, { type: "future" }),
   ]);
 
   const bybitMap   = buildTickerMap(bybitTickers.status   === "fulfilled" ? bybitTickers.value   : {});
@@ -74,6 +77,26 @@ async function fetchAndCachePrices(): Promise<unknown[]> {
   const gateFundingMap   = gateFunding.status   === "fulfilled" ? gateFunding.value   : {};
   const okxFundingMap    = okxFunding.status    === "fulfilled" ? okxFunding.value    : {};
   const mexcFundingMap   = mexcFunding.status   === "fulfilled" ? mexcFunding.value   : {};
+
+  // Build OI maps: key = base symbol (e.g. "BTC"), value = OI in USD
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function buildOIMap(raw: Record<string, any>): Map<string, number> {
+    const m = new Map<string, number>();
+    for (const [sym, entry] of Object.entries(raw)) {
+      const base = extractBase(sym);
+      if (!base) continue;
+      const usd =
+        (typeof entry?.openInterestValue === "number" && entry.openInterestValue > 0)
+          ? entry.openInterestValue
+          : (typeof entry?.openInterestAmount === "number" && entry.openInterestAmount > 0 && typeof entry?.markPrice === "number")
+            ? entry.openInterestAmount * entry.markPrice
+            : 0;
+      if (usd > 0) m.set(base, usd);
+    }
+    return m;
+  }
+  const bybitOIMap   = bybitOIResult.status   === "fulfilled" ? buildOIMap(bybitOIResult.value   ?? {}) : new Map<string, number>();
+  const binanceOIMap = binanceOIResult.status === "fulfilled" ? buildOIMap(binanceOIResult.value ?? {}) : new Map<string, number>();
 
   const allBases = new Set([
     ...bybitMap.keys(), ...binanceMap.keys(), ...gateMap.keys(),
@@ -140,43 +163,40 @@ async function fetchAndCachePrices(): Promise<unknown[]> {
 
     const { bestSpreadPct, bestSpreadLeg } = computeBestSpread(allPrices);
 
-    // Open interest: prefer openInterestValue (already in USD for USDT contracts),
-    // fall back to openInterest (base qty) × last price.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const oiUsd = (t: any, price: number): number => {
-      if (t == null) return 0;
-      if (typeof t.openInterestValue === "number" && t.openInterestValue > 0) return t.openInterestValue;
-      if (typeof t.openInterest === "number" && t.openInterest > 0) return t.openInterest * price;
-      return 0;
-    };
-    const bybitOI   = bybitPriceC   ? oiUsd(bybitT,   bybitPriceC)   : 0;
-    const binanceOI = binancePriceC ? oiUsd(binanceT, binancePriceC) : 0;
-    const openInterestUsd = (bybitOI + binanceOI) > 0 ? (bybitOI + binanceOI) : null;
+    // Open interest: sum from explicit OI fetches for Bybit + Binance.
+    const oiBB = bybitOIMap.get(base) ?? 0;
+    const oiBN = binanceOIMap.get(base) ?? 0;
+    const openInterestUsd = (oiBB + oiBN) > 0 ? (oiBB + oiBN) : null;
 
-    // Spread depth: min(ask depth on cheaper leg, bid depth on expensive leg) in USD.
-    // The cheaper leg is where we buy (we consume the ask), the pricier leg is where we sell (we consume the bid).
+    // Spread depth: min(ask depth on cheaper leg, bid depth on expensive leg) in USD,
+    // using the same exchange pair that forms the best spread.
+    // Only set when BOTH sides provide usable bid/ask volume — null otherwise (graceful degradation).
     let spreadDepthUsd: number | null = null;
-    if (bybitPriceC && binancePriceC) {
+    if (bestSpreadLeg) {
+      const [cheapExchange, expensiveExchange] = bestSpreadLeg.split("/");
+      const tickerMap: Record<string, ReturnType<typeof bybitMap.get>> = {
+        bybit: bybitT, binance: binanceT, gate: gateT, okx: okxT, mexc: mexcT,
+      };
+      const priceMap: Record<string, number> = {
+        bybit: bybitPriceC, binance: binancePriceC, gate: gatePriceC, okx: okxPriceC, mexc: mexcPriceC,
+      };
+      const cheapT    = tickerMap[cheapExchange];
+      const expensiveT = tickerMap[expensiveExchange];
+      const cheapPx    = priceMap[cheapExchange];
+      const expensivePx = priceMap[expensiveExchange];
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const depthUsd = (t: any, price: number, side: "bid" | "ask"): number => {
-        if (t == null) return 0;
+      const sideDepthUsd = (t: any, price: number, side: "bid" | "ask"): number => {
+        if (t == null || !price) return 0;
         const vol = side === "bid" ? (t.bidVolume ?? 0) : (t.askVolume ?? 0);
-        const px  = side === "bid" ? (t.bid ?? price) : (t.ask ?? price);
+        const px  = side === "bid" ? (t.bid  ?? price)  : (t.ask ?? price);
         return typeof vol === "number" && vol > 0 ? vol * px : 0;
       };
-      let cheapAsk: number, expensiveBid: number;
-      if (bybitPriceC >= binancePriceC) {
-        cheapAsk    = depthUsd(binanceT, binancePriceC, "ask");
-        expensiveBid = depthUsd(bybitT,  bybitPriceC,   "bid");
-      } else {
-        cheapAsk    = depthUsd(bybitT,  bybitPriceC,   "ask");
-        expensiveBid = depthUsd(binanceT, binancePriceC, "bid");
-      }
+      const cheapAsk    = sideDepthUsd(cheapT,    cheapPx,    "ask");
+      const expensiveBid = sideDepthUsd(expensiveT, expensivePx, "bid");
       if (cheapAsk > 0 && expensiveBid > 0) {
         spreadDepthUsd = Math.min(cheapAsk, expensiveBid);
-      } else if (cheapAsk > 0 || expensiveBid > 0) {
-        spreadDepthUsd = Math.max(cheapAsk, expensiveBid);
       }
+      // If one or both sides have no volume data, spreadDepthUsd stays null
     }
 
     spreads.push({
