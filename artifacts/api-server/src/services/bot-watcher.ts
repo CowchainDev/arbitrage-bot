@@ -231,26 +231,22 @@ async function watcherTick(): Promise<void> {
 
       const forceStop = Number(config.forceStopUsd);
       const closeSpread = Number(config.closeSpreadPct);
+      const enterSpread = Number(config.enterSpreadPct);
       const forceStopTriggered = forceStop > 0 && openLegs.length > 0 && totalPnl <= -forceStop;
 
-      // Check close condition per-leg accounting for the direction the leg was opened:
-      // - Bybit-short leg (opened when Bybit > Binance, spread > 0): close when spread
-      //   has fallen at or below closeSpread (which also catches the spread crossing zero)
-      // - Bybit-long leg (opened when Binance > Bybit, spread < 0): close when spread
-      //   has risen at or above -closeSpread (also catches spread crossing zero)
-      function legShouldClose(leg: BotLeg): boolean {
-        if (leg.bybitSide === "short") return spreadPct <= closeSpread;
-        return spreadPct >= -closeSpread;
-      }
+      // Close condition: spread has compressed at or below closeSpread, OR force-stop
+      // Using exact threshold semantics per spec: close when spreadPct <= closeSpread
+      // This also catches the case where the spread crosses zero (strong compression)
+      const spreadBelowClose = spreadPct <= closeSpread;
 
       let confirmedClosedCount = 0;
       let anyForceStop = false;
-      for (const leg of openLegs) {
-        if (legShouldClose(leg) || forceStopTriggered) {
+      if (spreadBelowClose || forceStopTriggered) {
+        for (const leg of openLegs) {
           const closed = await closeLeg(leg, bybitPrice, binancePrice);
           if (closed) confirmedClosedCount++;
-          if (forceStopTriggered) anyForceStop = true;
         }
+        if (forceStopTriggered) anyForceStop = true;
       }
 
       if (anyForceStop) {
@@ -260,10 +256,9 @@ async function watcherTick(): Promise<void> {
       }
 
       const remainingOpen = openLegs.length - confirmedClosedCount;
-      // Open when the spread magnitude is large enough in either direction
-      const enterSpread = Math.abs(Number(config.enterSpreadPct));
+      // Open condition: spread >= enterSpread (exact threshold, positive spreads only)
       const shouldOpen =
-        Math.abs(spreadPct) >= enterSpread &&
+        spreadPct >= enterSpread &&
         remainingOpen < config.maxOrders;
 
       if (shouldOpen) {
