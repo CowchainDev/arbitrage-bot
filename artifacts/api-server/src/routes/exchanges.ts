@@ -14,6 +14,13 @@ let priceCache: { data: unknown[]; ts: number } | null = null;
 let priceFetchInFlight: Promise<unknown[]> | null = null;
 const PRICE_CACHE_TTL_MS = 9_000;
 
+type SymbolPriceEntry = { bybitPrice: number | null; binancePrice: number | null };
+const priceCacheBySymbol = new Map<string, SymbolPriceEntry>();
+
+export function getPriceCacheEntry(symbol: string): SymbolPriceEntry | null {
+  return priceCacheBySymbol.get(symbol) ?? null;
+}
+
 const MIN_VOLUME_USD = 500_000;
 const MAX_RESULTS = 150;
 
@@ -164,6 +171,13 @@ async function fetchAndCachePrices(): Promise<unknown[]> {
       bestSpreadPct,
       bestSpreadLeg,
       volume24h: totalVolume,
+    });
+  }
+
+  for (const s of spreads) {
+    priceCacheBySymbol.set(s.symbol, {
+      bybitPrice: s.bybitPrice as number | null,
+      binancePrice: s.binancePrice as number | null,
     });
   }
 
@@ -841,5 +855,68 @@ router.post("/exchanges/jump-in", async (req: Request, res: Response) => {
 });
 
 ensurePriceFetch();
+
+export type ClosePositionInternalParams = {
+  bybit: InstanceType<typeof ccxt.bybit>;
+  binance: InstanceType<typeof ccxt.binance>;
+  symbol: string;
+  bybitSide: "long" | "short";
+  binanceSide: "long" | "short";
+  bybitQty: number;
+  binanceQty: number;
+  spreadAtEntry?: number;
+  entryTime?: Date;
+  quantity?: number;
+};
+
+export type ClosePositionInternalResult = {
+  bothClosed: boolean;
+  bybitOrderId: string | null;
+  binanceOrderId: string | null;
+  bybitError?: string;
+  binanceError?: string;
+};
+
+export async function closePositionInternal(
+  params: ClosePositionInternalParams,
+): Promise<ClosePositionInternalResult> {
+  const {
+    bybit, binance, symbol, bybitSide, binanceSide, bybitQty, binanceQty,
+    spreadAtEntry, entryTime, quantity,
+  } = params;
+
+  const bybitCloseSide = bybitSide === "long" ? "sell" : "buy";
+  const binanceCloseSide = binanceSide === "long" ? "sell" : "buy";
+
+  const [bybitOrder, binanceOrder] = await Promise.allSettled([
+    bybitCreateOrder(bybit, `${symbol}/USDT:USDT`, bybitCloseSide, bybitQty, { reduceOnly: true }, bybitSide),
+    binance.createMarketOrder(`${symbol}/USDT:USDT`, binanceCloseSide, binanceQty, undefined, { reduceOnly: true }),
+  ]);
+
+  const bothClosed = bybitOrder.status === "fulfilled" && binanceOrder.status === "fulfilled";
+  const bybitOrderId = bybitOrder.status === "fulfilled" ? String(bybitOrder.value.id) : null;
+  const binanceOrderId = binanceOrder.status === "fulfilled" ? String(binanceOrder.value.id) : null;
+  const bybitError = bybitOrder.status === "rejected" ? String(bybitOrder.reason) : undefined;
+  const binanceError = binanceOrder.status === "rejected" ? String(binanceOrder.reason) : undefined;
+
+  if (bothClosed && spreadAtEntry !== undefined) {
+    try {
+      await db.insert(closedTradesTable).values({
+        symbol,
+        longExchange: bybitSide === "long" ? "bybit" : "binance",
+        shortExchange: bybitSide === "short" ? "bybit" : "binance",
+        spreadAtEntry: String(spreadAtEntry),
+        realizedPnl: "0",
+        quantity: String(quantity ?? bybitQty),
+        entryTime: entryTime ?? new Date(),
+        closeTime: new Date(),
+      });
+    } catch {
+      // Non-fatal: DB logging failure should not abort position close
+    }
+  }
+
+  return { bothClosed, bybitOrderId, binanceOrderId, bybitError, binanceError };
+}
 
 export default router;

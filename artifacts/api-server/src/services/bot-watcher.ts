@@ -10,11 +10,12 @@ import {
 import { eq, and } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import {
-  fetchPriceSpreads,
+  getPriceCacheEntry,
   createBybitExchange,
   createBinanceExchange,
   bybitCreateOrder,
   placeOrderInternal,
+  closePositionInternal,
 } from "../routes/exchanges";
 import { getStoredCredentials } from "../routes/credentials";
 
@@ -135,38 +136,26 @@ async function closeLeg(
   const bybitEx = createBybitExchange(bybitCreds.apiKey, bybitCreds.apiSecret);
   const binanceEx = createBinanceExchange(binanceCreds.apiKey, binanceCreds.apiSecret);
 
-  const bybitCloseSide: "buy" | "sell" = leg.bybitSide === "long" ? "sell" : "buy";
-  const binanceCloseSide: "buy" | "sell" = leg.binanceSide === "long" ? "sell" : "buy";
   const bybitQty = Number(leg.bybitQty);
   const binanceQty = Number(leg.binanceQty);
 
-  const [bybitOrder, binanceOrder] = await Promise.allSettled([
-    bybitCreateOrder(
-      bybitEx as InstanceType<typeof ccxt.bybit>,
-      `${leg.symbol}/USDT:USDT`,
-      bybitCloseSide,
-      bybitQty,
-      { reduceOnly: true },
-      leg.bybitSide as "long" | "short",
-    ),
-    binanceEx.createMarketOrder(
-      `${leg.symbol}/USDT:USDT`,
-      binanceCloseSide,
-      binanceQty,
-      undefined,
-      { reduceOnly: true },
-    ),
-  ]);
+  const result = await closePositionInternal({
+    bybit: bybitEx,
+    binance: binanceEx,
+    symbol: leg.symbol,
+    bybitSide: leg.bybitSide as "long" | "short",
+    binanceSide: leg.binanceSide as "long" | "short",
+    bybitQty,
+    binanceQty,
+  });
 
-  const bothClosed = bybitOrder.status === "fulfilled" && binanceOrder.status === "fulfilled";
-
-  if (!bothClosed) {
-    if (bybitOrder.status === "rejected") {
-      logger.error({ err: bybitOrder.reason, symbol: leg.symbol, legId: leg.id },
+  if (!result.bothClosed) {
+    if (result.bybitError) {
+      logger.error({ err: result.bybitError, symbol: leg.symbol, legId: leg.id },
         "Bot: Bybit leg close failed — leg remains open for retry");
     }
-    if (binanceOrder.status === "rejected") {
-      logger.error({ err: binanceOrder.reason, symbol: leg.symbol, legId: leg.id },
+    if (result.binanceError) {
+      logger.error({ err: result.binanceError, symbol: leg.symbol, legId: leg.id },
         "Bot: Binance leg close failed — leg remains open for retry");
     }
     return false;
@@ -180,12 +169,10 @@ async function closeLeg(
     .where(eq(botLegsTable.id, leg.id));
 
   try {
-    const longExchange = leg.bybitSide === "long" ? "bybit" : "binance";
-    const shortExchange = leg.bybitSide === "short" ? "bybit" : "binance";
     await db.insert(closedTradesTable).values({
       symbol: leg.symbol,
-      longExchange,
-      shortExchange,
+      longExchange: leg.bybitSide === "long" ? "bybit" : "binance",
+      shortExchange: leg.bybitSide === "short" ? "bybit" : "binance",
       spreadAtEntry: String(leg.spreadAtEntry),
       realizedPnl: String(realizedPnl),
       quantity: String((bybitQty * bybitPrice + binanceQty * binancePrice) / 2),
@@ -209,15 +196,12 @@ async function watcherTick(): Promise<void> {
 
     if (enabledBots.length === 0) return;
 
-    const spreadsRaw = await fetchPriceSpreads();
-    const priceMap = new Map<string, PriceRow>();
-    for (const row of spreadsRaw) {
-      priceMap.set(row.symbol, row as PriceRow);
-    }
-
     for (const config of enabledBots) {
-      const priceRow = priceMap.get(config.symbol);
-      if (!priceRow) continue;
+      const priceRow = getPriceCacheEntry(config.symbol);
+      if (!priceRow) {
+        logger.warn({ symbol: config.symbol }, "Bot: symbol not in price cache yet — skipping tick");
+        continue;
+      }
 
       const spreadPct = getSpreadPct(priceRow.bybitPrice, priceRow.binancePrice);
       if (spreadPct === null) continue;
