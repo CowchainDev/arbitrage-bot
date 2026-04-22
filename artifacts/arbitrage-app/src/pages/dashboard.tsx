@@ -1,8 +1,9 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import { Link } from "wouter";
-import { Star, Search, TrendingUp, TrendingDown, Zap, AlertCircle, ChevronDown, ChevronUp, X, Bell, BellOff } from "lucide-react";
-import { useGetExchangePrices, getGetExchangePricesQueryKey, useGetPositions, getGetPositionsQueryKey, useJumpIn, useClosePosition } from "@workspace/api-client-react";
-import type { TokenSpread, Position, ClosePositionResult, JumpInResult } from "@workspace/api-client-react";
+import { Star, Search, TrendingUp, TrendingDown, Zap, AlertCircle, ChevronDown, ChevronUp, X, Bell, BellOff, Bot, Power } from "lucide-react";
+import { useGetExchangePrices, getGetExchangePricesQueryKey, useGetPositions, getGetPositionsQueryKey, useJumpIn, useClosePosition, useCreateBot, useStartBot, useStopBot, useUpdateBot, getListBotsQueryKey } from "@workspace/api-client-react";
+import type { TokenSpread, Position, ClosePositionResult, JumpInResult, BotConfig, BotLeg } from "@workspace/api-client-react";
+import { useBots } from "@/hooks/use-bots";
 import { useLocalPositions } from "@/hooks/use-local-positions";
 import { useApiCredentials } from "@/hooks/use-api-credentials";
 import { useFavourites } from "@/hooks/use-favourites";
@@ -69,6 +70,53 @@ function parseVolume(v: string): number {
   return n;
 }
 
+function botLegToPosition(leg: BotLeg, tokens: TokenSpread[]): Position {
+  const token = tokens.find((t) => t.symbol === leg.symbol);
+  const bybitCurrentPrice = token?.bybitPrice ?? leg.bybitEntry ?? 0;
+  const binanceCurrentPrice = token?.binancePrice ?? leg.binanceEntry ?? 0;
+  const currentSpread =
+    bybitCurrentPrice && binanceCurrentPrice
+      ? ((bybitCurrentPrice - binanceCurrentPrice) / binanceCurrentPrice) * 100
+      : 0;
+  const bybitEntry = leg.bybitEntry ?? 0;
+  const binanceEntry = leg.binanceEntry ?? 0;
+  const bybitQty = leg.bybitQty ?? 0;
+  const binanceQty = leg.binanceQty ?? 0;
+  const bybitPnl =
+    bybitEntry && bybitQty
+      ? leg.bybitSide === "long"
+        ? (bybitCurrentPrice - bybitEntry) * bybitQty
+        : (bybitEntry - bybitCurrentPrice) * bybitQty
+      : 0;
+  const binancePnl =
+    binanceEntry && binanceQty
+      ? leg.binanceSide === "long"
+        ? (binanceCurrentPrice - binanceEntry) * binanceQty
+        : (binanceEntry - binanceCurrentPrice) * binanceQty
+      : 0;
+  const totalPnl = bybitPnl + binancePnl;
+  const usdSize = bybitEntry * bybitQty + binanceEntry * binanceQty;
+  return {
+    id: `bot-leg-${leg.id}`,
+    symbol: leg.symbol,
+    bybitSide: leg.bybitSide,
+    binanceSide: leg.binanceSide,
+    bybitQty: bybitQty || undefined,
+    binanceQty: binanceQty || undefined,
+    bybitEntryPrice: bybitEntry || undefined,
+    binanceEntryPrice: binanceEntry || undefined,
+    bybitCurrentPrice: bybitCurrentPrice || undefined,
+    binanceCurrentPrice: binanceCurrentPrice || undefined,
+    bybitPnl,
+    binancePnl,
+    totalPnl,
+    spreadAtEntry: leg.spreadAtEntry,
+    currentSpread,
+    usdSize: usdSize || undefined,
+    openedAt: leg.openedAt,
+  };
+}
+
 const EXCHANGE_LABELS: Record<string, string> = {
   bybit: "BB", binance: "BN", gate: "GT", okx: "OKX", mexc: "MX",
 };
@@ -111,6 +159,8 @@ function TokenCard({
   onSelect,
   onToggleFavourite,
   onToggleWatch,
+  bot,
+  botOpenLegsCount,
 }: {
   token: TokenSpread;
   isSelected: boolean;
@@ -119,7 +169,14 @@ function TokenCard({
   onSelect: () => void;
   onToggleFavourite: (e: React.MouseEvent) => void;
   onToggleWatch: (e: React.MouseEvent) => void;
+  bot?: BotConfig;
+  botOpenLegsCount?: number;
 }) {
+  const legsCount = botOpenLegsCount ?? 0;
+  const showDot = bot != null && (bot.enabled || legsCount > 0);
+  const dotColor = legsCount > 0 ? "bg-amber-400" : "bg-emerald-500";
+  const dotTitle = legsCount > 0 ? `Bot: ${legsCount} leg${legsCount !== 1 ? "s" : ""} open` : "Bot: running";
+
   return (
     <div
       onClick={onSelect}
@@ -151,7 +208,16 @@ function TokenCard({
               : <BellOff className="w-3.5 h-3.5" />}
           </button>
         </div>
-        <SpreadBadge spreadPct={token.spreadPct} bestSpreadPct={token.bestSpreadPct} bestSpreadLeg={token.bestSpreadLeg} />
+        <div className="flex items-start gap-1.5">
+          {showDot && (
+            <div
+              className={`w-1.5 h-1.5 rounded-full mt-1 shrink-0 ${dotColor}`}
+              title={dotTitle}
+              data-testid={`bot-dot-${token.symbol}`}
+            />
+          )}
+          <SpreadBadge spreadPct={token.spreadPct} bestSpreadPct={token.bestSpreadPct} bestSpreadLeg={token.bestSpreadLeg} />
+        </div>
       </div>
 
       <div className="space-y-0.5 text-xs">
@@ -194,12 +260,16 @@ function TokenDetailPanel({
   requestHeaders,
   activePosition,
   onJumpInSuccess,
+  bot,
+  botOpenLegsCount,
 }: {
   token: TokenSpread;
   onClose: () => void;
   requestHeaders: ReturnType<ReturnType<typeof useApiCredentials>["getRequestHeaders"]>;
   activePosition?: Position;
   onJumpInSuccess: (position: Position) => void;
+  bot?: BotConfig;
+  botOpenLegsCount: number;
 }) {
   // Auto-select: SHORT the expensive side, LONG the cheap side (convergence arb)
   // spreadPct = (bybitPrice - binancePrice) / binancePrice → positive means Bybit is more expensive
@@ -224,6 +294,37 @@ function TokenDetailPanel({
   });
   const [isJumping, setIsJumping] = useState(false);
 
+  // Bot form state — pre-filled from bot config or manual inputs
+  const [botEnterSpread, setBotEnterSpread] = useState(() => bot ? String(bot.enterSpreadPct) : openSpread);
+  const [botCloseSpread, setBotCloseSpread] = useState(() => bot ? String(bot.closeSpreadPct) : closeSpread);
+  const [botOrderSize, setBotOrderSize] = useState(() => bot ? String(bot.orderSizeUsd) : orderSize);
+  const [botMaxOrders, setBotMaxOrders] = useState(() => bot ? String(bot.maxOrders) : "3");
+  const [botForceStop, setBotForceStop] = useState(() => bot ? String(bot.forceStopUsd) : "50");
+  const [botBusy, setBotBusy] = useState(false);
+
+  // Sync bot form when the bot config changes (e.g., navigating to a different symbol)
+  useEffect(() => {
+    if (bot) {
+      setBotEnterSpread(String(bot.enterSpreadPct));
+      setBotCloseSpread(String(bot.closeSpreadPct));
+      setBotOrderSize(String(bot.orderSizeUsd));
+      setBotMaxOrders(String(bot.maxOrders));
+      setBotForceStop(String(bot.forceStopUsd));
+    } else {
+      setBotEnterSpread(openSpread);
+      setBotCloseSpread(closeSpread);
+      setBotOrderSize(orderSize);
+      setBotMaxOrders("3");
+      setBotForceStop("50");
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bot?.id, token.symbol]);
+
+  const createBotMutation = useCreateBot();
+  const updateBotMutation = useUpdateBot();
+  const startBotMutation = useStartBot();
+  const stopBotMutation = useStopBot();
+
   useEffect(() => {
     try { localStorage.setItem("arbitrage-useLeverage", String(useLeverage)); } catch {}
   }, [useLeverage]);
@@ -238,6 +339,69 @@ function TokenDetailPanel({
 
   const { toast } = useToast();
   const queryClient = useQueryClient();
+
+  const handleBotStart = async () => {
+    const enterSpread = Number(botEnterSpread);
+    const closeSpreadVal = Number(botCloseSpread);
+    const orderSizeVal = Number(botOrderSize);
+    const maxOrdersVal = Math.max(1, Number(botMaxOrders) || 1);
+    const forceStopVal = Number(botForceStop) || 0;
+    if (!enterSpread || !closeSpreadVal || !orderSizeVal) {
+      toast({ title: "Invalid bot config", description: "Enter spread, close spread, and order size are required", variant: "destructive" });
+      return;
+    }
+    setBotBusy(true);
+    try {
+      let botId = bot?.id;
+      if (!botId) {
+        const created = await createBotMutation.mutateAsync({
+          data: {
+            symbol: token.symbol,
+            enterSpreadPct: enterSpread,
+            closeSpreadPct: closeSpreadVal,
+            orderSizeUsd: orderSizeVal,
+            maxOrders: maxOrdersVal,
+            forceStopUsd: forceStopVal,
+            bybitLeverage: useLeverage ? Number(bybitLeverage) || 1 : 1,
+            binanceLeverage: useLeverage ? Number(binanceLeverage) || 1 : 1,
+          },
+        });
+        botId = created.bot.id;
+      } else {
+        await updateBotMutation.mutateAsync({
+          id: botId,
+          data: {
+            enterSpreadPct: enterSpread,
+            closeSpreadPct: closeSpreadVal,
+            orderSizeUsd: orderSizeVal,
+            maxOrders: maxOrdersVal,
+            forceStopUsd: forceStopVal,
+          },
+        });
+      }
+      await startBotMutation.mutateAsync({ id: botId });
+      await queryClient.invalidateQueries({ queryKey: getListBotsQueryKey() });
+      toast({ title: "Bot started", description: `${token.symbol} bot is now watching for opportunities` });
+    } catch (err) {
+      toast({ title: "Failed to start bot", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
+    } finally {
+      setBotBusy(false);
+    }
+  };
+
+  const handleBotStop = async () => {
+    if (!bot) return;
+    setBotBusy(true);
+    try {
+      await stopBotMutation.mutateAsync({ id: bot.id });
+      await queryClient.invalidateQueries({ queryKey: getListBotsQueryKey() });
+      toast({ title: "Bot stopped", description: `${token.symbol} bot will no longer open new legs` });
+    } catch (err) {
+      toast({ title: "Failed to stop bot", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
+    } finally {
+      setBotBusy(false);
+    }
+  };
 
   const jumpIn = useJumpIn({ request: requestHeaders ?? undefined });
 
@@ -527,6 +691,126 @@ function TokenDetailPanel({
           <Link href="/settings" className="underline hover:text-destructive/80">Settings</Link>
         </p>
       )}
+
+      {/* Bot Section */}
+      <div className="border-t border-border pt-3 space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1.5">
+            <Bot className="w-3.5 h-3.5 text-muted-foreground" />
+            <label className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Auto Bot</label>
+          </div>
+          {bot ? (
+            bot.enabled ? (
+              botOpenLegsCount > 0 ? (
+                <span className="text-xs font-semibold px-2 py-0.5 rounded bg-amber-400/20 text-amber-400" data-testid="bot-status-badge">
+                  IN POSITION ({botOpenLegsCount} leg{botOpenLegsCount !== 1 ? "s" : ""})
+                </span>
+              ) : (
+                <span className="text-xs font-semibold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400" data-testid="bot-status-badge">
+                  RUNNING
+                </span>
+              )
+            ) : (
+              <span className="text-xs font-semibold px-2 py-0.5 rounded bg-muted text-muted-foreground" data-testid="bot-status-badge">
+                STOPPED
+              </span>
+            )
+          ) : (
+            <span className="text-xs text-muted-foreground/60 italic">no bot configured</span>
+          )}
+        </div>
+
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <label className="text-xs text-muted-foreground uppercase tracking-wider mb-1 block">Enter Spread %</label>
+            <Input
+              value={botEnterSpread}
+              onChange={(e) => setBotEnterSpread(e.target.value)}
+              className="font-mono text-sm bg-background"
+              data-testid="input-bot-enter-spread"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-muted-foreground uppercase tracking-wider mb-1 block">Close Spread %</label>
+            <Input
+              value={botCloseSpread}
+              onChange={(e) => setBotCloseSpread(e.target.value)}
+              className="font-mono text-sm bg-background"
+              data-testid="input-bot-close-spread"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-muted-foreground uppercase tracking-wider mb-1 block">Order Size $</label>
+            <Input
+              value={botOrderSize}
+              onChange={(e) => setBotOrderSize(e.target.value)}
+              className="font-mono text-sm bg-background"
+              data-testid="input-bot-order-size"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-muted-foreground uppercase tracking-wider mb-1 block">Max Orders</label>
+            <Input
+              value={botMaxOrders}
+              onChange={(e) => setBotMaxOrders(e.target.value)}
+              className="font-mono text-sm bg-background"
+              data-testid="input-bot-max-orders"
+            />
+          </div>
+          <div className="col-span-2">
+            <label className="text-xs text-muted-foreground uppercase tracking-wider mb-1 block">Force Stop (loss $)</label>
+            <Input
+              value={botForceStop}
+              onChange={(e) => setBotForceStop(e.target.value)}
+              className="font-mono text-sm bg-background"
+              data-testid="input-bot-force-stop"
+            />
+          </div>
+        </div>
+
+        {bot?.enabled ? (
+          <Button
+            onClick={handleBotStop}
+            disabled={botBusy}
+            variant="destructive"
+            className="w-full"
+            size="sm"
+            data-testid="btn-bot-stop"
+          >
+            {botBusy ? (
+              <span className="flex items-center gap-2">
+                <span className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
+                Stopping…
+              </span>
+            ) : (
+              <span className="flex items-center gap-2">
+                <Power className="w-3.5 h-3.5" />
+                STOP BOT
+              </span>
+            )}
+          </Button>
+        ) : (
+          <Button
+            onClick={handleBotStart}
+            disabled={botBusy}
+            className="w-full bg-emerald-600 hover:bg-emerald-500 text-white"
+            size="sm"
+            data-testid="btn-bot-start"
+          >
+            {botBusy ? (
+              <span className="flex items-center gap-2">
+                <span className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
+                Starting…
+              </span>
+            ) : (
+              <span className="flex items-center gap-2">
+                <Power className="w-3.5 h-3.5" />
+                START BOT
+              </span>
+            )}
+          </Button>
+        )}
+      </div>
 
       {/* All-exchange price matrix */}
       <div className="border border-border rounded overflow-hidden">
@@ -842,6 +1126,7 @@ export default function Dashboard() {
   const requestHeaders = getRequestHeaders();
   const { localPositions, savePosition, removePosition } = useLocalPositions();
   const { setDataSource } = useConnectionStatus();
+  const { getBotStatusForSymbol, allOpenLegs } = useBots();
 
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<SortOption>("spread_desc");
@@ -927,11 +1212,19 @@ export default function Dashboard() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [polledPositions, hasCredentials, positionsQuery.isLoading, positionsQuery.isError, positionsQuery.dataUpdatedAt, removePosition]);
 
+  const botLegPositions = useMemo(
+    () => allOpenLegs.map((leg) => botLegToPosition(leg, tokens)),
+    [allOpenLegs, tokens]
+  );
+
   const positions = useMemo(() => {
     const polledSymbols = new Set(polledPositions.map((p) => p.symbol));
     const localOnly = localPositions.filter((p) => !polledSymbols.has(p.symbol));
-    return [...polledPositions, ...localOnly];
-  }, [polledPositions, localPositions]);
+    // Bot legs have distinct IDs (bot-leg-{id}); include them alongside other positions
+    const existingIds = new Set([...polledPositions.map((p) => p.id), ...localOnly.map((p) => p.id)]);
+    const uniqueBotLegs = botLegPositions.filter((p) => !existingIds.has(p.id));
+    return [...polledPositions, ...localOnly, ...uniqueBotLegs];
+  }, [polledPositions, localPositions, botLegPositions]);
 
   const localOnlySymbols = useMemo(() => {
     const polledSymbols = new Set(polledPositions.map((p) => p.symbol));
@@ -1148,7 +1441,9 @@ export default function Dashboard() {
             </div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-              {filteredTokens.map((token) => (
+              {filteredTokens.map((token) => {
+                const botStatus = getBotStatusForSymbol(token.symbol);
+                return (
                 <TokenCard
                   key={token.symbol}
                   token={token}
@@ -1164,8 +1459,11 @@ export default function Dashboard() {
                     e.stopPropagation();
                     toggleWatch(token.symbol, getThreshold(token.symbol));
                   }}
+                  bot={botStatus?.bot}
+                  botOpenLegsCount={botStatus?.openLegsCount ?? 0}
                 />
-              ))}
+                );
+              })}
               {filteredTokens.length === 0 && (
                 <div className="col-span-full text-center text-muted-foreground py-12 text-sm">
                   No tokens match your filters.
@@ -1177,13 +1475,20 @@ export default function Dashboard() {
 
         {selectedToken && (
           <div className="lg:col-span-1">
-            <TokenDetailPanel
-              token={selectedToken}
-              onClose={() => setSelectedSymbol(null)}
-              requestHeaders={requestHeaders}
-              activePosition={positions.find((p) => p.symbol === selectedToken.symbol)}
-              onJumpInSuccess={savePosition}
-            />
+            {(() => {
+              const botStatus = getBotStatusForSymbol(selectedToken.symbol);
+              return (
+                <TokenDetailPanel
+                  token={selectedToken}
+                  onClose={() => setSelectedSymbol(null)}
+                  requestHeaders={requestHeaders}
+                  activePosition={positions.find((p) => p.symbol === selectedToken.symbol)}
+                  onJumpInSuccess={savePosition}
+                  bot={botStatus?.bot}
+                  botOpenLegsCount={botStatus?.openLegsCount ?? 0}
+                />
+              );
+            })()}
           </div>
         )}
       </div>
