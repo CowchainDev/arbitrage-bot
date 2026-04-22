@@ -29,6 +29,36 @@ import { usePageVisibility } from "@/hooks/use-page-visibility";
 
 type SortOption = "spread_desc" | "spread_asc" | "volume_desc" | "alpha";
 
+const ALL_EXCHANGES_LIST = ["bybit", "binance", "gate", "okx", "mexc"] as const;
+const FILTER_STORAGE_KEY = "dashboard-filters";
+
+const DEFAULT_FILTERS = {
+  sort: "spread_desc" as SortOption,
+  maxSpread: "",
+  minVolume: "",
+  minOpenInterest: "",
+  minSpreadDepth: "",
+  selectedExchanges: [...ALL_EXCHANGES_LIST] as string[],
+};
+
+function loadFilters() {
+  try {
+    const raw = localStorage.getItem(FILTER_STORAGE_KEY);
+    if (!raw) return DEFAULT_FILTERS;
+    const parsed = JSON.parse(raw);
+    return {
+      sort: (parsed.sort as SortOption) ?? DEFAULT_FILTERS.sort,
+      maxSpread: parsed.maxSpread ?? DEFAULT_FILTERS.maxSpread,
+      minVolume: parsed.minVolume ?? DEFAULT_FILTERS.minVolume,
+      minOpenInterest: parsed.minOpenInterest ?? DEFAULT_FILTERS.minOpenInterest,
+      minSpreadDepth: parsed.minSpreadDepth ?? DEFAULT_FILTERS.minSpreadDepth,
+      selectedExchanges: Array.isArray(parsed.selectedExchanges) ? parsed.selectedExchanges : DEFAULT_FILTERS.selectedExchanges,
+    };
+  } catch {
+    return DEFAULT_FILTERS;
+  }
+}
+
 function formatPrice(price: number | null | undefined): string {
   if (price == null) return "-";
   if (price >= 1000) return price.toLocaleString("en-US", { maximumFractionDigits: 2 });
@@ -1144,15 +1174,50 @@ export default function Dashboard() {
   const { getBotStatusForSymbol, allOpenLegs } = useBots();
   const { getBotRequestOptions } = useBotSecret();
 
+  const ALL_EXCHANGES = ALL_EXCHANGES_LIST;
+
+  const [_savedFilters] = useState(() => loadFilters());
+
   const [search, setSearch] = useState("");
-  const [sort, setSort] = useState<SortOption>("spread_desc");
+  const [sort, setSort] = useState<SortOption>(_savedFilters.sort);
   const [favsOnly, setFavsOnly] = useState(false);
-  const [maxSpread, setMaxSpread] = useState<string>("");
-  const [minVolume, setMinVolume] = useState<string>("");
-  const [minOpenInterest, setMinOpenInterest] = useState<string>("");
-  const [minSpreadDepth, setMinSpreadDepth] = useState<string>("");
-  const ALL_EXCHANGES = ["bybit", "binance", "gate", "okx", "mexc"] as const;
-  const [selectedExchanges, setSelectedExchanges] = useState<Set<string>>(new Set(ALL_EXCHANGES));
+  const [maxSpread, setMaxSpread] = useState<string>(_savedFilters.maxSpread);
+  const [minVolume, setMinVolume] = useState<string>(_savedFilters.minVolume);
+  const [minOpenInterest, setMinOpenInterest] = useState<string>(_savedFilters.minOpenInterest);
+  const [minSpreadDepth, setMinSpreadDepth] = useState<string>(_savedFilters.minSpreadDepth);
+  const [selectedExchanges, setSelectedExchanges] = useState<Set<string>>(new Set(_savedFilters.selectedExchanges));
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify({
+        sort,
+        maxSpread,
+        minVolume,
+        minOpenInterest,
+        minSpreadDepth,
+        selectedExchanges: [...selectedExchanges],
+      }));
+    } catch {}
+  }, [sort, maxSpread, minVolume, minOpenInterest, minSpreadDepth, selectedExchanges]);
+
+  function resetFilters() {
+    setSort(DEFAULT_FILTERS.sort);
+    setMaxSpread(DEFAULT_FILTERS.maxSpread);
+    setMinVolume(DEFAULT_FILTERS.minVolume);
+    setMinOpenInterest(DEFAULT_FILTERS.minOpenInterest);
+    setMinSpreadDepth(DEFAULT_FILTERS.minSpreadDepth);
+    setSelectedExchanges(new Set(DEFAULT_FILTERS.selectedExchanges));
+    try { localStorage.removeItem(FILTER_STORAGE_KEY); } catch {}
+  }
+
+  const filtersActive = sort !== DEFAULT_FILTERS.sort
+    || maxSpread !== ""
+    || minVolume !== ""
+    || minOpenInterest !== ""
+    || minSpreadDepth !== ""
+    || selectedExchanges.size !== ALL_EXCHANGES_LIST.length
+    || ALL_EXCHANGES_LIST.some((ex) => !selectedExchanges.has(ex));
+
   const toggleExchange = (ex: string) =>
     setSelectedExchanges((prev) => {
       const next = new Set(prev);
@@ -1480,6 +1545,18 @@ export default function Dashboard() {
             </button>
           ))}
         </div>
+
+        {filtersActive && (
+          <button
+            onClick={resetFilters}
+            data-testid="btn-reset-filters"
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded text-xs font-medium border border-border bg-card text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-all"
+            title="Reset all filters to defaults"
+          >
+            <X className="w-3 h-3" />
+            Reset filters
+          </button>
+        )}
 
         <div className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
           {streamStatus === "open" ? (
