@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { Link } from "wouter";
 import { Star, Search, TrendingUp, TrendingDown, Zap, AlertCircle, ChevronDown, ChevronUp, X, Bell, BellOff } from "lucide-react";
 import { useGetExchangePrices, getGetExchangePricesQueryKey, useGetPositions, getGetPositionsQueryKey, useJumpIn, useClosePosition } from "@workspace/api-client-react";
@@ -23,6 +23,7 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import { usePriceStream } from "@/hooks/use-price-stream";
 import { useConnectionStatus } from "@/contexts/connection-status";
+import { usePageVisibility } from "@/hooks/use-page-visibility";
 
 type SortOption = "spread_desc" | "spread_asc" | "volume_desc" | "alpha";
 
@@ -860,12 +861,13 @@ export default function Dashboard() {
   const [showPositions, setShowPositions] = useState(true);
 
   const { tokens: streamTokens, isDemoData: streamIsDemo, streamStatus, isFetching: streamFetching } = usePriceStream();
+  const isPageVisible = usePageVisibility();
 
   const wsActive = streamTokens.length > 0 && (streamStatus === "open" || streamStatus === "connecting");
 
   const pricesQuery = useGetExchangePrices({
     query: {
-      refetchInterval: wsActive ? false : 2000,
+      refetchInterval: wsActive || !isPageVisible ? false : 2000,
       queryKey: getGetExchangePricesQueryKey(),
       enabled: !wsActive,
     },
@@ -874,12 +876,25 @@ export default function Dashboard() {
 
   const positionsQuery = useGetPositions({
     query: {
-      refetchInterval: 2000,
+      refetchInterval: isPageVisible ? 2000 : false,
       queryKey: getGetPositionsQueryKey(),
       enabled: hasCredentials,
     },
     request: requestHeaders ?? undefined,
   });
+
+  const wasHiddenRef = useRef(false);
+  useEffect(() => {
+    if (!isPageVisible) {
+      wasHiddenRef.current = true;
+      return;
+    }
+    if (wasHiddenRef.current) {
+      wasHiddenRef.current = false;
+      if (!wsActive) pricesQuery.refetch();
+      if (hasCredentials) positionsQuery.refetch();
+    }
+  }, [isPageVisible, wsActive, hasCredentials, pricesQuery.refetch, positionsQuery.refetch]);
 
   const tokens: TokenSpread[] = wsActive && streamTokens.length > 0
     ? streamTokens
