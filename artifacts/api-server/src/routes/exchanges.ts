@@ -140,6 +140,45 @@ async function fetchAndCachePrices(): Promise<unknown[]> {
 
     const { bestSpreadPct, bestSpreadLeg } = computeBestSpread(allPrices);
 
+    // Open interest: prefer openInterestValue (already in USD for USDT contracts),
+    // fall back to openInterest (base qty) × last price.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const oiUsd = (t: any, price: number): number => {
+      if (t == null) return 0;
+      if (typeof t.openInterestValue === "number" && t.openInterestValue > 0) return t.openInterestValue;
+      if (typeof t.openInterest === "number" && t.openInterest > 0) return t.openInterest * price;
+      return 0;
+    };
+    const bybitOI   = bybitPriceC   ? oiUsd(bybitT,   bybitPriceC)   : 0;
+    const binanceOI = binancePriceC ? oiUsd(binanceT, binancePriceC) : 0;
+    const openInterestUsd = (bybitOI + binanceOI) > 0 ? (bybitOI + binanceOI) : null;
+
+    // Spread depth: min(ask depth on cheaper leg, bid depth on expensive leg) in USD.
+    // The cheaper leg is where we buy (we consume the ask), the pricier leg is where we sell (we consume the bid).
+    let spreadDepthUsd: number | null = null;
+    if (bybitPriceC && binancePriceC) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const depthUsd = (t: any, price: number, side: "bid" | "ask"): number => {
+        if (t == null) return 0;
+        const vol = side === "bid" ? (t.bidVolume ?? 0) : (t.askVolume ?? 0);
+        const px  = side === "bid" ? (t.bid ?? price) : (t.ask ?? price);
+        return typeof vol === "number" && vol > 0 ? vol * px : 0;
+      };
+      let cheapAsk: number, expensiveBid: number;
+      if (bybitPriceC >= binancePriceC) {
+        cheapAsk    = depthUsd(binanceT, binancePriceC, "ask");
+        expensiveBid = depthUsd(bybitT,  bybitPriceC,   "bid");
+      } else {
+        cheapAsk    = depthUsd(bybitT,  bybitPriceC,   "ask");
+        expensiveBid = depthUsd(binanceT, binancePriceC, "bid");
+      }
+      if (cheapAsk > 0 && expensiveBid > 0) {
+        spreadDepthUsd = Math.min(cheapAsk, expensiveBid);
+      } else if (cheapAsk > 0 || expensiveBid > 0) {
+        spreadDepthUsd = Math.max(cheapAsk, expensiveBid);
+      }
+    }
+
     spreads.push({
       symbol: base,
       bybitPrice:  bybitPriceC  || null,
@@ -171,6 +210,8 @@ async function fetchAndCachePrices(): Promise<unknown[]> {
       bestSpreadPct,
       bestSpreadLeg,
       volume24h: totalVolume,
+      openInterestUsd,
+      spreadDepthUsd,
     });
   }
 
@@ -367,6 +408,8 @@ function generateDemoSpreads() {
       bestSpreadPct,
       bestSpreadLeg,
       volume24h: basePrice * Math.random() * 50000000,
+      openInterestUsd: basePrice * (Math.random() * 20000000 + 5000000),
+      spreadDepthUsd: basePrice * (Math.random() * 200000 + 10000),
       demo: true,
     };
   }).sort((a, b) => Math.abs(b.bestSpreadPct) - Math.abs(a.bestSpreadPct));

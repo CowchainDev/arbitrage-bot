@@ -94,6 +94,18 @@ export const GetExchangePricesResponseItem = zod.object({
     .describe(
       'Label of the exchange pair with the best spread e.g. \"gate\/binance\"',
     ),
+  openInterestUsd: zod
+    .number()
+    .nullish()
+    .describe(
+      "Total open interest in USD across Bybit and Binance (null if unavailable)",
+    ),
+  spreadDepthUsd: zod
+    .number()
+    .nullish()
+    .describe(
+      "Estimated tradeable depth in USD at the best spread — min(ask depth on cheaper leg, bid depth on expensive leg)",
+    ),
 });
 export const GetExchangePricesResponse = zod.array(
   GetExchangePricesResponseItem,

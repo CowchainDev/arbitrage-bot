@@ -50,4 +50,8 @@ export interface TokenSpread {
   bestSpreadPct?: number;
   /** Label of the exchange pair with the best spread e.g. "gate/binance" */
   bestSpreadLeg?: string;
+  /** Total open interest in USD across Bybit and Binance (null if unavailable) */
+  openInterestUsd?: number | null;
+  /** Estimated tradeable depth in USD at the best spread — min(ask depth on cheaper leg, bid depth on expensive leg) */
+  spreadDepthUsd?: number | null;
 }

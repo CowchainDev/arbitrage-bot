@@ -678,6 +678,14 @@ components:
         bestSpreadLeg:
           type: string
           description: Label of the exchange pair with the best spread e.g. "gate/binance"
+        openInterestUsd:
+          type: number
+          nullable: true
+          description: Total open interest in USD across Bybit and Binance (null if unavailable)
+        spreadDepthUsd:
+          type: number
+          nullable: true
+          description: Estimated tradeable depth in USD at the best spread — min(ask depth on cheaper leg, bid depth on expensive leg)
       required:
         - symbol
         - spreadPct

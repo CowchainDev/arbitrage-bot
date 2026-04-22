@@ -1149,6 +1149,8 @@ export default function Dashboard() {
   const [favsOnly, setFavsOnly] = useState(false);
   const [maxSpread, setMaxSpread] = useState<string>("");
   const [minVolume, setMinVolume] = useState<string>("");
+  const [minOpenInterest, setMinOpenInterest] = useState<string>("");
+  const [minSpreadDepth, setMinSpreadDepth] = useState<string>("");
   const ALL_EXCHANGES = ["bybit", "binance", "gate", "okx", "mexc"] as const;
   const [selectedExchanges, setSelectedExchanges] = useState<Set<string>>(new Set(ALL_EXCHANGES));
   const toggleExchange = (ex: string) =>
@@ -1259,6 +1261,14 @@ export default function Dashboard() {
       const floor = parseVolume(minVolume);
       if (!isNaN(floor)) list = list.filter((t) => (t.volume24h ?? 0) >= floor);
     }
+    if (minOpenInterest.trim() !== "") {
+      const floor = parseVolume(minOpenInterest);
+      if (!isNaN(floor)) list = list.filter((t) => t.openInterestUsd == null || t.openInterestUsd >= floor);
+    }
+    if (minSpreadDepth.trim() !== "") {
+      const floor = parseVolume(minSpreadDepth);
+      if (!isNaN(floor)) list = list.filter((t) => t.spreadDepthUsd == null || t.spreadDepthUsd >= floor);
+    }
     if (selectedExchanges.size < ALL_EXCHANGES.length) {
       list = list.filter((t) => {
         const leg = t.bestSpreadLeg;
@@ -1291,7 +1301,7 @@ export default function Dashboard() {
       });
     }
     return list;
-  }, [tokens, favsOnly, search, sort, maxSpread, minVolume, selectedExchanges, isFavourite]);
+  }, [tokens, favsOnly, search, sort, maxSpread, minVolume, minOpenInterest, minSpreadDepth, selectedExchanges, isFavourite]);
 
   const selectedToken = tokens.find((t) => t.symbol === selectedSymbol) ?? null;
 
@@ -1422,10 +1432,30 @@ export default function Dashboard() {
           type="text"
           value={minVolume}
           onChange={(e) => setMinVolume(e.target.value)}
-          placeholder="Min vol: $"
+          placeholder="Объем 24ч"
           className="bg-card border border-border rounded text-xs px-2.5 py-1.5 text-foreground h-8 w-28 placeholder:text-muted-foreground"
           data-testid="select-min-volume"
-          title="Minimum 24h trading volume — supports shorthand like 1M, 5M, 1B"
+          title="Мин. объем торгов за 24ч — поддерживает 1k, 5M, 1B"
+        />
+
+        <input
+          type="text"
+          value={minOpenInterest}
+          onChange={(e) => setMinOpenInterest(e.target.value)}
+          placeholder="Откр. интерес"
+          className="bg-card border border-border rounded text-xs px-2.5 py-1.5 text-foreground h-8 w-32 placeholder:text-muted-foreground"
+          data-testid="select-min-open-interest"
+          title="Мин. открытый интерес (суммарно Bybit + Binance) — 1k, 5M, 1B"
+        />
+
+        <input
+          type="text"
+          value={minSpreadDepth}
+          onChange={(e) => setMinSpreadDepth(e.target.value)}
+          placeholder="Объем спреда"
+          className="bg-card border border-border rounded text-xs px-2.5 py-1.5 text-foreground h-8 w-32 placeholder:text-muted-foreground"
+          data-testid="select-min-spread-depth"
+          title="Мин. глубина стакана на спреде — сколько USD можно исполнить по лучшей цене — 1k, 5M, 1B"
         />
 
         <div className="flex items-center gap-1" data-testid="exchange-toggles">
