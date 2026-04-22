@@ -6,6 +6,16 @@ import {
   timestamp,
 } from "drizzle-orm/pg-core";
 
+export const credentialsTable = pgTable("credentials", {
+  exchange: text("exchange").primaryKey(),
+  apiKey: text("api_key").notNull(),
+  apiSecret: text("api_secret").notNull(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export type Credential = typeof credentialsTable.$inferSelect;
+export type InsertCredential = typeof credentialsTable.$inferInsert;
+
 export const closedTradesTable = pgTable("closed_trades", {
   id: serial("id").primaryKey(),
   symbol: text("symbol").notNull(),

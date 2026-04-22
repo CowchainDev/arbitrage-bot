@@ -298,6 +298,32 @@ export const ClosePositionResponse = zod.object({
 });
 
 /**
+ * @summary Store or update API credentials for an exchange server-side
+ */
+export const StoreCredentialBody = zod.object({
+  exchange: zod.enum(["bybit", "binance"]).describe("Exchange identifier"),
+  apiKey: zod.string().describe("API key for the exchange"),
+  apiSecret: zod.string().describe("API secret for the exchange"),
+});
+
+export const StoreCredentialResponse = zod.object({
+  exchange: zod.string(),
+  stored: zod.boolean(),
+});
+
+/**
+ * @summary Get which exchanges have credentials stored server-side (no secrets returned)
+ */
+export const GetCredentialStatusResponse = zod.object({
+  exchanges: zod.array(
+    zod.object({
+      exchange: zod.string(),
+      updatedAt: zod.string(),
+    }),
+  ),
+});
+
+/**
  * @summary Get trade history with aggregate stats
  */
 export const GetTradesResponse = zod.object({

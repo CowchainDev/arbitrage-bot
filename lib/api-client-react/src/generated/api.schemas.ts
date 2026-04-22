@@ -259,3 +259,37 @@ export interface TradeHistoryResponse {
   trades: ClosedTrade[];
   stats: TradeStats;
 }
+
+/**
+ * Exchange identifier
+ */
+export type StoreCredentialRequestExchange =
+  (typeof StoreCredentialRequestExchange)[keyof typeof StoreCredentialRequestExchange];
+
+export const StoreCredentialRequestExchange = {
+  bybit: "bybit",
+  binance: "binance",
+} as const;
+
+export interface StoreCredentialRequest {
+  /** Exchange identifier */
+  exchange: StoreCredentialRequestExchange;
+  /** API key for the exchange */
+  apiKey: string;
+  /** API secret for the exchange */
+  apiSecret: string;
+}
+
+export interface StoreCredentialResult {
+  exchange: string;
+  stored: boolean;
+}
+
+export interface CredentialStatus {
+  exchange: string;
+  updatedAt: string;
+}
+
+export interface CredentialStatusResponse {
+  exchanges: CredentialStatus[];
+}

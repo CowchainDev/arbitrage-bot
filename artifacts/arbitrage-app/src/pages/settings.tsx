@@ -2,11 +2,12 @@ import { useState } from "react";
 import { useForm, type ControllerRenderProps } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { KeyRound, Eye, EyeOff, CheckCircle, Trash2, ExternalLink, Bell, Volume2, VolumeX } from "lucide-react";
+import { KeyRound, Eye, EyeOff, CheckCircle, Trash2, ExternalLink, Bell, Volume2, VolumeX, Server } from "lucide-react";
 import { useApiCredentials, type ApiCredentials } from "@/hooks/use-api-credentials";
 import { useAlertSettings } from "@/hooks/use-alert-settings";
 import { useWatchedTokens } from "@/hooks/use-watched-tokens";
 import { useToast } from "@/hooks/use-toast";
+import { useStoreCredential } from "@workspace/api-client-react";
 import {
   Form,
   FormControl,
@@ -34,6 +35,8 @@ export default function Settings() {
   const { toast } = useToast();
   const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
   const [requestingPush, setRequestingPush] = useState(false);
+  const [serverSyncStatus, setServerSyncStatus] = useState<"idle" | "syncing" | "ok" | "error">("idle");
+  const storeCredential = useStoreCredential();
 
   const form = useForm<CredentialsForm>({
     resolver: zodResolver(credentialsSchema),
@@ -49,12 +52,31 @@ export default function Settings() {
     setShowSecrets((prev) => ({ ...prev, [field]: !prev[field] }));
   };
 
-  const onSubmit = (data: CredentialsForm) => {
+  const onSubmit = async (data: CredentialsForm) => {
     saveCredentials(data as ApiCredentials);
-    toast({
-      title: "Credentials saved",
-      description: "Your API keys have been saved to your browser.",
-    });
+
+    setServerSyncStatus("syncing");
+    try {
+      await Promise.all([
+        new Promise<void>((resolve, reject) =>
+          storeCredential.mutate(
+            { data: { exchange: "bybit", apiKey: data.bybitApiKey, apiSecret: data.bybitApiSecret } },
+            { onSuccess: () => resolve(), onError: reject }
+          )
+        ),
+        new Promise<void>((resolve, reject) =>
+          storeCredential.mutate(
+            { data: { exchange: "binance", apiKey: data.binanceApiKey, apiSecret: data.binanceApiSecret } },
+            { onSuccess: () => resolve(), onError: reject }
+          )
+        ),
+      ]);
+      setServerSyncStatus("ok");
+      toast({ title: "Credentials saved", description: "Saved to browser and synced to server for bot use." });
+    } catch {
+      setServerSyncStatus("error");
+      toast({ title: "Credentials saved locally", description: "Browser save succeeded but server sync failed — bot automation may not work.", variant: "destructive" });
+    }
   };
 
   const handleClear = () => {
@@ -122,7 +144,7 @@ export default function Settings() {
           <KeyRound className="w-3.5 h-3.5" />
           Security Notice
         </div>
-        <p>API keys are stored only in your browser&apos;s localStorage. They are sent directly to exchange APIs via the backend proxy and never persisted server-side.</p>
+        <p>API keys are saved to your browser and synced to the server. Server-side storage enables the automated bot to trade on your behalf without the browser being open.</p>
         <p>Use API keys with futures trading permissions only. We recommend IP whitelisting on each exchange.</p>
       </div>
 
@@ -234,13 +256,14 @@ export default function Settings() {
             />
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             <Button
               type="submit"
+              disabled={storeCredential.isPending}
               className="bg-primary text-primary-foreground hover:bg-primary/90 font-semibold"
               data-testid="button-save-credentials"
             >
-              Save Credentials
+              {storeCredential.isPending ? "Saving…" : "Save Credentials"}
             </Button>
 
             {hasCredentials && (
@@ -254,6 +277,19 @@ export default function Settings() {
                 <Trash2 className="w-4 h-4 mr-1.5" />
                 Clear All
               </Button>
+            )}
+
+            {serverSyncStatus === "ok" && (
+              <span className="flex items-center gap-1.5 text-xs text-primary" data-testid="server-sync-ok">
+                <Server className="w-3.5 h-3.5" />
+                Synced to server
+              </span>
+            )}
+            {serverSyncStatus === "error" && (
+              <span className="flex items-center gap-1.5 text-xs text-destructive" data-testid="server-sync-error">
+                <Server className="w-3.5 h-3.5" />
+                Server sync failed
+              </span>
             )}
           </div>
         </form>

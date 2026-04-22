@@ -14,6 +14,8 @@ tags:
     description: Exchange data and trading operations
   - name: trades
     description: Trade history operations
+  - name: credentials
+    description: Server-side credential storage for bot automation
 paths:
   /healthz:
     get:
@@ -286,6 +288,54 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ClosePositionResult"
+
+  /credentials:
+    post:
+      operationId: storeCredential
+      tags: [credentials]
+      summary: Store or update API credentials for an exchange server-side
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StoreCredentialRequest"
+      responses:
+        "200":
+          description: Credential stored
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StoreCredentialResult"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+    get:
+      operationId: getCredentialStatus
+      tags: [credentials]
+      summary: Get which exchanges have credentials stored server-side (no secrets returned)
+      responses:
+        "200":
+          description: Credential status list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CredentialStatusResponse"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
 
   /trades:
     get:
@@ -690,4 +740,54 @@ components:
       required:
         - trades
         - stats
+
+    StoreCredentialRequest:
+      type: object
+      properties:
+        exchange:
+          type: string
+          enum: [bybit, binance]
+          description: Exchange identifier
+        apiKey:
+          type: string
+          description: API key for the exchange
+        apiSecret:
+          type: string
+          description: API secret for the exchange
+      required:
+        - exchange
+        - apiKey
+        - apiSecret
+
+    StoreCredentialResult:
+      type: object
+      properties:
+        exchange:
+          type: string
+        stored:
+          type: boolean
+      required:
+        - exchange
+        - stored
+
+    CredentialStatus:
+      type: object
+      properties:
+        exchange:
+          type: string
+        updatedAt:
+          type: string
+      required:
+        - exchange
+        - updatedAt
+
+    CredentialStatusResponse:
+      type: object
+      properties:
+        exchanges:
+          type: array
+          items:
+            $ref: "#/components/schemas/CredentialStatus"
+      required:
+        - exchanges
 

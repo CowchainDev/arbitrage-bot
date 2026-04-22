@@ -20,6 +20,7 @@ import type {
   ApiError,
   ClosePositionRequest,
   ClosePositionResult,
+  CredentialStatusResponse,
   ExchangeBalances,
   HealthStatus,
   JumpInRequest,
@@ -27,6 +28,8 @@ import type {
   OrderRequest,
   OrderResult,
   Position,
+  StoreCredentialRequest,
+  StoreCredentialResult,
   TokenSpread,
   TradeHistoryResponse,
 } from "./api.schemas";
@@ -600,6 +603,167 @@ export const useClosePosition = <
 > => {
   return useMutation(getClosePositionMutationOptions(options));
 };
+
+/**
+ * @summary Store or update API credentials for an exchange server-side
+ */
+export const getStoreCredentialUrl = () => {
+  return `/api/credentials`;
+};
+
+export const storeCredential = async (
+  storeCredentialRequest: StoreCredentialRequest,
+  options?: RequestInit,
+): Promise<StoreCredentialResult> => {
+  return customFetch<StoreCredentialResult>(getStoreCredentialUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(storeCredentialRequest),
+  });
+};
+
+export const getStoreCredentialMutationOptions = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof storeCredential>>,
+    TError,
+    { data: BodyType<StoreCredentialRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof storeCredential>>,
+  TError,
+  { data: BodyType<StoreCredentialRequest> },
+  TContext
+> => {
+  const mutationKey = ["storeCredential"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof storeCredential>>,
+    { data: BodyType<StoreCredentialRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return storeCredential(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type StoreCredentialMutationResult = NonNullable<
+  Awaited<ReturnType<typeof storeCredential>>
+>;
+export type StoreCredentialMutationBody = BodyType<StoreCredentialRequest>;
+export type StoreCredentialMutationError = ErrorType<ApiError>;
+
+/**
+ * @summary Store or update API credentials for an exchange server-side
+ */
+export const useStoreCredential = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof storeCredential>>,
+    TError,
+    { data: BodyType<StoreCredentialRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof storeCredential>>,
+  TError,
+  { data: BodyType<StoreCredentialRequest> },
+  TContext
+> => {
+  return useMutation(getStoreCredentialMutationOptions(options));
+};
+
+/**
+ * @summary Get which exchanges have credentials stored server-side (no secrets returned)
+ */
+export const getGetCredentialStatusUrl = () => {
+  return `/api/credentials`;
+};
+
+export const getCredentialStatus = async (
+  options?: RequestInit,
+): Promise<CredentialStatusResponse> => {
+  return customFetch<CredentialStatusResponse>(getGetCredentialStatusUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetCredentialStatusQueryKey = () => {
+  return [`/api/credentials`] as const;
+};
+
+export const getGetCredentialStatusQueryOptions = <
+  TData = Awaited<ReturnType<typeof getCredentialStatus>>,
+  TError = ErrorType<ApiError>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getCredentialStatus>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetCredentialStatusQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getCredentialStatus>>
+  > = ({ signal }) => getCredentialStatus({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getCredentialStatus>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetCredentialStatusQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getCredentialStatus>>
+>;
+export type GetCredentialStatusQueryError = ErrorType<ApiError>;
+
+/**
+ * @summary Get which exchanges have credentials stored server-side (no secrets returned)
+ */
+
+export function useGetCredentialStatus<
+  TData = Awaited<ReturnType<typeof getCredentialStatus>>,
+  TError = ErrorType<ApiError>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getCredentialStatus>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetCredentialStatusQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
 
 /**
  * @summary Get trade history with aggregate stats
