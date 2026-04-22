@@ -1332,6 +1332,22 @@ export default function Dashboard() {
               <TrendingUp className="w-4 h-4 text-primary" />
               Open Positions
               <span className="bg-primary/20 text-primary text-xs px-1.5 py-0.5 rounded">{positions.length}</span>
+              {streamStatus === "open" ? (
+                <span className="flex items-center gap-1 text-xs font-medium px-1.5 py-0.5 rounded bg-green-500/15 text-green-500">
+                  <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                  Live
+                </span>
+              ) : streamStatus === "connecting" ? (
+                <span className="flex items-center gap-1 text-xs font-medium px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-400">
+                  <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
+                  Connecting
+                </span>
+              ) : (
+                <span className="flex items-center gap-1 text-xs font-medium px-1.5 py-0.5 rounded bg-yellow-500/15 text-yellow-500">
+                  <span className="w-1.5 h-1.5 rounded-full bg-yellow-500" />
+                  Polling
+                </span>
+              )}
             </div>
             {showPositions ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
           </button>
