@@ -21,9 +21,11 @@ import {
 import { getStoredCredentials } from "../routes/credentials";
 
 let watcherTimer: ReturnType<typeof setTimeout> | null = null;
+let priceRefreshTimer: ReturnType<typeof setTimeout> | null = null;
 let running = false;
 
 const WATCHER_INTERVAL_MS = 1500;
+const PRICE_REFRESH_INTERVAL_MS = 5000;
 
 type PriceRow = { symbol: string; bybitPrice: number | null; binancePrice: number | null };
 
@@ -197,14 +199,8 @@ async function watcherTick(): Promise<void> {
 
     if (enabledBots.length === 0) return;
 
-    // Refresh price cache each tick so watcher has live data
-    // fetchPriceSpreads has a 9 s TTL + in-flight guard; safe to call every 1.5 s
-    try {
-      await fetchPriceSpreads();
-    } catch (fetchErr) {
-      logger.warn({ fetchErr }, "Bot watcher: price fetch failed, using cached prices");
-    }
-
+    // Reads from in-memory cache only — no exchange calls here.
+    // The separate priceRefreshLoop keeps priceCacheBySymbol fresh every 5 s.
     for (const config of enabledBots) {
       const priceRow = getPriceCacheEntry(config.symbol);
       if (!priceRow) {
@@ -234,19 +230,26 @@ async function watcherTick(): Promise<void> {
       const enterSpread = Number(config.enterSpreadPct);
       const forceStopTriggered = forceStop > 0 && openLegs.length > 0 && totalPnl <= -forceStop;
 
-      // Close condition: spread has compressed at or below closeSpread, OR force-stop
-      // Using exact threshold semantics per spec: close when spreadPct <= closeSpread
-      // This also catches the case where the spread crosses zero (strong compression)
-      const spreadBelowClose = spreadPct <= closeSpread;
+      // Per-leg directional close: check whether the spread has returned past the
+      // close threshold from the direction the leg was opened.
+      // - Bybit-short leg (opened when Bybit > Binance, spreadPct > 0):
+      //   close when spreadPct <= closeSpread (spread compressed back to threshold)
+      // - Bybit-long leg (opened when Binance > Bybit, spreadPct < 0):
+      //   close when spreadPct >= -closeSpread (spread compressed back to threshold)
+      // Both cases also catch spread crossing zero (reverse arbitrage fully closed out).
+      function legShouldClose(leg: BotLeg): boolean {
+        if (leg.bybitSide === "short") return spreadPct <= closeSpread;
+        return spreadPct >= -closeSpread;
+      }
 
       let confirmedClosedCount = 0;
       let anyForceStop = false;
-      if (spreadBelowClose || forceStopTriggered) {
-        for (const leg of openLegs) {
+      for (const leg of openLegs) {
+        if (legShouldClose(leg) || forceStopTriggered) {
           const closed = await closeLeg(leg, bybitPrice, binancePrice);
           if (closed) confirmedClosedCount++;
+          if (forceStopTriggered) anyForceStop = true;
         }
-        if (forceStopTriggered) anyForceStop = true;
       }
 
       if (anyForceStop) {
@@ -256,9 +259,10 @@ async function watcherTick(): Promise<void> {
       }
 
       const remainingOpen = openLegs.length - confirmedClosedCount;
-      // Open condition: spread >= enterSpread (exact threshold, positive spreads only)
+      // Open condition: absolute spread magnitude >= enterSpread threshold
+      // Works for both positive (Bybit > Binance) and negative (Binance > Bybit) spreads
       const shouldOpen =
-        spreadPct >= enterSpread &&
+        Math.abs(spreadPct) >= enterSpread &&
         remainingOpen < config.maxOrders;
 
       if (shouldOpen) {
@@ -270,9 +274,22 @@ async function watcherTick(): Promise<void> {
   }
 }
 
+function startPriceRefreshLoop(): void {
+  const tick = () => {
+    fetchPriceSpreads()
+      .catch((err) => logger.warn({ err }, "Bot watcher: background price refresh failed"))
+      .finally(() => {
+        if (running) priceRefreshTimer = setTimeout(tick, PRICE_REFRESH_INTERVAL_MS);
+      });
+  };
+  priceRefreshTimer = setTimeout(tick, 0);
+}
+
 export function startBotWatcher(): void {
   if (running) return;
   running = true;
+
+  startPriceRefreshLoop();
 
   const tick = () => {
     watcherTick().finally(() => {
@@ -291,6 +308,10 @@ export function stopBotWatcher(): void {
   if (watcherTimer) {
     clearTimeout(watcherTimer);
     watcherTimer = null;
+  }
+  if (priceRefreshTimer) {
+    clearTimeout(priceRefreshTimer);
+    priceRefreshTimer = null;
   }
   logger.info("Bot watcher stopped");
 }
