@@ -7,7 +7,7 @@ import {
   type BotConfig,
   type BotLeg,
 } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import {
   fetchPriceSpreads,
@@ -190,84 +190,103 @@ async function closeLeg(
   return true;
 }
 
+async function processBotConfig(config: BotConfig, canOpen: boolean): Promise<void> {
+  const priceRow = getPriceCacheEntry(config.symbol);
+  if (!priceRow) {
+    logger.warn({ symbol: config.symbol }, "Bot: symbol not in price cache yet — skipping tick");
+    return;
+  }
+
+  const spreadPctRaw = getSpreadPct(priceRow.bybitPrice, priceRow.binancePrice);
+  if (spreadPctRaw === null) return;
+  const spreadPct: number = spreadPctRaw;
+
+  const bybitPrice = priceRow.bybitPrice!;
+  const binancePrice = priceRow.binancePrice!;
+
+  const openLegs = await db
+    .select()
+    .from(botLegsTable)
+    .where(and(eq(botLegsTable.botConfigId, config.id), eq(botLegsTable.status, "open")));
+
+  const totalPnl = openLegs.reduce(
+    (sum, leg) => sum + computeLegPnl(leg, bybitPrice, binancePrice),
+    0,
+  );
+
+  const forceStop = Number(config.forceStopUsd);
+  const closeSpread = Number(config.closeSpreadPct);
+  const enterSpread = Number(config.enterSpreadPct);
+  const forceStopTriggered = forceStop > 0 && openLegs.length > 0 && totalPnl <= -forceStop;
+
+  // Per-leg directional close: close when spread has returned to threshold
+  // - bybit-short leg (opened at positive spread): close when spreadPct <= closeSpread
+  // - bybit-long leg (opened at negative spread): close when spreadPct >= -closeSpread
+  // Both catch spread crossing zero (fully reversed arbitrage)
+  function legShouldClose(leg: BotLeg): boolean {
+    if (leg.bybitSide === "short") return spreadPct <= closeSpread;
+    return spreadPct >= -closeSpread;
+  }
+
+  let confirmedClosedCount = 0;
+  let anyForceStop = false;
+  for (const leg of openLegs) {
+    if (legShouldClose(leg) || forceStopTriggered) {
+      const closed = await closeLeg(leg, bybitPrice, binancePrice);
+      if (closed) confirmedClosedCount++;
+      if (forceStopTriggered) anyForceStop = true;
+    }
+  }
+
+  if (anyForceStop) {
+    logger.warn({ symbol: config.symbol, totalPnl, forceStopUsd: forceStop },
+      "Bot: force-stop triggered — skipping new open this tick");
+    return;
+  }
+
+  if (!canOpen) return;
+
+  const remainingOpen = openLegs.length - confirmedClosedCount;
+  // Open: abs spread >= threshold (works for both spread directions)
+  const shouldOpen = Math.abs(spreadPct) >= enterSpread && remainingOpen < config.maxOrders;
+  if (shouldOpen) {
+    await openLeg(config, spreadPct);
+  }
+}
+
 async function watcherTick(): Promise<void> {
   try {
+    // Phase 1: collect configs to process this tick
+    // - Enabled bots: can open new legs AND close existing legs
+    // - Disabled bots with open legs: close-only (bot stopped but legs still need monitoring)
     const enabledBots = await db
       .select()
       .from(botConfigsTable)
       .where(eq(botConfigsTable.enabled, true));
 
-    if (enabledBots.length === 0) return;
+    const enabledIds = new Set(enabledBots.map(b => b.id));
 
-    // Reads from in-memory cache only — no exchange calls here.
-    // The separate priceRefreshLoop keeps priceCacheBySymbol fresh every 5 s.
+    const botsWithLegs = await db
+      .selectDistinct({ botConfigId: botLegsTable.botConfigId })
+      .from(botLegsTable)
+      .where(eq(botLegsTable.status, "open"));
+
+    const disabledWithLegIds = botsWithLegs
+      .map(r => r.botConfigId)
+      .filter(id => !enabledIds.has(id));
+
+    const disabledWithLegConfigs = disabledWithLegIds.length > 0
+      ? await db.select().from(botConfigsTable).where(inArray(botConfigsTable.id, disabledWithLegIds))
+      : [];
+
+    if (enabledBots.length === 0 && disabledWithLegConfigs.length === 0) return;
+
+    // Reads from in-memory cache only — priceRefreshLoop keeps it fresh every 5 s
     for (const config of enabledBots) {
-      const priceRow = getPriceCacheEntry(config.symbol);
-      if (!priceRow) {
-        logger.warn({ symbol: config.symbol }, "Bot: symbol not in price cache yet — skipping tick");
-        continue;
-      }
-
-      const spreadPctRaw = getSpreadPct(priceRow.bybitPrice, priceRow.binancePrice);
-      if (spreadPctRaw === null) continue;
-      const spreadPct: number = spreadPctRaw;
-
-      const bybitPrice = priceRow.bybitPrice!;
-      const binancePrice = priceRow.binancePrice!;
-
-      const openLegs = await db
-        .select()
-        .from(botLegsTable)
-        .where(and(eq(botLegsTable.botConfigId, config.id), eq(botLegsTable.status, "open")));
-
-      const totalPnl = openLegs.reduce(
-        (sum, leg) => sum + computeLegPnl(leg, bybitPrice, binancePrice),
-        0,
-      );
-
-      const forceStop = Number(config.forceStopUsd);
-      const closeSpread = Number(config.closeSpreadPct);
-      const enterSpread = Number(config.enterSpreadPct);
-      const forceStopTriggered = forceStop > 0 && openLegs.length > 0 && totalPnl <= -forceStop;
-
-      // Per-leg directional close: check whether the spread has returned past the
-      // close threshold from the direction the leg was opened.
-      // - Bybit-short leg (opened when Bybit > Binance, spreadPct > 0):
-      //   close when spreadPct <= closeSpread (spread compressed back to threshold)
-      // - Bybit-long leg (opened when Binance > Bybit, spreadPct < 0):
-      //   close when spreadPct >= -closeSpread (spread compressed back to threshold)
-      // Both cases also catch spread crossing zero (reverse arbitrage fully closed out).
-      function legShouldClose(leg: BotLeg): boolean {
-        if (leg.bybitSide === "short") return spreadPct <= closeSpread;
-        return spreadPct >= -closeSpread;
-      }
-
-      let confirmedClosedCount = 0;
-      let anyForceStop = false;
-      for (const leg of openLegs) {
-        if (legShouldClose(leg) || forceStopTriggered) {
-          const closed = await closeLeg(leg, bybitPrice, binancePrice);
-          if (closed) confirmedClosedCount++;
-          if (forceStopTriggered) anyForceStop = true;
-        }
-      }
-
-      if (anyForceStop) {
-        logger.warn({ symbol: config.symbol, totalPnl, forceStopUsd: forceStop },
-          "Bot: force-stop triggered — skipping new open this tick");
-        continue;
-      }
-
-      const remainingOpen = openLegs.length - confirmedClosedCount;
-      // Open condition: absolute spread magnitude >= enterSpread threshold
-      // Works for both positive (Bybit > Binance) and negative (Binance > Bybit) spreads
-      const shouldOpen =
-        Math.abs(spreadPct) >= enterSpread &&
-        remainingOpen < config.maxOrders;
-
-      if (shouldOpen) {
-        await openLeg(config, spreadPct);
-      }
+      await processBotConfig(config, true);
+    }
+    for (const config of disabledWithLegConfigs) {
+      await processBotConfig(config, false);
     }
   } catch (err) {
     logger.error({ err }, "Bot watcher tick error");
