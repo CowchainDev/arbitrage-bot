@@ -313,6 +313,13 @@ paths:
       operationId: createBot
       tags: [bots]
       summary: Create a new bot configuration
+      parameters:
+        - in: header
+          name: x-bot-secret
+          required: false
+          description: Required in production when BOT_SECRET env var is set
+          schema:
+            type: string
       requestBody:
         required: true
         content:
@@ -350,6 +357,12 @@ paths:
           required: true
           schema:
             type: integer
+        - in: header
+          name: x-bot-secret
+          required: false
+          description: Required in production when BOT_SECRET env var is set
+          schema:
+            type: string
       requestBody:
         required: true
         content:
@@ -391,6 +404,12 @@ paths:
           required: true
           schema:
             type: integer
+        - in: header
+          name: x-bot-secret
+          required: false
+          description: Required in production when BOT_SECRET env var is set
+          schema:
+            type: string
       responses:
         "200":
           description: Bot deleted
@@ -416,6 +435,12 @@ paths:
           required: true
           schema:
             type: integer
+        - in: header
+          name: x-bot-secret
+          required: false
+          description: Required in production when BOT_SECRET env var is set
+          schema:
+            type: string
       responses:
         "200":
           description: Bot started
@@ -441,6 +466,12 @@ paths:
           required: true
           schema:
             type: integer
+        - in: header
+          name: x-bot-secret
+          required: false
+          description: Required in production when BOT_SECRET env var is set
+          schema:
+            type: string
       responses:
         "200":
           description: Bot stopped

@@ -174,6 +174,7 @@ async function fetchAndCachePrices(): Promise<unknown[]> {
     });
   }
 
+  priceCacheBySymbol.clear();
   for (const s of spreads) {
     priceCacheBySymbol.set(s.symbol, {
       bybitPrice: s.bybitPrice as number | null,
@@ -576,75 +577,36 @@ router.post("/exchanges/close-position", async (req: Request, res: Response) => 
     const bybit = createBybitExchange(bybitCreds.apiKey, bybitCreds.secret);
     const binance = createBinanceExchange(binanceCreds.apiKey, binanceCreds.secret);
 
-    const bybitCloseSide = bybitSide === "long" ? "sell" : "buy";
-    const binanceCloseSide = binanceSide === "long" ? "sell" : "buy";
+    const result = await closePositionInternal({
+      bybit,
+      binance,
+      symbol,
+      bybitSide: bybitSide as "long" | "short",
+      binanceSide: binanceSide as "long" | "short",
+      bybitQty,
+      binanceQty,
+      spreadAtEntry,
+      entryTime: entryTime ? new Date(entryTime) : new Date(),
+      quantity,
+    });
 
-    const [bybitOrder, binanceOrder] = await Promise.allSettled([
-      bybitCreateOrder(bybit, `${symbol}/USDT:USDT`, bybitCloseSide, bybitQty, { reduceOnly: true }, bybitSide as "long" | "short"),
-      binance.createMarketOrder(
-        `${symbol}/USDT:USDT`,
-        binanceCloseSide,
-        binanceQty,
-        undefined,
-        { reduceOnly: true }
-      ),
-    ]);
-
-    const bybitResult = bybitOrder.status === "fulfilled"
-      ? {
-          orderId: String(bybitOrder.value.id),
-          exchange: "bybit",
-          symbol,
-          side: bybitCloseSide,
-          filledQty: bybitOrder.value.filled ?? bybitQty,
-          avgPrice: bybitOrder.value.average ?? 0,
-          status: bybitOrder.value.status ?? "closed",
-        }
-      : null;
-
-    const binanceResult = binanceOrder.status === "fulfilled"
-      ? {
-          orderId: String(binanceOrder.value.id),
-          exchange: "binance",
-          symbol,
-          side: binanceCloseSide,
-          filledQty: binanceOrder.value.filled ?? binanceQty,
-          avgPrice: binanceOrder.value.average ?? 0,
-          status: binanceOrder.value.status ?? "closed",
-        }
-      : null;
-
-    const bothClosed = bybitOrder.status === "fulfilled" && binanceOrder.status === "fulfilled";
-    const bybitError = bybitOrder.status === "rejected" ? String(bybitOrder.reason) : undefined;
-    const binanceError = binanceOrder.status === "rejected" ? String(binanceOrder.reason) : undefined;
-
-    if (!bothClosed) {
-      req.log.warn({ bybitError, binanceError }, "close-position: partial failure");
+    if (!result.bothClosed) {
+      req.log.warn(
+        { bybitError: result.bybitError, binanceError: result.binanceError },
+        "close-position: partial failure",
+      );
     }
 
     const realizedPnl = clientRealizedPnl ?? 0;
 
-    if (bothClosed) {
-      try {
-        await db.insert(closedTradesTable).values({
-          symbol,
-          longExchange,
-          shortExchange,
-          spreadAtEntry: String(spreadAtEntry),
-          realizedPnl: String(realizedPnl),
-          quantity: String(quantity),
-          entryTime: entryTime ? new Date(entryTime) : new Date(),
-          closeTime: new Date(),
-        });
-      } catch (dbErr) {
-        req.log.error({ dbErr }, "close-position: failed to record trade to DB");
-      }
-    }
-
     res.json({
-      success: bothClosed,
-      bybitResult,
-      binanceResult,
+      success: result.bothClosed,
+      bybitResult: result.bybitOrderId
+        ? { orderId: result.bybitOrderId, exchange: "bybit", symbol, filledQty: bybitQty }
+        : null,
+      binanceResult: result.binanceOrderId
+        ? { orderId: result.binanceOrderId, exchange: "binance", symbol, filledQty: binanceQty }
+        : null,
       realizedPnl,
     });
   } catch (err) {

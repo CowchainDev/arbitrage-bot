@@ -334,6 +334,13 @@ export const ListBotsResponse = zod.object({
 /**
  * @summary Create a new bot configuration
  */
+export const CreateBotHeader = zod.object({
+  "x-bot-secret": zod
+    .string()
+    .optional()
+    .describe("Required in production when BOT_SECRET env var is set"),
+});
+
 export const CreateBotBody = zod.object({
   symbol: zod.string().describe("Token symbol e.g. BTC"),
   enterSpreadPct: zod.number().describe("Minimum spread % to open a new leg"),
@@ -384,6 +391,13 @@ export const UpdateBotParams = zod.object({
   id: zod.coerce.number(),
 });
 
+export const UpdateBotHeader = zod.object({
+  "x-bot-secret": zod
+    .string()
+    .optional()
+    .describe("Required in production when BOT_SECRET env var is set"),
+});
+
 export const UpdateBotBody = zod.object({
   enterSpreadPct: zod.number().optional(),
   closeSpreadPct: zod.number().optional(),
@@ -428,6 +442,13 @@ export const DeleteBotParams = zod.object({
   id: zod.coerce.number(),
 });
 
+export const DeleteBotHeader = zod.object({
+  "x-bot-secret": zod
+    .string()
+    .optional()
+    .describe("Required in production when BOT_SECRET env var is set"),
+});
+
 export const DeleteBotResponse = zod.object({
   deleted: zod.boolean(),
 });
@@ -437,6 +458,13 @@ export const DeleteBotResponse = zod.object({
  */
 export const StartBotParams = zod.object({
   id: zod.coerce.number(),
+});
+
+export const StartBotHeader = zod.object({
+  "x-bot-secret": zod
+    .string()
+    .optional()
+    .describe("Required in production when BOT_SECRET env var is set"),
 });
 
 export const StartBotResponse = zod.object({
@@ -471,6 +499,13 @@ export const StartBotResponse = zod.object({
  */
 export const StopBotParams = zod.object({
   id: zod.coerce.number(),
+});
+
+export const StopBotHeader = zod.object({
+  "x-bot-secret": zod
+    .string()
+    .optional()
+    .describe("Required in production when BOT_SECRET env var is set"),
 });
 
 export const StopBotResponse = zod.object({
