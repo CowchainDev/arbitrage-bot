@@ -10,6 +10,7 @@ import {
 import { eq, and } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import {
+  fetchPriceSpreads,
   getPriceCacheEntry,
   createBybitExchange,
   createBinanceExchange,
@@ -195,6 +196,14 @@ async function watcherTick(): Promise<void> {
       .where(eq(botConfigsTable.enabled, true));
 
     if (enabledBots.length === 0) return;
+
+    // Refresh price cache each tick so watcher has live data
+    // fetchPriceSpreads has a 9 s TTL + in-flight guard; safe to call every 1.5 s
+    try {
+      await fetchPriceSpreads();
+    } catch (fetchErr) {
+      logger.warn({ fetchErr }, "Bot watcher: price fetch failed, using cached prices");
+    }
 
     for (const config of enabledBots) {
       const priceRow = getPriceCacheEntry(config.symbol);

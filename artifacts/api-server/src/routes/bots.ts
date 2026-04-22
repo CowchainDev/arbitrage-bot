@@ -205,6 +205,12 @@ router.get("/bots/:id/legs", async (req: Request, res: Response) => {
   }
 
   try {
+    const [bot] = await db.select({ id: botConfigsTable.id }).from(botConfigsTable).where(eq(botConfigsTable.id, id));
+    if (!bot) {
+      res.status(404).json({ error: "not_found", message: "Bot not found" });
+      return;
+    }
+
     const legs = await db
       .select()
       .from(botLegsTable)

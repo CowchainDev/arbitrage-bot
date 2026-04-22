@@ -349,7 +349,7 @@ paths:
           name: id
           required: true
           schema:
-            type: number
+            type: integer
       requestBody:
         required: true
         content:
@@ -390,7 +390,7 @@ paths:
           name: id
           required: true
           schema:
-            type: number
+            type: integer
       responses:
         "200":
           description: Bot deleted
@@ -415,7 +415,7 @@ paths:
           name: id
           required: true
           schema:
-            type: number
+            type: integer
       responses:
         "200":
           description: Bot started
@@ -440,7 +440,7 @@ paths:
           name: id
           required: true
           schema:
-            type: number
+            type: integer
       responses:
         "200":
           description: Bot stopped
@@ -465,7 +465,7 @@ paths:
           name: id
           required: true
           schema:
-            type: number
+            type: integer
       responses:
         "200":
           description: Open legs
