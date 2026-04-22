@@ -1451,7 +1451,23 @@ export default function Dashboard() {
           ))}
         </div>
 
-        <div className="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground">
+        <div className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
+          {streamStatus === "open" ? (
+            <span className="flex items-center gap-1 font-medium px-1.5 py-0.5 rounded bg-green-500/15 text-green-500">
+              <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+              Live
+            </span>
+          ) : streamStatus === "connecting" ? (
+            <span className="flex items-center gap-1 font-medium px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-400">
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
+              Connecting
+            </span>
+          ) : (
+            <span className="flex items-center gap-1 font-medium px-1.5 py-0.5 rounded bg-yellow-500/15 text-yellow-500">
+              <span className="w-1.5 h-1.5 rounded-full bg-yellow-500" />
+              Polling
+            </span>
+          )}
           <div className={`w-1.5 h-1.5 rounded-full live-dot ${isFetching ? "bg-primary" : "bg-muted-foreground"}`} />
           {isLoading ? "Loading..." : `${filteredTokens.length} pairs`}
         </div>
