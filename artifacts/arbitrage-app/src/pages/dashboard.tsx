@@ -174,9 +174,17 @@ function TokenCard({
   botOpenLegsCount?: number;
 }) {
   const legsCount = botOpenLegsCount ?? 0;
-  const showDot = bot != null && (bot.enabled || legsCount > 0);
-  const dotColor = legsCount > 0 ? "bg-amber-400" : "bg-emerald-500";
-  const dotTitle = legsCount > 0 ? `Bot: ${legsCount} leg${legsCount !== 1 ? "s" : ""} open` : "Bot: running";
+  const showDot = bot != null;
+  const dotColor = legsCount > 0
+    ? "bg-amber-400"
+    : bot?.enabled
+      ? "bg-emerald-500"
+      : "bg-muted-foreground";
+  const dotTitle = legsCount > 0
+    ? `Bot: ${legsCount} leg${legsCount !== 1 ? "s" : ""} open`
+    : bot?.enabled
+      ? "Bot: running"
+      : "Bot: stopped";
 
   return (
     <div
@@ -1040,6 +1048,10 @@ function PositionRow({
           >
             Dismiss
           </button>
+        ) : position.id.startsWith("bot-leg-") ? (
+          <span className="text-xs text-muted-foreground italic" data-testid={`bot-leg-managed-${position.symbol}`}>
+            Bot managed
+          </span>
         ) : (
           <button
             onClick={handleClose}
