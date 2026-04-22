@@ -294,7 +294,7 @@ export default function Settings() {
           <span className="font-semibold text-sm">Bot Secret</span>
         </div>
         <p className="text-xs text-muted-foreground">
-          If your server has a <code className="font-mono bg-muted px-1 rounded">BOT_SECRET</code> environment variable set, enter the same value here so the browser can authenticate bot create/start/stop requests.
+          Optional. If you set a <code className="font-mono bg-muted px-1 rounded">BOT_SECRET</code> environment variable on your server, enter the same value here. Without it, bot controls work for anyone who can reach the server.
         </p>
         <div className="flex items-center gap-2">
           <div className="relative flex-1">

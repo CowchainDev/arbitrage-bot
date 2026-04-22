@@ -7,16 +7,10 @@ import { CreateBotBody, UpdateBotBody } from "@workspace/api-zod";
 const router: IRouter = Router();
 
 const BOT_SECRET = process.env["BOT_SECRET"];
-const IS_PROD = process.env["NODE_ENV"] === "production";
 
 function requireBotSecret(req: Request, res: Response, next: NextFunction): void {
   if (!BOT_SECRET) {
-    // In production, refuse all bot mutations when secret is not configured
-    if (IS_PROD) {
-      res.status(503).json({ error: "misconfigured", message: "BOT_SECRET env var must be set in production" });
-      return;
-    }
-    // In development, allow through without secret
+    // No secret configured — allow all requests through
     next();
     return;
   }
