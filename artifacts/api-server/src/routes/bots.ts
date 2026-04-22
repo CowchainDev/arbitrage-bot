@@ -1,15 +1,40 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db } from "@workspace/db";
-import { botConfigsTable, botLegsTable } from "@workspace/db";
+import { botConfigsTable, botLegsTable, type BotConfig, type BotLeg } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { CreateBotBody, UpdateBotBody } from "@workspace/api-zod";
 
 const router: IRouter = Router();
 
+function normalizeBotConfig(bot: BotConfig) {
+  return {
+    ...bot,
+    enterSpreadPct: Number(bot.enterSpreadPct),
+    closeSpreadPct: Number(bot.closeSpreadPct),
+    orderSizeUsd: Number(bot.orderSizeUsd),
+    forceStopUsd: Number(bot.forceStopUsd),
+    createdAt: bot.createdAt.toISOString(),
+    updatedAt: bot.updatedAt.toISOString(),
+  };
+}
+
+function normalizeBotLeg(leg: BotLeg) {
+  return {
+    ...leg,
+    bybitQty: Number(leg.bybitQty),
+    binanceQty: Number(leg.binanceQty),
+    bybitEntry: Number(leg.bybitEntry),
+    binanceEntry: Number(leg.binanceEntry),
+    spreadAtEntry: Number(leg.spreadAtEntry),
+    openedAt: leg.openedAt.toISOString(),
+    closedAt: leg.closedAt ? leg.closedAt.toISOString() : undefined,
+  };
+}
+
 router.get("/bots", async (_req: Request, res: Response) => {
   try {
     const bots = await db.select().from(botConfigsTable).orderBy(botConfigsTable.createdAt);
-    res.json({ bots });
+    res.json({ bots: bots.map(normalizeBotConfig) });
   } catch (err) {
     res.status(500).json({ error: "internal_error", message: "Failed to fetch bots" });
   }
@@ -45,7 +70,7 @@ router.post("/bots", async (req: Request, res: Response) => {
       })
       .returning();
 
-    res.json({ bot });
+    res.json({ bot: normalizeBotConfig(bot) });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Failed to create bot";
     res.status(500).json({ error: "internal_error", message: msg });
@@ -91,7 +116,7 @@ router.put("/bots/:id", async (req: Request, res: Response) => {
       return;
     }
 
-    res.json({ bot });
+    res.json({ bot: normalizeBotConfig(bot) });
   } catch (err) {
     res.status(500).json({ error: "internal_error", message: "Failed to update bot" });
   }
@@ -141,7 +166,7 @@ router.post("/bots/:id/start", async (req: Request, res: Response) => {
       return;
     }
 
-    res.json({ bot });
+    res.json({ bot: normalizeBotConfig(bot) });
   } catch (err) {
     res.status(500).json({ error: "internal_error", message: "Failed to start bot" });
   }
@@ -166,7 +191,7 @@ router.post("/bots/:id/stop", async (req: Request, res: Response) => {
       return;
     }
 
-    res.json({ bot });
+    res.json({ bot: normalizeBotConfig(bot) });
   } catch (err) {
     res.status(500).json({ error: "internal_error", message: "Failed to stop bot" });
   }
@@ -186,7 +211,7 @@ router.get("/bots/:id/legs", async (req: Request, res: Response) => {
       .where(and(eq(botLegsTable.botConfigId, id), eq(botLegsTable.status, "open")))
       .orderBy(botLegsTable.openedAt);
 
-    res.json({ legs });
+    res.json({ legs: legs.map(normalizeBotLeg) });
   } catch (err) {
     res.status(500).json({ error: "internal_error", message: "Failed to fetch legs" });
   }

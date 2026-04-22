@@ -1,3 +1,4 @@
+import ccxt from "ccxt";
 import { db } from "@workspace/db";
 import {
   botConfigsTable,
@@ -8,7 +9,13 @@ import {
 } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { logger } from "../lib/logger";
-import { fetchPriceSpreads, createBybitExchange, createBinanceExchange, bybitCreateOrder } from "../routes/exchanges";
+import {
+  fetchPriceSpreads,
+  createBybitExchange,
+  createBinanceExchange,
+  bybitCreateOrder,
+  placeOrderInternal,
+} from "../routes/exchanges";
 import { getStoredCredentials } from "../routes/credentials";
 
 let watcherTimer: ReturnType<typeof setTimeout> | null = null;
@@ -61,50 +68,33 @@ async function openLeg(config: BotConfig, spreadPct: number): Promise<void> {
     return;
   }
 
-  const bybitSide = spreadPct >= 0 ? "short" : "long";
-  const binanceSide = bybitSide === "long" ? "short" : "long";
+  const bybitSide: "long" | "short" = spreadPct >= 0 ? "short" : "long";
+  const binanceSide: "long" | "short" = bybitSide === "long" ? "short" : "long";
 
   const bybitEx = createBybitExchange(bybitCreds.apiKey, bybitCreds.apiSecret);
   const binanceEx = createBinanceExchange(binanceCreds.apiKey, binanceCreds.apiSecret);
 
-  let bybitResult: { orderId: string; filledQty: number; avgPrice: number } | null = null;
+  let bybitResult: Awaited<ReturnType<typeof placeOrderInternal>> | null = null;
 
   try {
-    if (config.bybitLeverage && config.bybitLeverage !== 1) {
-      try { await bybitEx.setLeverage(config.bybitLeverage, `${config.symbol}/USDT:USDT`); } catch (_) {}
-    }
-    const ticker = await bybitEx.fetchTicker(`${config.symbol}/USDT:USDT`);
-    const price = ticker.last ?? ticker.bid ?? 1;
-    const qty = halfSize / price;
-    const ccxtSide = bybitSide === "long" ? "buy" : "sell";
-    const order = await bybitCreateOrder(bybitEx, `${config.symbol}/USDT:USDT`, ccxtSide, qty, { reduceOnly: false }, bybitSide);
-    bybitResult = { orderId: String(order.id), filledQty: order.filled ?? qty, avgPrice: order.average ?? price };
+    bybitResult = await placeOrderInternal(bybitEx, config.symbol, bybitSide, halfSize, config.bybitLeverage ?? undefined);
   } catch (err) {
     logger.error({ err, symbol: config.symbol }, "Bot: Bybit leg open failed");
     return;
   }
 
   try {
-    if (config.binanceLeverage && config.binanceLeverage !== 1) {
-      try { await binanceEx.setLeverage(config.binanceLeverage, `${config.symbol}/USDT:USDT`); } catch (_) {}
-    }
-    const ticker = await binanceEx.fetchTicker(`${config.symbol}/USDT:USDT`);
-    const price = ticker.last ?? ticker.bid ?? 1;
-    const qty = halfSize / price;
-    const ccxtSide = binanceSide === "long" ? "buy" : "sell";
-    const order = await binanceEx.createMarketOrder(
-      `${config.symbol}/USDT:USDT`, ccxtSide, qty, undefined, { reduceOnly: false }
-    );
+    const binanceResult = await placeOrderInternal(binanceEx, config.symbol, binanceSide, halfSize, config.binanceLeverage ?? undefined);
 
     await db.insert(botLegsTable).values({
       botConfigId: config.id,
       symbol: config.symbol,
       bybitOrderId: bybitResult.orderId,
-      binanceOrderId: String(order.id),
+      binanceOrderId: binanceResult.orderId,
       bybitQty: String(bybitResult.filledQty),
-      binanceQty: String(order.filled ?? qty),
+      binanceQty: String(binanceResult.filledQty),
       bybitEntry: String(bybitResult.avgPrice),
-      binanceEntry: String(order.average ?? price),
+      binanceEntry: String(binanceResult.avgPrice),
       bybitSide,
       binanceSide,
       spreadAtEntry: String(spreadPct),
@@ -118,44 +108,68 @@ async function openLeg(config: BotConfig, spreadPct: number): Promise<void> {
     const compensateSide = bybitSide === "long" ? "sell" : "buy";
     try {
       await bybitCreateOrder(
-        bybitEx, `${config.symbol}/USDT:USDT`, compensateSide, bybitResult.filledQty,
-        { reduceOnly: true }, bybitSide
+        bybitEx as InstanceType<typeof ccxt.bybit>,
+        `${config.symbol}/USDT:USDT`,
+        compensateSide,
+        bybitResult.filledQty,
+        { reduceOnly: true },
+        bybitSide,
       );
+      logger.info({ symbol: config.symbol }, "Bot: Bybit compensation order placed");
     } catch (compErr) {
       logger.error({ compErr, symbol: config.symbol }, "Bot: Bybit compensation FAILED — manual intervention required");
     }
   }
 }
 
-async function closeLeg(leg: BotLeg, bybitPrice: number, binancePrice: number): Promise<void> {
+async function closeLeg(
+  leg: BotLeg,
+  bybitPrice: number,
+  binancePrice: number,
+): Promise<boolean> {
   const bybitCreds = await getStoredCredentials("bybit");
   const binanceCreds = await getStoredCredentials("binance");
 
-  if (!bybitCreds || !binanceCreds) return;
+  if (!bybitCreds || !binanceCreds) return false;
 
   const bybitEx = createBybitExchange(bybitCreds.apiKey, bybitCreds.apiSecret);
   const binanceEx = createBinanceExchange(binanceCreds.apiKey, binanceCreds.apiSecret);
 
-  const bybitCloseSide = leg.bybitSide === "long" ? "sell" : "buy";
-  const binanceCloseSide = leg.binanceSide === "long" ? "sell" : "buy";
+  const bybitCloseSide: "buy" | "sell" = leg.bybitSide === "long" ? "sell" : "buy";
+  const binanceCloseSide: "buy" | "sell" = leg.binanceSide === "long" ? "sell" : "buy";
   const bybitQty = Number(leg.bybitQty);
   const binanceQty = Number(leg.binanceQty);
 
   const [bybitOrder, binanceOrder] = await Promise.allSettled([
-    bybitCreateOrder(bybitEx, `${leg.symbol}/USDT:USDT`, bybitCloseSide, bybitQty, { reduceOnly: true }, leg.bybitSide as "long" | "short"),
-    binanceEx.createMarketOrder(`${leg.symbol}/USDT:USDT`, binanceCloseSide, binanceQty, undefined, { reduceOnly: true }),
+    bybitCreateOrder(
+      bybitEx as InstanceType<typeof ccxt.bybit>,
+      `${leg.symbol}/USDT:USDT`,
+      bybitCloseSide,
+      bybitQty,
+      { reduceOnly: true },
+      leg.bybitSide as "long" | "short",
+    ),
+    binanceEx.createMarketOrder(
+      `${leg.symbol}/USDT:USDT`,
+      binanceCloseSide,
+      binanceQty,
+      undefined,
+      { reduceOnly: true },
+    ),
   ]);
 
   const bothClosed = bybitOrder.status === "fulfilled" && binanceOrder.status === "fulfilled";
 
   if (!bothClosed) {
     if (bybitOrder.status === "rejected") {
-      logger.error({ err: bybitOrder.reason, symbol: leg.symbol, legId: leg.id }, "Bot: Bybit leg close failed — leg remains open for retry");
+      logger.error({ err: bybitOrder.reason, symbol: leg.symbol, legId: leg.id },
+        "Bot: Bybit leg close failed — leg remains open for retry");
     }
     if (binanceOrder.status === "rejected") {
-      logger.error({ err: binanceOrder.reason, symbol: leg.symbol, legId: leg.id }, "Bot: Binance leg close failed — leg remains open for retry");
+      logger.error({ err: binanceOrder.reason, symbol: leg.symbol, legId: leg.id },
+        "Bot: Binance leg close failed — leg remains open for retry");
     }
-    return;
+    return false;
   }
 
   const realizedPnl = computeLegPnl(leg, bybitPrice, binancePrice);
@@ -183,6 +197,7 @@ async function closeLeg(leg: BotLeg, bybitPrice: number, binancePrice: number): 
   }
 
   logger.info({ legId: leg.id, symbol: leg.symbol, realizedPnl }, "Bot: closed leg successfully");
+  return true;
 }
 
 async function watcherTick(): Promise<void> {
@@ -215,22 +230,33 @@ async function watcherTick(): Promise<void> {
         .from(botLegsTable)
         .where(and(eq(botLegsTable.botConfigId, config.id), eq(botLegsTable.status, "open")));
 
-      const totalPnl = openLegs.reduce((sum, leg) => sum + computeLegPnl(leg, bybitPrice, binancePrice), 0);
+      const totalPnl = openLegs.reduce(
+        (sum, leg) => sum + computeLegPnl(leg, bybitPrice, binancePrice),
+        0,
+      );
+
       const forceStop = Number(config.forceStopUsd);
+      const spreadBelowClose =
+        openLegs.length > 0 &&
+        Math.abs(spreadPct) <= Math.abs(Number(config.closeSpreadPct));
+      const forceStopTriggered = forceStop > 0 && openLegs.length > 0 && totalPnl <= -forceStop;
+      const closeConditionMet = spreadBelowClose || forceStopTriggered;
 
-      const closeConditionMet =
-        Math.abs(spreadPct) <= Math.abs(Number(config.closeSpreadPct)) ||
-        (forceStop > 0 && totalPnl <= -forceStop);
-
-      let closedCount = 0;
-      for (const leg of openLegs) {
-        if (closeConditionMet) {
-          await closeLeg(leg, bybitPrice, binancePrice);
-          closedCount++;
+      let confirmedClosedCount = 0;
+      if (closeConditionMet) {
+        for (const leg of openLegs) {
+          const closed = await closeLeg(leg, bybitPrice, binancePrice);
+          if (closed) confirmedClosedCount++;
         }
       }
 
-      const remainingOpen = openLegs.length - closedCount;
+      if (forceStopTriggered) {
+        logger.warn({ symbol: config.symbol, totalPnl, forceStopUsd: forceStop },
+          "Bot: force-stop triggered — skipping new open this tick");
+        continue;
+      }
+
+      const remainingOpen = openLegs.length - confirmedClosedCount;
       const enterSpread = Math.abs(Number(config.enterSpreadPct));
       const shouldOpen =
         Math.abs(spreadPct) >= enterSpread &&

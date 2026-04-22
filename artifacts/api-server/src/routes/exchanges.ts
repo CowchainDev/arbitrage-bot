@@ -745,7 +745,7 @@ router.get("/positions", async (req: Request, res: Response) => {
   }
 });
 
-async function placeOrderInternal(
+export async function placeOrderInternal(
   ex: ReturnType<typeof createBybitExchange> | ReturnType<typeof createBinanceExchange>,
   symbol: string,
   side: "long" | "short",
