@@ -4,6 +4,7 @@ import { Star, Search, TrendingUp, TrendingDown, Zap, AlertCircle, ChevronDown, 
 import { useGetExchangePrices, getGetExchangePricesQueryKey, useGetPositions, getGetPositionsQueryKey, useJumpIn, useClosePosition, useCreateBot, useStartBot, useStopBot, useUpdateBot, getListBotsQueryKey } from "@workspace/api-client-react";
 import type { TokenSpread, Position, ClosePositionResult, JumpInResult, BotConfig, BotLeg } from "@workspace/api-client-react";
 import { useBots } from "@/hooks/use-bots";
+import { useBotSecret } from "@/hooks/use-bot-secret";
 import { useLocalPositions } from "@/hooks/use-local-positions";
 import { useApiCredentials } from "@/hooks/use-api-credentials";
 import { useFavourites } from "@/hooks/use-favourites";
@@ -262,6 +263,7 @@ function TokenDetailPanel({
   onJumpInSuccess,
   bot,
   botOpenLegsCount,
+  botRequestOptions,
 }: {
   token: TokenSpread;
   onClose: () => void;
@@ -270,6 +272,7 @@ function TokenDetailPanel({
   onJumpInSuccess: (position: Position) => void;
   bot?: BotConfig;
   botOpenLegsCount: number;
+  botRequestOptions?: RequestInit;
 }) {
   // Auto-select: SHORT the expensive side, LONG the cheap side (convergence arb)
   // spreadPct = (bybitPrice - binancePrice) / binancePrice → positive means Bybit is more expensive
@@ -320,10 +323,10 @@ function TokenDetailPanel({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bot?.id, token.symbol]);
 
-  const createBotMutation = useCreateBot();
-  const updateBotMutation = useUpdateBot();
-  const startBotMutation = useStartBot();
-  const stopBotMutation = useStopBot();
+  const createBotMutation = useCreateBot({ request: botRequestOptions });
+  const updateBotMutation = useUpdateBot({ request: botRequestOptions });
+  const startBotMutation = useStartBot({ request: botRequestOptions });
+  const stopBotMutation = useStopBot({ request: botRequestOptions });
 
   useEffect(() => {
     try { localStorage.setItem("arbitrage-useLeverage", String(useLeverage)); } catch {}
@@ -1127,6 +1130,7 @@ export default function Dashboard() {
   const { localPositions, savePosition, removePosition } = useLocalPositions();
   const { setDataSource } = useConnectionStatus();
   const { getBotStatusForSymbol, allOpenLegs } = useBots();
+  const { getBotRequestOptions } = useBotSecret();
 
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<SortOption>("spread_desc");
@@ -1486,6 +1490,7 @@ export default function Dashboard() {
                   onJumpInSuccess={savePosition}
                   bot={botStatus?.bot}
                   botOpenLegsCount={botStatus?.openLegsCount ?? 0}
+                  botRequestOptions={getBotRequestOptions()}
                 />
               );
             })()}
