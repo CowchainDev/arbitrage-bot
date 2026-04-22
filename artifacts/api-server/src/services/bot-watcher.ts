@@ -148,6 +148,16 @@ async function closeLeg(leg: BotLeg, bybitPrice: number, binancePrice: number): 
 
   const bothClosed = bybitOrder.status === "fulfilled" && binanceOrder.status === "fulfilled";
 
+  if (!bothClosed) {
+    if (bybitOrder.status === "rejected") {
+      logger.error({ err: bybitOrder.reason, symbol: leg.symbol, legId: leg.id }, "Bot: Bybit leg close failed — leg remains open for retry");
+    }
+    if (binanceOrder.status === "rejected") {
+      logger.error({ err: binanceOrder.reason, symbol: leg.symbol, legId: leg.id }, "Bot: Binance leg close failed — leg remains open for retry");
+    }
+    return;
+  }
+
   const realizedPnl = computeLegPnl(leg, bybitPrice, binancePrice);
 
   await db
@@ -155,33 +165,24 @@ async function closeLeg(leg: BotLeg, bybitPrice: number, binancePrice: number): 
     .set({ status: "closed", closedAt: new Date() })
     .where(eq(botLegsTable.id, leg.id));
 
-  if (bothClosed) {
-    try {
-      const longExchange = leg.bybitSide === "long" ? "bybit" : "binance";
-      const shortExchange = leg.bybitSide === "short" ? "bybit" : "binance";
-      await db.insert(closedTradesTable).values({
-        symbol: leg.symbol,
-        longExchange,
-        shortExchange,
-        spreadAtEntry: String(leg.spreadAtEntry),
-        realizedPnl: String(realizedPnl),
-        quantity: String((bybitQty * bybitPrice + binanceQty * binancePrice) / 2),
-        entryTime: leg.openedAt,
-        closeTime: new Date(),
-      });
-    } catch (dbErr) {
-      logger.error({ dbErr }, "Bot: failed to record closed trade");
-    }
-  } else {
-    if (bybitOrder.status === "rejected") {
-      logger.error({ err: bybitOrder.reason, symbol: leg.symbol }, "Bot: Bybit leg close failed");
-    }
-    if (binanceOrder.status === "rejected") {
-      logger.error({ err: binanceOrder.reason, symbol: leg.symbol }, "Bot: Binance leg close failed");
-    }
+  try {
+    const longExchange = leg.bybitSide === "long" ? "bybit" : "binance";
+    const shortExchange = leg.bybitSide === "short" ? "bybit" : "binance";
+    await db.insert(closedTradesTable).values({
+      symbol: leg.symbol,
+      longExchange,
+      shortExchange,
+      spreadAtEntry: String(leg.spreadAtEntry),
+      realizedPnl: String(realizedPnl),
+      quantity: String((bybitQty * bybitPrice + binanceQty * binancePrice) / 2),
+      entryTime: leg.openedAt,
+      closeTime: new Date(),
+    });
+  } catch (dbErr) {
+    logger.error({ dbErr }, "Bot: failed to record closed trade to history");
   }
 
-  logger.info({ legId: leg.id, symbol: leg.symbol, realizedPnl, bothClosed }, "Bot: closed leg");
+  logger.info({ legId: leg.id, symbol: leg.symbol, realizedPnl }, "Bot: closed leg successfully");
 }
 
 async function watcherTick(): Promise<void> {
@@ -217,28 +218,23 @@ async function watcherTick(): Promise<void> {
       const totalPnl = openLegs.reduce((sum, leg) => sum + computeLegPnl(leg, bybitPrice, binancePrice), 0);
       const forceStop = Number(config.forceStopUsd);
 
-      for (const leg of openLegs) {
-        const shouldClose =
-          Math.abs(spreadPct) <= Math.abs(Number(config.closeSpreadPct)) ||
-          (forceStop > 0 && totalPnl <= -forceStop);
+      const closeConditionMet =
+        Math.abs(spreadPct) <= Math.abs(Number(config.closeSpreadPct)) ||
+        (forceStop > 0 && totalPnl <= -forceStop);
 
-        if (shouldClose) {
+      let closedCount = 0;
+      for (const leg of openLegs) {
+        if (closeConditionMet) {
           await closeLeg(leg, bybitPrice, binancePrice);
+          closedCount++;
         }
       }
 
-      const stillOpenCount = openLegs.length - openLegs.filter((leg) => {
-        const legPnl = computeLegPnl(leg, bybitPrice, binancePrice);
-        return (
-          Math.abs(spreadPct) <= Math.abs(Number(config.closeSpreadPct)) ||
-          (forceStop > 0 && totalPnl <= -forceStop)
-        );
-      }).length;
-
+      const remainingOpen = openLegs.length - closedCount;
       const enterSpread = Math.abs(Number(config.enterSpreadPct));
       const shouldOpen =
         Math.abs(spreadPct) >= enterSpread &&
-        stillOpenCount < config.maxOrders;
+        remainingOpen < config.maxOrders;
 
       if (shouldOpen) {
         await openLeg(config, spreadPct);
