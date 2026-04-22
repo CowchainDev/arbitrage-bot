@@ -212,8 +212,9 @@ async function watcherTick(): Promise<void> {
         continue;
       }
 
-      const spreadPct = getSpreadPct(priceRow.bybitPrice, priceRow.binancePrice);
-      if (spreadPct === null) continue;
+      const spreadPctRaw = getSpreadPct(priceRow.bybitPrice, priceRow.binancePrice);
+      if (spreadPctRaw === null) continue;
+      const spreadPct: number = spreadPctRaw;
 
       const bybitPrice = priceRow.bybitPrice!;
       const binancePrice = priceRow.binancePrice!;
@@ -229,27 +230,37 @@ async function watcherTick(): Promise<void> {
       );
 
       const forceStop = Number(config.forceStopUsd);
-      const spreadBelowClose =
-        openLegs.length > 0 &&
-        Math.abs(spreadPct) <= Math.abs(Number(config.closeSpreadPct));
+      const closeSpread = Number(config.closeSpreadPct);
       const forceStopTriggered = forceStop > 0 && openLegs.length > 0 && totalPnl <= -forceStop;
-      const closeConditionMet = spreadBelowClose || forceStopTriggered;
+
+      // Check close condition per-leg accounting for the direction the leg was opened:
+      // - Bybit-short leg (opened when Bybit > Binance, spread > 0): close when spread
+      //   has fallen at or below closeSpread (which also catches the spread crossing zero)
+      // - Bybit-long leg (opened when Binance > Bybit, spread < 0): close when spread
+      //   has risen at or above -closeSpread (also catches spread crossing zero)
+      function legShouldClose(leg: BotLeg): boolean {
+        if (leg.bybitSide === "short") return spreadPct <= closeSpread;
+        return spreadPct >= -closeSpread;
+      }
 
       let confirmedClosedCount = 0;
-      if (closeConditionMet) {
-        for (const leg of openLegs) {
+      let anyForceStop = false;
+      for (const leg of openLegs) {
+        if (legShouldClose(leg) || forceStopTriggered) {
           const closed = await closeLeg(leg, bybitPrice, binancePrice);
           if (closed) confirmedClosedCount++;
+          if (forceStopTriggered) anyForceStop = true;
         }
       }
 
-      if (forceStopTriggered) {
+      if (anyForceStop) {
         logger.warn({ symbol: config.symbol, totalPnl, forceStopUsd: forceStop },
           "Bot: force-stop triggered — skipping new open this tick");
         continue;
       }
 
       const remainingOpen = openLegs.length - confirmedClosedCount;
+      // Open when the spread magnitude is large enough in either direction
       const enterSpread = Math.abs(Number(config.enterSpreadPct));
       const shouldOpen =
         Math.abs(spreadPct) >= enterSpread &&

@@ -1,10 +1,18 @@
-import { Router, type IRouter, type Request, type Response } from "express";
+import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
 import { db } from "@workspace/db";
 import { botConfigsTable, botLegsTable, type BotConfig, type BotLeg } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { CreateBotBody, UpdateBotBody } from "@workspace/api-zod";
 
 const router: IRouter = Router();
+
+const BOT_SECRET = process.env["BOT_SECRET"];
+
+function requireBotSecret(req: Request, res: Response, next: NextFunction): void {
+  if (!BOT_SECRET) { next(); return; }
+  if (req.headers["x-bot-secret"] === BOT_SECRET) { next(); return; }
+  res.status(401).json({ error: "unauthorized", message: "Missing or invalid X-Bot-Secret header" });
+}
 
 function normalizeBotConfig(bot: BotConfig) {
   return {
@@ -40,7 +48,7 @@ router.get("/bots", async (_req: Request, res: Response) => {
   }
 });
 
-router.post("/bots", async (req: Request, res: Response) => {
+router.post("/bots", requireBotSecret, async (req: Request, res: Response) => {
   const parsed = CreateBotBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "bad_request", message: parsed.error.message });
@@ -77,7 +85,7 @@ router.post("/bots", async (req: Request, res: Response) => {
   }
 });
 
-router.put("/bots/:id", async (req: Request, res: Response) => {
+router.put("/bots/:id", requireBotSecret, async (req: Request, res: Response) => {
   const id = Number(req.params.id);
   if (!id) {
     res.status(400).json({ error: "bad_request", message: "Invalid bot id" });
@@ -122,7 +130,7 @@ router.put("/bots/:id", async (req: Request, res: Response) => {
   }
 });
 
-router.delete("/bots/:id", async (req: Request, res: Response) => {
+router.delete("/bots/:id", requireBotSecret, async (req: Request, res: Response) => {
   const id = Number(req.params.id);
   if (!id) {
     res.status(400).json({ error: "bad_request", message: "Invalid bot id" });
@@ -147,7 +155,7 @@ router.delete("/bots/:id", async (req: Request, res: Response) => {
   }
 });
 
-router.post("/bots/:id/start", async (req: Request, res: Response) => {
+router.post("/bots/:id/start", requireBotSecret, async (req: Request, res: Response) => {
   const id = Number(req.params.id);
   if (!id) {
     res.status(400).json({ error: "bad_request", message: "Invalid bot id" });
@@ -172,7 +180,7 @@ router.post("/bots/:id/start", async (req: Request, res: Response) => {
   }
 });
 
-router.post("/bots/:id/stop", async (req: Request, res: Response) => {
+router.post("/bots/:id/stop", requireBotSecret, async (req: Request, res: Response) => {
   const id = Number(req.params.id);
   if (!id) {
     res.status(400).json({ error: "bad_request", message: "Invalid bot id" });
