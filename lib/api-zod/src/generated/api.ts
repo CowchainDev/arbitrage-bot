@@ -298,6 +298,238 @@ export const ClosePositionResponse = zod.object({
 });
 
 /**
+ * @summary List all bot configurations
+ */
+export const ListBotsResponse = zod.object({
+  bots: zod.array(
+    zod.object({
+      id: zod.number(),
+      symbol: zod.string(),
+      enabled: zod.boolean(),
+      enterSpreadPct: zod
+        .number()
+        .describe("Minimum spread % to open a new leg"),
+      closeSpreadPct: zod
+        .number()
+        .describe("Spread % at which open legs are closed"),
+      orderSizeUsd: zod
+        .number()
+        .describe("Total USD size per leg (split 50\/50 between exchanges)"),
+      maxOrders: zod
+        .number()
+        .describe("Maximum concurrent open legs (DCA limit)"),
+      forceStopUsd: zod
+        .number()
+        .describe(
+          "Close all legs if total PnL drops below this negative value (USD)",
+        ),
+      bybitLeverage: zod.number(),
+      binanceLeverage: zod.number(),
+      createdAt: zod.string(),
+      updatedAt: zod.string(),
+    }),
+  ),
+});
+
+/**
+ * @summary Create a new bot configuration
+ */
+export const CreateBotBody = zod.object({
+  symbol: zod.string().describe("Token symbol e.g. BTC"),
+  enterSpreadPct: zod.number().describe("Minimum spread % to open a new leg"),
+  closeSpreadPct: zod
+    .number()
+    .describe("Spread % at which open legs are closed"),
+  orderSizeUsd: zod.number().describe("Total USD size per leg"),
+  maxOrders: zod.number().optional().describe("Maximum concurrent open legs"),
+  forceStopUsd: zod
+    .number()
+    .optional()
+    .describe("Force-stop loss threshold in USD"),
+  bybitLeverage: zod.number().optional(),
+  binanceLeverage: zod.number().optional(),
+});
+
+export const CreateBotResponse = zod.object({
+  bot: zod.object({
+    id: zod.number(),
+    symbol: zod.string(),
+    enabled: zod.boolean(),
+    enterSpreadPct: zod.number().describe("Minimum spread % to open a new leg"),
+    closeSpreadPct: zod
+      .number()
+      .describe("Spread % at which open legs are closed"),
+    orderSizeUsd: zod
+      .number()
+      .describe("Total USD size per leg (split 50\/50 between exchanges)"),
+    maxOrders: zod
+      .number()
+      .describe("Maximum concurrent open legs (DCA limit)"),
+    forceStopUsd: zod
+      .number()
+      .describe(
+        "Close all legs if total PnL drops below this negative value (USD)",
+      ),
+    bybitLeverage: zod.number(),
+    binanceLeverage: zod.number(),
+    createdAt: zod.string(),
+    updatedAt: zod.string(),
+  }),
+});
+
+/**
+ * @summary Update a bot configuration
+ */
+export const UpdateBotParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const UpdateBotBody = zod.object({
+  enterSpreadPct: zod.number().optional(),
+  closeSpreadPct: zod.number().optional(),
+  orderSizeUsd: zod.number().optional(),
+  maxOrders: zod.number().optional(),
+  forceStopUsd: zod.number().optional(),
+  bybitLeverage: zod.number().optional(),
+  binanceLeverage: zod.number().optional(),
+});
+
+export const UpdateBotResponse = zod.object({
+  bot: zod.object({
+    id: zod.number(),
+    symbol: zod.string(),
+    enabled: zod.boolean(),
+    enterSpreadPct: zod.number().describe("Minimum spread % to open a new leg"),
+    closeSpreadPct: zod
+      .number()
+      .describe("Spread % at which open legs are closed"),
+    orderSizeUsd: zod
+      .number()
+      .describe("Total USD size per leg (split 50\/50 between exchanges)"),
+    maxOrders: zod
+      .number()
+      .describe("Maximum concurrent open legs (DCA limit)"),
+    forceStopUsd: zod
+      .number()
+      .describe(
+        "Close all legs if total PnL drops below this negative value (USD)",
+      ),
+    bybitLeverage: zod.number(),
+    binanceLeverage: zod.number(),
+    createdAt: zod.string(),
+    updatedAt: zod.string(),
+  }),
+});
+
+/**
+ * @summary Delete a bot configuration and all its legs
+ */
+export const DeleteBotParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const DeleteBotResponse = zod.object({
+  deleted: zod.boolean(),
+});
+
+/**
+ * @summary Enable a bot (start watching for entry conditions)
+ */
+export const StartBotParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const StartBotResponse = zod.object({
+  bot: zod.object({
+    id: zod.number(),
+    symbol: zod.string(),
+    enabled: zod.boolean(),
+    enterSpreadPct: zod.number().describe("Minimum spread % to open a new leg"),
+    closeSpreadPct: zod
+      .number()
+      .describe("Spread % at which open legs are closed"),
+    orderSizeUsd: zod
+      .number()
+      .describe("Total USD size per leg (split 50\/50 between exchanges)"),
+    maxOrders: zod
+      .number()
+      .describe("Maximum concurrent open legs (DCA limit)"),
+    forceStopUsd: zod
+      .number()
+      .describe(
+        "Close all legs if total PnL drops below this negative value (USD)",
+      ),
+    bybitLeverage: zod.number(),
+    binanceLeverage: zod.number(),
+    createdAt: zod.string(),
+    updatedAt: zod.string(),
+  }),
+});
+
+/**
+ * @summary Disable a bot (stop opening new legs, existing legs still close)
+ */
+export const StopBotParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const StopBotResponse = zod.object({
+  bot: zod.object({
+    id: zod.number(),
+    symbol: zod.string(),
+    enabled: zod.boolean(),
+    enterSpreadPct: zod.number().describe("Minimum spread % to open a new leg"),
+    closeSpreadPct: zod
+      .number()
+      .describe("Spread % at which open legs are closed"),
+    orderSizeUsd: zod
+      .number()
+      .describe("Total USD size per leg (split 50\/50 between exchanges)"),
+    maxOrders: zod
+      .number()
+      .describe("Maximum concurrent open legs (DCA limit)"),
+    forceStopUsd: zod
+      .number()
+      .describe(
+        "Close all legs if total PnL drops below this negative value (USD)",
+      ),
+    bybitLeverage: zod.number(),
+    binanceLeverage: zod.number(),
+    createdAt: zod.string(),
+    updatedAt: zod.string(),
+  }),
+});
+
+/**
+ * @summary Get all open legs for a bot
+ */
+export const GetBotLegsParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const GetBotLegsResponse = zod.object({
+  legs: zod.array(
+    zod.object({
+      id: zod.number(),
+      botConfigId: zod.number(),
+      symbol: zod.string(),
+      bybitOrderId: zod.string().optional(),
+      binanceOrderId: zod.string().optional(),
+      bybitQty: zod.number().optional(),
+      binanceQty: zod.number().optional(),
+      bybitEntry: zod.number().optional(),
+      binanceEntry: zod.number().optional(),
+      bybitSide: zod.enum(["long", "short"]),
+      binanceSide: zod.enum(["long", "short"]),
+      spreadAtEntry: zod.number().optional(),
+      status: zod.enum(["open", "closed"]),
+      openedAt: zod.string(),
+      closedAt: zod.string().optional(),
+    }),
+  ),
+});
+
+/**
  * @summary Store or update API credentials for an exchange server-side
  */
 export const StoreCredentialBody = zod.object({

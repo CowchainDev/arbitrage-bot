@@ -192,7 +192,7 @@ function getBinanceCredentials(req: Request) {
   };
 }
 
-function createBybitExchange(apiKey = "", secret = "") {
+export function createBybitExchange(apiKey = "", secret = "") {
   return new ccxt.bybit({
     apiKey,
     secret,
@@ -208,7 +208,7 @@ function createBybitExchange(apiKey = "", secret = "") {
 // attempt fails with Bybit retCode 10001 ("position idx not match position
 // mode"), we retry with the correct hedge-mode positionIdx derived from
 // `positionSide` — the slot we are opening OR the slot we are closing.
-async function bybitCreateOrder(
+export async function bybitCreateOrder(
   ex: InstanceType<typeof ccxt.bybit>,
   symbol: string,
   orderSide: "buy" | "sell",
@@ -230,7 +230,7 @@ async function bybitCreateOrder(
   }
 }
 
-function createBinanceExchange(apiKey = "", secret = "") {
+export function createBinanceExchange(apiKey = "", secret = "") {
   return new ccxt.binance({
     apiKey,
     secret,

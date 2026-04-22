@@ -7,13 +7,23 @@
  */
 
 export * from "./apiError";
+export * from "./botConfig";
+export * from "./botLeg";
+export * from "./botLegBinanceSide";
+export * from "./botLegBybitSide";
+export * from "./botLegsResponse";
+export * from "./botLegStatus";
+export * from "./botListResponse";
+export * from "./botResponse";
 export * from "./closedTrade";
 export * from "./closePositionRequest";
 export * from "./closePositionRequestBinanceSide";
 export * from "./closePositionRequestBybitSide";
 export * from "./closePositionResult";
+export * from "./createBotRequest";
 export * from "./credentialStatus";
 export * from "./credentialStatusResponse";
+export * from "./deleteBotResult";
 export * from "./exchangeBalances";
 export * from "./healthStatus";
 export * from "./jumpInRequest";
@@ -33,3 +43,4 @@ export * from "./storeCredentialResult";
 export * from "./tokenSpread";
 export * from "./tradeHistoryResponse";
 export * from "./tradeStats";
+export * from "./updateBotRequest";

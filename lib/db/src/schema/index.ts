@@ -4,6 +4,8 @@ import {
   text,
   numeric,
   timestamp,
+  boolean,
+  integer,
 } from "drizzle-orm/pg-core";
 
 export const credentialsTable = pgTable("credentials", {
@@ -36,3 +38,42 @@ export const closedTradesTable = pgTable("closed_trades", {
 
 export type ClosedTrade = typeof closedTradesTable.$inferSelect;
 export type InsertClosedTrade = typeof closedTradesTable.$inferInsert;
+
+export const botConfigsTable = pgTable("bot_configs", {
+  id: serial("id").primaryKey(),
+  symbol: text("symbol").notNull().unique(),
+  enabled: boolean("enabled").notNull().default(false),
+  enterSpreadPct: numeric("enter_spread_pct", { precision: 20, scale: 8 }).notNull().default("0.05"),
+  closeSpreadPct: numeric("close_spread_pct", { precision: 20, scale: 8 }).notNull().default("0.01"),
+  orderSizeUsd: numeric("order_size_usd", { precision: 20, scale: 8 }).notNull().default("50"),
+  maxOrders: integer("max_orders").notNull().default(3),
+  forceStopUsd: numeric("force_stop_usd", { precision: 20, scale: 8 }).notNull().default("20"),
+  bybitLeverage: integer("bybit_leverage").notNull().default(1),
+  binanceLeverage: integer("binance_leverage").notNull().default(1),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export type BotConfig = typeof botConfigsTable.$inferSelect;
+export type InsertBotConfig = typeof botConfigsTable.$inferInsert;
+
+export const botLegsTable = pgTable("bot_legs", {
+  id: serial("id").primaryKey(),
+  botConfigId: integer("bot_config_id").notNull().references(() => botConfigsTable.id),
+  symbol: text("symbol").notNull(),
+  bybitOrderId: text("bybit_order_id"),
+  binanceOrderId: text("binance_order_id"),
+  bybitQty: numeric("bybit_qty", { precision: 20, scale: 8 }).notNull().default("0"),
+  binanceQty: numeric("binance_qty", { precision: 20, scale: 8 }).notNull().default("0"),
+  bybitEntry: numeric("bybit_entry", { precision: 20, scale: 8 }).notNull().default("0"),
+  binanceEntry: numeric("binance_entry", { precision: 20, scale: 8 }).notNull().default("0"),
+  bybitSide: text("bybit_side").notNull().default("long"),
+  binanceSide: text("binance_side").notNull().default("short"),
+  spreadAtEntry: numeric("spread_at_entry", { precision: 20, scale: 8 }).notNull().default("0"),
+  status: text("status").notNull().default("open"),
+  openedAt: timestamp("opened_at").notNull().defaultNow(),
+  closedAt: timestamp("closed_at"),
+});
+
+export type BotLeg = typeof botLegsTable.$inferSelect;
+export type InsertBotLeg = typeof botLegsTable.$inferInsert;

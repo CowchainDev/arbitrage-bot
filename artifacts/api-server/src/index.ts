@@ -3,6 +3,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import app from "./app";
 import { logger } from "./lib/logger";
 import { fetchPriceSpreads } from "./routes/exchanges";
+import { startBotWatcher } from "./services/bot-watcher";
 
 const rawPort = process.env["PORT"];
 
@@ -83,4 +84,6 @@ server.listen(port, (err?: Error) => {
   fetchPriceSpreads()
     .then(() => logger.info("Startup price cache warm-up complete"))
     .catch((e) => logger.warn({ err: e }, "Startup price cache warm-up failed"));
+
+  startBotWatcher();
 });

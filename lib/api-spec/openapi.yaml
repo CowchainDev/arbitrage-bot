@@ -16,6 +16,8 @@ tags:
     description: Trade history operations
   - name: credentials
     description: Server-side credential storage for bot automation
+  - name: bots
+    description: Automated arbitrage bot configuration and control
 paths:
   /healthz:
     get:
@@ -288,6 +290,195 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ClosePositionResult"
+
+  /bots:
+    get:
+      operationId: listBots
+      tags: [bots]
+      summary: List all bot configurations
+      responses:
+        "200":
+          description: Bot list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BotListResponse"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+    post:
+      operationId: createBot
+      tags: [bots]
+      summary: Create a new bot configuration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateBotRequest"
+      responses:
+        "200":
+          description: Bot created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BotResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+  /bots/{id}:
+    put:
+      operationId: updateBot
+      tags: [bots]
+      summary: Update a bot configuration
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: number
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateBotRequest"
+      responses:
+        "200":
+          description: Bot updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BotResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+    delete:
+      operationId: deleteBot
+      tags: [bots]
+      summary: Delete a bot configuration and all its legs
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: number
+      responses:
+        "200":
+          description: Bot deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteBotResult"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+  /bots/{id}/start:
+    post:
+      operationId: startBot
+      tags: [bots]
+      summary: Enable a bot (start watching for entry conditions)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: number
+      responses:
+        "200":
+          description: Bot started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BotResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+  /bots/{id}/stop:
+    post:
+      operationId: stopBot
+      tags: [bots]
+      summary: Disable a bot (stop opening new legs, existing legs still close)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: number
+      responses:
+        "200":
+          description: Bot stopped
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BotResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+  /bots/{id}/legs:
+    get:
+      operationId: getBotLegs
+      tags: [bots]
+      summary: Get all open legs for a bot
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: number
+      responses:
+        "200":
+          description: Open legs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BotLegsResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
 
   /credentials:
     post:
@@ -790,4 +981,180 @@ components:
             $ref: "#/components/schemas/CredentialStatus"
       required:
         - exchanges
+
+    BotConfig:
+      type: object
+      properties:
+        id:
+          type: number
+        symbol:
+          type: string
+        enabled:
+          type: boolean
+        enterSpreadPct:
+          type: number
+          description: Minimum spread % to open a new leg
+        closeSpreadPct:
+          type: number
+          description: Spread % at which open legs are closed
+        orderSizeUsd:
+          type: number
+          description: Total USD size per leg (split 50/50 between exchanges)
+        maxOrders:
+          type: number
+          description: Maximum concurrent open legs (DCA limit)
+        forceStopUsd:
+          type: number
+          description: Close all legs if total PnL drops below this negative value (USD)
+        bybitLeverage:
+          type: number
+        binanceLeverage:
+          type: number
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+      required:
+        - id
+        - symbol
+        - enabled
+        - enterSpreadPct
+        - closeSpreadPct
+        - orderSizeUsd
+        - maxOrders
+        - forceStopUsd
+        - bybitLeverage
+        - binanceLeverage
+        - createdAt
+        - updatedAt
+
+    BotLeg:
+      type: object
+      properties:
+        id:
+          type: number
+        botConfigId:
+          type: number
+        symbol:
+          type: string
+        bybitOrderId:
+          type: string
+        binanceOrderId:
+          type: string
+        bybitQty:
+          type: number
+        binanceQty:
+          type: number
+        bybitEntry:
+          type: number
+        binanceEntry:
+          type: number
+        bybitSide:
+          type: string
+          enum: [long, short]
+        binanceSide:
+          type: string
+          enum: [long, short]
+        spreadAtEntry:
+          type: number
+        status:
+          type: string
+          enum: [open, closed]
+        openedAt:
+          type: string
+        closedAt:
+          type: string
+      required:
+        - id
+        - botConfigId
+        - symbol
+        - bybitSide
+        - binanceSide
+        - status
+        - openedAt
+
+    CreateBotRequest:
+      type: object
+      properties:
+        symbol:
+          type: string
+          description: Token symbol e.g. BTC
+        enterSpreadPct:
+          type: number
+          description: Minimum spread % to open a new leg
+        closeSpreadPct:
+          type: number
+          description: Spread % at which open legs are closed
+        orderSizeUsd:
+          type: number
+          description: Total USD size per leg
+        maxOrders:
+          type: number
+          description: Maximum concurrent open legs
+        forceStopUsd:
+          type: number
+          description: Force-stop loss threshold in USD
+        bybitLeverage:
+          type: number
+        binanceLeverage:
+          type: number
+      required:
+        - symbol
+        - enterSpreadPct
+        - closeSpreadPct
+        - orderSizeUsd
+
+    UpdateBotRequest:
+      type: object
+      properties:
+        enterSpreadPct:
+          type: number
+        closeSpreadPct:
+          type: number
+        orderSizeUsd:
+          type: number
+        maxOrders:
+          type: number
+        forceStopUsd:
+          type: number
+        bybitLeverage:
+          type: number
+        binanceLeverage:
+          type: number
+
+    BotResponse:
+      type: object
+      properties:
+        bot:
+          $ref: "#/components/schemas/BotConfig"
+      required:
+        - bot
+
+    BotListResponse:
+      type: object
+      properties:
+        bots:
+          type: array
+          items:
+            $ref: "#/components/schemas/BotConfig"
+      required:
+        - bots
+
+    BotLegsResponse:
+      type: object
+      properties:
+        legs:
+          type: array
+          items:
+            $ref: "#/components/schemas/BotLeg"
+      required:
+        - legs
+
+    DeleteBotResult:
+      type: object
+      properties:
+        deleted:
+          type: boolean
+      required:
+        - deleted
 

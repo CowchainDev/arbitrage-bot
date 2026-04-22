@@ -293,3 +293,107 @@ export interface CredentialStatus {
 export interface CredentialStatusResponse {
   exchanges: CredentialStatus[];
 }
+
+export interface BotConfig {
+  id: number;
+  symbol: string;
+  enabled: boolean;
+  /** Minimum spread % to open a new leg */
+  enterSpreadPct: number;
+  /** Spread % at which open legs are closed */
+  closeSpreadPct: number;
+  /** Total USD size per leg (split 50/50 between exchanges) */
+  orderSizeUsd: number;
+  /** Maximum concurrent open legs (DCA limit) */
+  maxOrders: number;
+  /** Close all legs if total PnL drops below this negative value (USD) */
+  forceStopUsd: number;
+  bybitLeverage: number;
+  binanceLeverage: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type BotLegBybitSide =
+  (typeof BotLegBybitSide)[keyof typeof BotLegBybitSide];
+
+export const BotLegBybitSide = {
+  long: "long",
+  short: "short",
+} as const;
+
+export type BotLegBinanceSide =
+  (typeof BotLegBinanceSide)[keyof typeof BotLegBinanceSide];
+
+export const BotLegBinanceSide = {
+  long: "long",
+  short: "short",
+} as const;
+
+export type BotLegStatus = (typeof BotLegStatus)[keyof typeof BotLegStatus];
+
+export const BotLegStatus = {
+  open: "open",
+  closed: "closed",
+} as const;
+
+export interface BotLeg {
+  id: number;
+  botConfigId: number;
+  symbol: string;
+  bybitOrderId?: string;
+  binanceOrderId?: string;
+  bybitQty?: number;
+  binanceQty?: number;
+  bybitEntry?: number;
+  binanceEntry?: number;
+  bybitSide: BotLegBybitSide;
+  binanceSide: BotLegBinanceSide;
+  spreadAtEntry?: number;
+  status: BotLegStatus;
+  openedAt: string;
+  closedAt?: string;
+}
+
+export interface CreateBotRequest {
+  /** Token symbol e.g. BTC */
+  symbol: string;
+  /** Minimum spread % to open a new leg */
+  enterSpreadPct: number;
+  /** Spread % at which open legs are closed */
+  closeSpreadPct: number;
+  /** Total USD size per leg */
+  orderSizeUsd: number;
+  /** Maximum concurrent open legs */
+  maxOrders?: number;
+  /** Force-stop loss threshold in USD */
+  forceStopUsd?: number;
+  bybitLeverage?: number;
+  binanceLeverage?: number;
+}
+
+export interface UpdateBotRequest {
+  enterSpreadPct?: number;
+  closeSpreadPct?: number;
+  orderSizeUsd?: number;
+  maxOrders?: number;
+  forceStopUsd?: number;
+  bybitLeverage?: number;
+  binanceLeverage?: number;
+}
+
+export interface BotResponse {
+  bot: BotConfig;
+}
+
+export interface BotListResponse {
+  bots: BotConfig[];
+}
+
+export interface BotLegsResponse {
+  legs: BotLeg[];
+}
+
+export interface DeleteBotResult {
+  deleted: boolean;
+}

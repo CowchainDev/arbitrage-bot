@@ -25,3 +25,15 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 - `pnpm --filter @workspace/api-server run dev` — run API server locally
 
 See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details.
+
+## Bot Watcher Architecture
+
+A background watcher (`artifacts/api-server/src/services/bot-watcher.ts`) runs every 1500ms server-side. For each enabled bot config:
+1. Reads current spread from in-memory price cache (no extra exchange calls)
+2. Opens a new leg when spread ≥ `enterSpreadPct` and open leg count < `maxOrders`
+3. Closes open legs when spread ≤ `closeSpreadPct` OR total PnL < -`forceStopUsd`
+4. Uses server-stored credentials from the `credentials` table
+
+Bot CRUD API: `GET/POST /bots`, `PUT/DELETE /bots/:id`, `POST /bots/:id/start`, `POST /bots/:id/stop`, `GET /bots/:id/legs`
+
+Tables: `bot_configs` (config per token), `bot_legs` (one row per open DCA leg), `credentials` (server-side API keys)
