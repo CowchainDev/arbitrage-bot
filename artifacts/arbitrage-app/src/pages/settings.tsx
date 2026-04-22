@@ -57,20 +57,8 @@ export default function Settings() {
 
     setServerSyncStatus("syncing");
     try {
-      await Promise.all([
-        new Promise<void>((resolve, reject) =>
-          storeCredential.mutate(
-            { data: { exchange: "bybit", apiKey: data.bybitApiKey, apiSecret: data.bybitApiSecret } },
-            { onSuccess: () => resolve(), onError: reject }
-          )
-        ),
-        new Promise<void>((resolve, reject) =>
-          storeCredential.mutate(
-            { data: { exchange: "binance", apiKey: data.binanceApiKey, apiSecret: data.binanceApiSecret } },
-            { onSuccess: () => resolve(), onError: reject }
-          )
-        ),
-      ]);
+      await storeCredential.mutateAsync({ data: { exchange: "bybit", apiKey: data.bybitApiKey, apiSecret: data.bybitApiSecret } });
+      await storeCredential.mutateAsync({ data: { exchange: "binance", apiKey: data.binanceApiKey, apiSecret: data.binanceApiSecret } });
       setServerSyncStatus("ok");
       toast({ title: "Credentials saved", description: "Saved to browser and synced to server for bot use." });
     } catch {
@@ -128,7 +116,7 @@ export default function Settings() {
         <div>
           <h1 className="text-lg font-semibold text-foreground">API Configuration</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Keys are stored locally in your browser. Never transmitted to third parties.
+            Keys are saved to your browser and synced to the server for bot automation.
           </p>
         </div>
         {hasCredentials && (
