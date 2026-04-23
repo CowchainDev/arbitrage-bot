@@ -27,6 +27,32 @@ const WATCHER_INTERVAL_MS = 1500;
 const PRICE_REFRESH_INTERVAL_MS = 5000;
 const RECONCILE_INTERVAL_MS = 30_000;
 
+const CRED_CACHE_TTL_MS = 30_000;
+type CredEntry = { apiKey: string; apiSecret: string; passphrase?: string | null };
+const credCache = new Map<string, { data: CredEntry; ts: number }>();
+
+async function getCachedCredentials(exchange: SupportedExchange): Promise<CredEntry | null> {
+  const cached = credCache.get(exchange);
+  if (cached && Date.now() - cached.ts < CRED_CACHE_TTL_MS) {
+    return cached.data;
+  }
+  const fresh = await getStoredCredentials(exchange);
+  if (!fresh) {
+    credCache.delete(exchange);
+    return null;
+  }
+  credCache.set(exchange, { data: fresh, ts: Date.now() });
+  return fresh;
+}
+
+function invalidateCredCache(exchange?: string) {
+  if (exchange) {
+    credCache.delete(exchange);
+  } else {
+    credCache.clear();
+  }
+}
+
 function getSpreadPct(priceA: number | null, priceB: number | null): number | null {
   if (!priceA || !priceB) return null;
   return ((priceA - priceB) / priceB) * 100;
@@ -68,8 +94,8 @@ async function getExchangePairForBot(
   const { exchangeA, exchangeB } = botExchangeNames(config);
 
   const [credsA, credsB] = await Promise.all([
-    getStoredCredentials(exchangeA as SupportedExchange),
-    getStoredCredentials(exchangeB as SupportedExchange),
+    getCachedCredentials(exchangeA as SupportedExchange),
+    getCachedCredentials(exchangeB as SupportedExchange),
   ]);
 
   if (!credsA || !credsB) {
@@ -78,8 +104,8 @@ async function getExchangePairForBot(
   }
 
   return {
-    exA: createExchangeForName(exchangeA, credsA.apiKey, credsA.apiSecret),
-    exB: createExchangeForName(exchangeB, credsB.apiKey, credsB.apiSecret),
+    exA: createExchangeForName(exchangeA, credsA.apiKey, credsA.apiSecret, credsA.passphrase ?? undefined),
+    exB: createExchangeForName(exchangeB, credsB.apiKey, credsB.apiSecret, credsB.passphrase ?? undefined),
   };
 }
 

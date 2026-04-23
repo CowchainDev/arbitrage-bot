@@ -6,6 +6,8 @@ import { logger } from "./lib/logger";
 
 const app: Express = express();
 
+const ALLOWED_ORIGIN = process.env["ALLOWED_ORIGIN"];
+
 app.use(
   pinoHttp({
     logger,
@@ -25,9 +27,22 @@ app.use(
     },
   }),
 );
-app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(
+  cors({
+    origin: ALLOWED_ORIGIN ?? true,
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: [
+      "Content-Type",
+      "X-Bot-Secret",
+      "X-Bybit-Api-Key",
+      "X-Bybit-Api-Secret",
+      "X-Binance-Api-Key",
+      "X-Binance-Api-Secret",
+    ],
+  }),
+);
+app.use(express.json({ limit: "100kb" }));
+app.use(express.urlencoded({ extended: true, limit: "100kb" }));
 
 app.use("/api", router);
 

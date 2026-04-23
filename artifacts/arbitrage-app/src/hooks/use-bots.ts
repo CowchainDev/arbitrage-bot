@@ -13,9 +13,16 @@ export interface BotStatusInfo {
   openLegsCount: number;
 }
 
+const BOTS_REFETCH_MS = 2000;
+const LEGS_REFETCH_MS = 5000;
+
 export function useBots() {
   const botsQuery = useListBots({
-    query: { refetchInterval: 2000, queryKey: getListBotsQueryKey() },
+    query: {
+      refetchInterval: BOTS_REFETCH_MS,
+      staleTime: BOTS_REFETCH_MS / 2,
+      queryKey: getListBotsQueryKey(),
+    },
   });
 
   const bots: BotConfig[] = botsQuery.data?.bots ?? [];
@@ -24,7 +31,9 @@ export function useBots() {
     queries: bots.map((bot) => ({
       queryKey: getGetBotLegsQueryKey(bot.id),
       queryFn: () => getBotLegs(bot.id),
-      refetchInterval: 2000,
+      refetchInterval: LEGS_REFETCH_MS,
+      staleTime: LEGS_REFETCH_MS / 2,
+      enabled: bot.enabled,
     })),
   });
 

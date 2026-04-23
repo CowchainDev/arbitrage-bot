@@ -1,23 +1,12 @@
-import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
+import { Router, type IRouter, type Request, type Response } from "express";
 import { db } from "@workspace/db";
 import { botConfigsTable, botLegsTable, type BotConfig, type BotLeg } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { CreateBotBody, UpdateBotBody } from "@workspace/api-zod";
 import { closeAllLegsForBot } from "../services/bot-watcher";
+import { requireBotSecret } from "../middleware/auth";
 
 const router: IRouter = Router();
-
-const BOT_SECRET = process.env["BOT_SECRET"];
-
-function requireBotSecret(req: Request, res: Response, next: NextFunction): void {
-  if (!BOT_SECRET) {
-    // No secret configured — allow all requests through
-    next();
-    return;
-  }
-  if (req.headers["x-bot-secret"] === BOT_SECRET) { next(); return; }
-  res.status(401).json({ error: "unauthorized", message: "Missing or invalid X-Bot-Secret header" });
-}
 
 function normalizeBotConfig(bot: BotConfig) {
   return {
