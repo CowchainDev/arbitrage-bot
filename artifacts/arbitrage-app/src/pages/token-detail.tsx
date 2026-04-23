@@ -67,10 +67,11 @@ export default function TokenDetail({ params }: { params: { symbol: string } }) 
   const symbol = params.symbol.toUpperCase();
   const [timeRange, setTimeRange] = useState<TimeRange>(TIME_RANGES[1]);
 
-  const { data: allTokens } = useGetExchangePrices({
+  const { data: allTokens, isLoading: pricesLoading } = useGetExchangePrices({
     query: { queryKey: getGetExchangePricesQueryKey(), refetchInterval: 10_000 },
   });
   const token = allTokens?.find((t) => t.symbol === symbol);
+  const tokenNotFound = !pricesLoading && allTokens != null && token == null;
 
   const klinesParams = { symbol, interval: timeRange.interval, limit: timeRange.limit };
   const { data: klines, isLoading: klinesLoading, isError: klinesError } = useGetExchangeKlines(
@@ -352,6 +353,16 @@ export default function TokenDetail({ params }: { params: { symbol: string } }) 
               botOpenLegsCount={botStatus?.openLegsCount ?? 0}
               botRequestOptions={botRequestOptions}
             />
+          ) : tokenNotFound ? (
+            <div className="bg-card border border-border rounded-md p-6 flex flex-col items-center justify-center text-center gap-2 min-h-[200px]">
+              <p className="text-sm font-semibold text-foreground">{symbol} not found</p>
+              <p className="text-xs text-muted-foreground">
+                This token is not currently listed on any connected exchange.
+              </p>
+              <Link href="/" className="mt-2 text-xs text-primary hover:underline">
+                Back to Dashboard
+              </Link>
+            </div>
           ) : (
             <div className="bg-card border border-border rounded-md p-6 flex flex-col items-center justify-center text-center gap-3 min-h-[200px]">
               <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
