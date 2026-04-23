@@ -797,15 +797,38 @@ export async function placeOrderInternal(
     } catch (_) {}
   }
 
-  const ticker = await ex.fetchTicker(`${symbol}/USDT:USDT`);
+  const marketSymbol = `${symbol}/USDT:USDT`;
+  const ticker = await ex.fetchTicker(marketSymbol);
   const price = ticker.last ?? ticker.bid ?? 1;
-  const qty = usdAmount / price;
+  let qty = usdAmount / price;
   const ccxtSide = side === "long" ? "buy" : "sell";
   const exchangeName = ex.id;
 
+  // For Binance futures: round qty to market step size and ensure the notional
+  // meets Binance's minimum of $5 (error -4164).
+  if (ex.id === "binance") {
+    try {
+      await ex.loadMarkets();
+      const BINANCE_MIN_NOTIONAL = 5.5; // small buffer above Binance's $5 floor
+      const market = ex.market(marketSymbol);
+      // precision.amount is decimal-places count (e.g. 2 → step 0.01)
+      const decimalPlaces: number = market?.precision?.amount ?? 8;
+      const stepSize = Math.pow(10, -decimalPlaces);
+      // Round qty UP to next step and ensure notional >= minimum
+      const stepsNeeded = Math.max(
+        Math.ceil(qty / stepSize),
+        Math.ceil(BINANCE_MIN_NOTIONAL / (stepSize * price)),
+      );
+      qty = stepsNeeded * stepSize;
+    } catch (_) {
+      // If market info unavailable, ensure at least $5.5 notional
+      qty = Math.max(qty, 5.5 / price);
+    }
+  }
+
   const order = ex.id === "bybit"
-    ? await bybitCreateOrder(ex as InstanceType<typeof ccxt.bybit>, `${symbol}/USDT:USDT`, ccxtSide, qty, { reduceOnly: false }, side)
-    : await ex.createMarketOrder(`${symbol}/USDT:USDT`, ccxtSide, qty, undefined, { reduceOnly: false });
+    ? await bybitCreateOrder(ex as InstanceType<typeof ccxt.bybit>, marketSymbol, ccxtSide, qty, { reduceOnly: false }, side)
+    : await ex.createMarketOrder(marketSymbol, ccxtSide, qty, undefined, { reduceOnly: false });
 
   return {
     orderId: String(order.id),
