@@ -101,6 +101,25 @@ function parseVolume(v: string): number {
   return n;
 }
 
+function formatUsd(v: number | null | undefined): string {
+  if (v == null) return "-";
+  if (v >= 1e9) return `$${(v / 1e9).toFixed(1)}B`;
+  if (v >= 1e6) return `$${(v / 1e6).toFixed(0)}M`;
+  if (v >= 1e3) return `$${(v / 1e3).toFixed(0)}K`;
+  return `$${v.toFixed(0)}`;
+}
+
+function getExchangeFields(token: TokenSpread, ex: string) {
+  switch (ex) {
+    case "bybit":   return { ask: token.bybitAsk,   bid: token.bybitBid,   funding: token.bybitFundingRate };
+    case "binance": return { ask: token.binanceAsk, bid: token.binanceBid, funding: token.binanceFundingRate };
+    case "gate":    return { ask: token.gateAsk,    bid: token.gateBid,    funding: token.gateFundingRate };
+    case "okx":     return { ask: token.okxAsk,     bid: token.okxBid,     funding: token.okxFundingRate };
+    case "mexc":    return { ask: token.mexcAsk,    bid: token.mexcBid,    funding: token.mexcFundingRate };
+    default:        return { ask: undefined, bid: undefined, funding: undefined };
+  }
+}
+
 function botLegToPosition(leg: BotLeg, tokens: TokenSpread[]): Position {
   const token = tokens.find((t) => t.symbol === leg.symbol);
   const bybitCurrentPrice = token?.bybitPrice ?? leg.bybitEntry ?? 0;
@@ -155,33 +174,6 @@ const EXCHANGE_COLORS: Record<string, string> = {
   bybit: "text-amber-400", binance: "text-violet-400", gate: "text-sky-400", okx: "text-emerald-400", mexc: "text-rose-400",
 };
 
-function SpreadBadge({ spreadPct, bestSpreadPct, bestSpreadLeg }: { spreadPct: number; bestSpreadPct?: number; bestSpreadLeg?: string }) {
-  const raw = bestSpreadPct != null ? bestSpreadPct : Math.abs(spreadPct);
-  const available = isFinite(raw);
-  const value = available ? raw : null;
-  let colorClass = "text-muted-foreground";
-  if (value != null && value >= 1) colorClass = "text-primary";
-  else if (value != null && value >= 0.3) colorClass = "text-amber-400";
-
-  return (
-    <div className="text-right">
-      <span className={`font-mono font-semibold text-sm ${colorClass}`}>
-        {value != null ? `+${value.toFixed(4)}%` : "-"}
-      </span>
-      {bestSpreadLeg && (
-        <div className="text-[10px] text-muted-foreground font-mono leading-tight">
-          {bestSpreadLeg.split("/").map((ex, i) => (
-            <span key={ex}>
-              {i > 0 && <span className="text-muted-foreground/50">/</span>}
-              <span className={EXCHANGE_COLORS[ex] ?? ""}>{EXCHANGE_LABELS[ex] ?? ex.toUpperCase()}</span>
-            </span>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 function TokenCard({
   token,
   isSelected,
@@ -205,26 +197,30 @@ function TokenCard({
 }) {
   const legsCount = botOpenLegsCount ?? 0;
   const showDot = bot != null;
-  const dotColor = legsCount > 0
-    ? "bg-amber-400"
-    : bot?.enabled
-      ? "bg-emerald-500"
-      : "bg-muted-foreground";
+  const dotColor = legsCount > 0 ? "bg-amber-400" : bot?.enabled ? "bg-emerald-500" : "bg-muted-foreground";
   const dotTitle = legsCount > 0
     ? `Bot: ${legsCount} leg${legsCount !== 1 ? "s" : ""} open`
-    : bot?.enabled
-      ? "Bot: running"
-      : "Bot: stopped";
+    : bot?.enabled ? "Bot: running" : "Bot: stopped";
+
+  const [cheapEx, expensiveEx] = (token.bestSpreadLeg ?? "").split("/");
+  const cheapData  = cheapEx     ? getExchangeFields(token, cheapEx)     : { ask: undefined, bid: undefined, funding: undefined };
+  const expData    = expensiveEx ? getExchangeFields(token, expensiveEx) : { ask: undefined, bid: undefined, funding: undefined };
+  const rawSpread  = token.bestSpreadPct != null ? token.bestSpreadPct : Math.abs(token.spreadPct);
+  const effSpread  = cheapData.ask != null && expData.bid != null && cheapData.ask > 0
+    ? (expData.bid - cheapData.ask) / cheapData.ask * 100
+    : null;
+  const spreadColor = rawSpread >= 1 ? "text-primary" : rawSpread >= 0.3 ? "text-amber-400" : "text-muted-foreground";
 
   return (
     <div
       onClick={onSelect}
       data-testid={`card-token-${token.symbol}`}
-      className={`bg-card border rounded p-3 cursor-pointer transition-all hover:border-primary/40 ${
+      className={`bg-card border rounded p-3 cursor-pointer transition-all hover:border-primary/40 select-none ${
         isSelected ? "border-primary/60 bg-primary/5" : "border-border"
       } ${isWatched ? "border-primary/30" : ""}`}
     >
-      <div className="flex items-start justify-between mb-2">
+      {/* Header */}
+      <div className="flex items-start justify-between mb-1.5">
         <div className="flex items-center gap-1.5">
           <span className="font-semibold text-sm">{token.symbol}</span>
           <button
@@ -232,9 +228,7 @@ function TokenCard({
             className="text-muted-foreground hover:text-amber-400 transition-colors"
             data-testid={`btn-favourite-${token.symbol}`}
           >
-            <Star
-              className={`w-3.5 h-3.5 ${isFavourite ? "fill-amber-400 text-amber-400" : ""}`}
-            />
+            <Star className={`w-3.5 h-3.5 ${isFavourite ? "fill-amber-400 text-amber-400" : ""}`} />
           </button>
           <button
             onClick={onToggleWatch}
@@ -242,52 +236,84 @@ function TokenCard({
             data-testid={`btn-watch-${token.symbol}`}
             title={isWatched ? "Stop watching" : "Watch spread"}
           >
-            {isWatched
-              ? <Bell className="w-3.5 h-3.5 fill-primary/20" />
-              : <BellOff className="w-3.5 h-3.5" />}
+            {isWatched ? <Bell className="w-3.5 h-3.5 fill-primary/20" /> : <BellOff className="w-3.5 h-3.5" />}
           </button>
-        </div>
-        <div className="flex items-start gap-1.5">
           {showDot && (
             <div
-              className={`w-1.5 h-1.5 rounded-full mt-1 shrink-0 ${dotColor}`}
+              className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotColor}`}
               title={dotTitle}
               data-testid={`bot-dot-${token.symbol}`}
             />
           )}
-          <SpreadBadge spreadPct={token.spreadPct} bestSpreadPct={token.bestSpreadPct} bestSpreadLeg={token.bestSpreadLeg} />
+        </div>
+        <div className="text-right leading-tight">
+          <div className={`font-mono font-semibold text-sm ${spreadColor}`}>
+            {isFinite(rawSpread) ? `+${rawSpread.toFixed(4)}%` : "-"}
+          </div>
+          {effSpread != null && isFinite(effSpread) && (
+            <div className={`font-mono text-[10px] ${effSpread >= 0.3 ? "text-primary/70" : "text-muted-foreground"}`}>
+              eff +{effSpread.toFixed(4)}%
+            </div>
+          )}
+          {token.bestSpreadLeg && (
+            <div className="text-[10px] font-mono text-muted-foreground leading-tight">
+              {token.bestSpreadLeg.split("/").map((ex, i) => (
+                <span key={ex}>
+                  {i > 0 && <span className="text-muted-foreground/40">/</span>}
+                  <span className={EXCHANGE_COLORS[ex] ?? ""}>{EXCHANGE_LABELS[ex] ?? ex.toUpperCase()}</span>
+                </span>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
-      <div className="space-y-0.5 text-xs">
-        {(([
-          token.bybitPrice != null   ? ["BB",  token.bybitPrice,   "text-amber-400"]   : null,
-          token.binancePrice != null ? ["BN",  token.binancePrice, "text-violet-400"]  : null,
-          token.gatePrice != null    ? ["GT",  token.gatePrice,    "text-sky-400"]     : null,
-          token.okxPrice != null     ? ["OKX", token.okxPrice,     "text-emerald-400"] : null,
-          token.mexcPrice != null    ? ["MX",  token.mexcPrice,    "text-rose-400"]    : null,
-        ]).filter((x): x is [string, number, string] => x !== null)).map(([label, price, color]) => (
-          <div key={label} className="flex items-center justify-between">
-            <span className={`font-semibold w-8 ${color}`}>{label}</span>
-            <span className="font-mono text-foreground">{formatPrice(price)}</span>
+      {/* Two-exchange ask / bid boxes */}
+      {cheapEx && expensiveEx && (
+        <div className="grid grid-cols-2 gap-1 mb-1.5">
+          <div className="bg-primary/5 border border-primary/10 rounded px-1.5 py-1">
+            <div className={`font-semibold text-[10px] mb-0.5 ${EXCHANGE_COLORS[cheapEx] ?? ""}`}>
+              {EXCHANGE_LABELS[cheapEx] ?? cheapEx.toUpperCase()} ↑ Ask
+            </div>
+            <div className="font-mono text-xs text-foreground">{formatPrice(cheapData.ask)}</div>
+            {cheapData.funding != null && (
+              <div className={`text-[10px] font-mono mt-0.5 ${cheapData.funding > 0 ? "text-primary/60" : "text-destructive/60"}`}>
+                FR {formatFunding(cheapData.funding)}
+              </div>
+            )}
           </div>
-        ))}
-        {(token.bybitFundingRate != null || token.binanceFundingRate != null) && (
-          <div className="flex items-center justify-between mt-0.5 pt-0.5 border-t border-border/50 text-muted-foreground">
-            <span>FR {token.bybitFundingRate != null ? "BB" : ""}{token.bybitFundingRate != null && token.binanceFundingRate != null ? "/BN" : token.binanceFundingRate != null ? "BN" : ""}</span>
-            <span className="font-mono">
-              {token.bybitFundingRate != null && (
-                <span className={token.bybitFundingRate > 0 ? "text-primary" : "text-destructive"}>{formatFunding(token.bybitFundingRate)}</span>
-              )}
-              {token.bybitFundingRate != null && token.binanceFundingRate != null && (
-                <span className="text-muted-foreground/50 mx-0.5">/</span>
-              )}
-              {token.binanceFundingRate != null && (
-                <span className={token.binanceFundingRate > 0 ? "text-primary" : "text-destructive"}>{formatFunding(token.binanceFundingRate)}</span>
-              )}
-            </span>
+          <div className="bg-destructive/5 border border-destructive/10 rounded px-1.5 py-1">
+            <div className={`font-semibold text-[10px] mb-0.5 ${EXCHANGE_COLORS[expensiveEx] ?? ""}`}>
+              {EXCHANGE_LABELS[expensiveEx] ?? expensiveEx.toUpperCase()} ↓ Bid
+            </div>
+            <div className="font-mono text-xs text-foreground">{formatPrice(expData.bid)}</div>
+            {expData.funding != null && (
+              <div className={`text-[10px] font-mono mt-0.5 ${expData.funding > 0 ? "text-primary/60" : "text-destructive/60"}`}>
+                FR {formatFunding(expData.funding)}
+              </div>
+            )}
           </div>
-        )}
+        </div>
+      )}
+
+      {/* Footer: depth · volume · Open button */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+          {token.spreadDepthUsd != null && (
+            <span title="Fillable depth at this spread">⬡ {formatUsd(token.spreadDepthUsd)}</span>
+          )}
+          {token.volume24h != null && (
+            <span className="text-muted-foreground/50">{formatUsd(token.volume24h)}</span>
+          )}
+        </div>
+        <Link
+          href={`/token/${token.symbol}`}
+          onClick={(e: React.MouseEvent) => e.stopPropagation()}
+          className="text-[10px] text-muted-foreground hover:text-foreground border border-border/60 hover:border-border rounded px-1.5 py-0.5 transition-colors font-medium shrink-0"
+          data-testid={`btn-open-${token.symbol}`}
+        >
+          Open ↗
+        </Link>
       </div>
     </div>
   );
@@ -1612,11 +1638,11 @@ export default function Dashboard() {
 
       {/* Main grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-        <div className={`${selectedToken ? "lg:col-span-2 xl:col-span-3" : "lg:col-span-3 xl:col-span-4"}`}>
+        <div className="lg:col-span-2 xl:col-span-3">
           {isLoading ? (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 gap-2">
               {Array.from({ length: 12 }).map((_, i) => (
-                <div key={i} className="bg-card border border-border rounded p-3 h-24 animate-pulse" />
+                <div key={i} className="bg-card border border-border rounded p-3 h-28 animate-pulse" />
               ))}
             </div>
           ) : isError ? (
@@ -1625,28 +1651,28 @@ export default function Dashboard() {
               Failed to load prices. Check your connection.
             </div>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 gap-2">
               {filteredTokens.map((token) => {
                 const botStatus = getBotStatusForSymbol(token.symbol);
                 return (
-                <TokenCard
-                  key={token.symbol}
-                  token={token}
-                  isSelected={selectedSymbol === token.symbol}
-                  isFavourite={isFavourite(token.symbol)}
-                  isWatched={isWatched(token.symbol)}
-                  onSelect={() => setSelectedSymbol(selectedSymbol === token.symbol ? null : token.symbol)}
-                  onToggleFavourite={(e) => {
-                    e.stopPropagation();
-                    toggleFavourite(token.symbol);
-                  }}
-                  onToggleWatch={(e) => {
-                    e.stopPropagation();
-                    toggleWatch(token.symbol, getThreshold(token.symbol));
-                  }}
-                  bot={botStatus?.bot}
-                  botOpenLegsCount={botStatus?.openLegsCount ?? 0}
-                />
+                  <TokenCard
+                    key={token.symbol}
+                    token={token}
+                    isSelected={selectedSymbol === token.symbol}
+                    isFavourite={isFavourite(token.symbol)}
+                    isWatched={isWatched(token.symbol)}
+                    onSelect={() => setSelectedSymbol(selectedSymbol === token.symbol ? null : token.symbol)}
+                    onToggleFavourite={(e) => {
+                      e.stopPropagation();
+                      toggleFavourite(token.symbol);
+                    }}
+                    onToggleWatch={(e) => {
+                      e.stopPropagation();
+                      toggleWatch(token.symbol, getThreshold(token.symbol));
+                    }}
+                    bot={botStatus?.bot}
+                    botOpenLegsCount={botStatus?.openLegsCount ?? 0}
+                  />
                 );
               })}
               {filteredTokens.length === 0 && (
@@ -1658,9 +1684,10 @@ export default function Dashboard() {
           )}
         </div>
 
-        {selectedToken && (
-          <div className="lg:col-span-1">
-            {(() => {
+        {/* Trade terminal — always visible */}
+        <div className="lg:col-span-1">
+          {selectedToken ? (
+            (() => {
               const botStatus = getBotStatusForSymbol(selectedToken.symbol);
               return (
                 <TokenDetailPanel
@@ -1672,9 +1699,17 @@ export default function Dashboard() {
                   botRequestOptions={getBotRequestOptions()}
                 />
               );
-            })()}
-          </div>
-        )}
+            })()
+          ) : (
+            <div className="bg-card border border-border rounded-md p-6 flex flex-col items-center justify-center text-center gap-3 sticky top-4 min-h-[200px]">
+              <Zap className="w-8 h-8 text-muted-foreground/20" />
+              <div>
+                <p className="text-sm font-medium text-muted-foreground">No token selected</p>
+                <p className="text-xs text-muted-foreground/50 mt-1">Click any card to configure and JUMP IN</p>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
