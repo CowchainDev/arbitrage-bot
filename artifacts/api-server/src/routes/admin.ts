@@ -200,4 +200,56 @@ router.post("/admin/backfill-fees", requireBotSecret, async (req, res) => {
   }
 });
 
+const TAKER_RATES: Record<string, number> = {
+  bybit:   0.00055,
+  binance: 0.00040,
+  gate:    0.00050,
+  okx:     0.00050,
+  mexc:    0.00050,
+};
+
+// POST /api/admin/backfill-estimated-fees
+// Estimates fees for any closed_trades record where totalFees = 0,
+// using per-exchange taker rates applied to position quantity.
+router.post("/backfill-estimated-fees", requireBotSecret, async (req, res) => {
+  try {
+    const zeroFeeRows = await db
+      .select()
+      .from(closedTradesTable)
+      .where(sql`${closedTradesTable.totalFees} = '0' AND ${closedTradesTable.quantity} > '0'`);
+
+    const results: Array<{ id: number; symbol: string; estimatedFee: string; adjustedPnl: string }> = [];
+
+    for (const row of zeroFeeRows) {
+      const qty = Number(row.quantity);
+      if (!qty) continue;
+      const rateA = TAKER_RATES[row.longExchange ?? "binance"] ?? 0.0005;
+      const rateB = TAKER_RATES[row.shortExchange ?? "bybit"] ?? 0.0005;
+      const estimatedFee = qty * (rateA + rateB);
+      const oldPnl = Number(row.realizedPnl ?? 0);
+      const adjustedPnl = oldPnl - estimatedFee;
+
+      await db
+        .update(closedTradesTable)
+        .set({
+          totalFees: String(estimatedFee),
+          realizedPnl: String(adjustedPnl),
+        })
+        .where(eq(closedTradesTable.id, row.id));
+
+      results.push({
+        id: row.id,
+        symbol: row.symbol,
+        estimatedFee: estimatedFee.toFixed(8),
+        adjustedPnl: adjustedPnl.toFixed(8),
+      });
+    }
+
+    res.json({ updated: results.length, results });
+  } catch (err) {
+    req.log.error({ err }, "backfill-estimated-fees: fatal error");
+    res.status(500).json({ error: "backfill_failed", message: String(err) });
+  }
+});
+
 export default router;
