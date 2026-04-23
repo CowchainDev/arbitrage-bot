@@ -1593,7 +1593,7 @@ export function useGetTrades<
 
 /**
  * Returns OHLCV close-price candle data for a token across all available exchanges.
- * Falls back to synthetic demo data when live exchanges are unavailable.
+ * Only exchanges with successful data are included; exchanges that fail or do not list the token are omitted.
  * @summary Get OHLCV candlestick data for a token across all exchanges
  */
 export const getGetExchangeKlinesUrl = (params: GetExchangeKlinesParams) => {

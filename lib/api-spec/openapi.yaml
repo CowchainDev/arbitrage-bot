@@ -38,7 +38,7 @@ paths:
       operationId: getExchangeKlines
       tags: [exchanges]
       summary: Get OHLCV candlestick data for a token across all exchanges
-      description: Returns close-price candle data (t, c) per exchange. Falls back to synthetic demo data if all live exchanges fail.
+      description: Returns close-price candle data (t, c) per exchange. Only exchanges with successful data are included; exchanges that fail or do not list the token are omitted. Returns an empty object when no exchanges respond successfully.
       parameters:
         - in: query
           name: symbol
