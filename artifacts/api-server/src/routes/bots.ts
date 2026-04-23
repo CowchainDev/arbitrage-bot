@@ -13,6 +13,7 @@ function normalizeBotConfig(bot: BotConfig) {
     ...bot,
     enterSpreadPct: Number(bot.enterSpreadPct),
     closeSpreadPct: Number(bot.closeSpreadPct),
+    stopLossSpreadPct: Number(bot.stopLossSpreadPct),
     orderSizeUsd: Number(bot.orderSizeUsd),
     forceStopUsd: Number(bot.forceStopUsd),
     createdAt: bot.createdAt.toISOString(),
@@ -52,8 +53,8 @@ router.post("/bots", requireBotSecret, async (req: Request, res: Response) => {
   const {
     symbol, enterSpreadPct, closeSpreadPct, orderSizeUsd,
     maxOrders, forceStopUsd, bybitLeverage, binanceLeverage,
-    exchangeA, exchangeB, leverageA, leverageB,
-  } = parsed.data as typeof parsed.data & { exchangeA?: string; exchangeB?: string; leverageA?: number; leverageB?: number };
+    exchangeA, exchangeB, leverageA, leverageB, stopLossSpreadPct,
+  } = parsed.data as typeof parsed.data & { exchangeA?: string; exchangeB?: string; leverageA?: number; leverageB?: number; stopLossSpreadPct?: number };
 
   try {
     const [bot] = await db
@@ -63,6 +64,7 @@ router.post("/bots", requireBotSecret, async (req: Request, res: Response) => {
         enabled: false,
         enterSpreadPct: String(enterSpreadPct),
         closeSpreadPct: String(closeSpreadPct),
+        stopLossSpreadPct: String(stopLossSpreadPct ?? 0),
         orderSizeUsd: String(orderSizeUsd),
         maxOrders: maxOrders ?? 3,
         forceStopUsd: String(forceStopUsd ?? 20),
@@ -100,12 +102,13 @@ router.put("/bots/:id", requireBotSecret, async (req: Request, res: Response) =>
   const {
     enterSpreadPct, closeSpreadPct, orderSizeUsd,
     maxOrders, forceStopUsd, bybitLeverage, binanceLeverage,
-    exchangeA, exchangeB, leverageA, leverageB,
-  } = parsed.data as typeof parsed.data & { exchangeA?: string; exchangeB?: string; leverageA?: number; leverageB?: number };
+    exchangeA, exchangeB, leverageA, leverageB, stopLossSpreadPct,
+  } = parsed.data as typeof parsed.data & { exchangeA?: string; exchangeB?: string; leverageA?: number; leverageB?: number; stopLossSpreadPct?: number };
 
   const updates: Record<string, unknown> = { updatedAt: new Date() };
   if (enterSpreadPct !== undefined) updates.enterSpreadPct = String(enterSpreadPct);
   if (closeSpreadPct !== undefined) updates.closeSpreadPct = String(closeSpreadPct);
+  if (stopLossSpreadPct !== undefined) updates.stopLossSpreadPct = String(stopLossSpreadPct);
   if (orderSizeUsd !== undefined) updates.orderSizeUsd = String(orderSizeUsd);
   if (maxOrders !== undefined) updates.maxOrders = maxOrders;
   if (forceStopUsd !== undefined) updates.forceStopUsd = String(forceStopUsd);

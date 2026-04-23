@@ -52,6 +52,7 @@ export const botConfigsTable = pgTable("bot_configs", {
   enabled: boolean("enabled").notNull().default(false),
   enterSpreadPct: numeric("enter_spread_pct", { precision: 20, scale: 8 }).notNull().default("0.05"),
   closeSpreadPct: numeric("close_spread_pct", { precision: 20, scale: 8 }).notNull().default("0.01"),
+  stopLossSpreadPct: numeric("stop_loss_spread_pct", { precision: 20, scale: 8 }).notNull().default("0"),
   orderSizeUsd: numeric("order_size_usd", { precision: 20, scale: 8 }).notNull().default("50"),
   maxOrders: integer("max_orders").notNull().default(3),
   forceStopUsd: numeric("force_stop_usd", { precision: 20, scale: 8 }).notNull().default("20"),

@@ -11,8 +11,10 @@ export interface CreateBotRequest {
   symbol: string;
   /** Minimum spread % to open a new leg */
   enterSpreadPct: number;
-  /** Spread % at which open legs are closed */
+  /** Spread % at which open legs are closed (take profit) */
   closeSpreadPct: number;
+  /** Spread % at which a widening position is closed (stop loss, 0 = disabled) */
+  stopLossSpreadPct?: number;
   /** Total USD size per leg */
   orderSizeUsd: number;
   /** Maximum concurrent open legs */

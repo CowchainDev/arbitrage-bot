@@ -12,8 +12,10 @@ export interface BotConfig {
   enabled: boolean;
   /** Minimum spread % to open a new leg */
   enterSpreadPct: number;
-  /** Spread % at which open legs are closed */
+  /** Spread % at which open legs are closed (take profit) */
   closeSpreadPct: number;
+  /** Spread % at which a widening position is closed (stop loss, 0 = disabled) */
+  stopLossSpreadPct: number;
   /** Total USD size per leg (split 50/50 between exchanges) */
   orderSizeUsd: number;
   /** Maximum concurrent open legs (DCA limit) */

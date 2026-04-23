@@ -338,6 +338,7 @@ function TokenDetailPanel({
   // Bot form state — pre-filled from bot config or manual inputs
   const [botEnterSpread, setBotEnterSpread] = useState(() => bot ? String(bot.enterSpreadPct) : openSpread);
   const [botCloseSpread, setBotCloseSpread] = useState(() => bot ? String(bot.closeSpreadPct) : closeSpread);
+  const [botStopLossSpread, setBotStopLossSpread] = useState(() => bot ? String(bot.stopLossSpreadPct ?? 0) : "0");
   const [botOrderSize, setBotOrderSize] = useState(() => bot ? String(bot.orderSizeUsd) : orderSize);
   const [botMaxOrders, setBotMaxOrders] = useState(() => bot ? String(bot.maxOrders) : "3");
   const [botForceStop, setBotForceStop] = useState(() => bot ? String(bot.forceStopUsd) : "50");
@@ -364,6 +365,7 @@ function TokenDetailPanel({
     if (bot) {
       setBotEnterSpread(String(bot.enterSpreadPct));
       setBotCloseSpread(String(bot.closeSpreadPct));
+      setBotStopLossSpread(String(bot.stopLossSpreadPct ?? 0));
       setBotOrderSize(String(bot.orderSizeUsd));
       setBotMaxOrders(String(bot.maxOrders));
       setBotForceStop(String(bot.forceStopUsd));
@@ -421,11 +423,12 @@ function TokenDetailPanel({
   const handleBotStart = async () => {
     const enterSpread = Number(botEnterSpread);
     const closeSpreadVal = Number(botCloseSpread);
+    const stopLossSpreadVal = Number(botStopLossSpread) || 0;
     const orderSizeVal = Number(botOrderSize);
     const maxOrdersVal = Math.max(1, Number(botMaxOrders) || 1);
     const forceStopVal = Number(botForceStop) || 0;
     if (!enterSpread || !closeSpreadVal || !orderSizeVal) {
-      toast({ title: "Invalid bot config", description: "Enter spread, close spread, and order size are required", variant: "destructive" });
+      toast({ title: "Invalid bot config", description: "Enter spread, take profit spread, and order size are required", variant: "destructive" });
       return;
     }
     setBotBusy(true);
@@ -437,6 +440,7 @@ function TokenDetailPanel({
             symbol: token.symbol,
             enterSpreadPct: enterSpread,
             closeSpreadPct: closeSpreadVal,
+            stopLossSpreadPct: stopLossSpreadVal,
             orderSizeUsd: orderSizeVal,
             maxOrders: maxOrdersVal,
             forceStopUsd: forceStopVal,
@@ -455,6 +459,7 @@ function TokenDetailPanel({
           data: {
             enterSpreadPct: enterSpread,
             closeSpreadPct: closeSpreadVal,
+            stopLossSpreadPct: stopLossSpreadVal,
             orderSizeUsd: orderSizeVal,
             maxOrders: maxOrdersVal,
             forceStopUsd: forceStopVal,
@@ -885,12 +890,24 @@ function TokenDetailPanel({
             />
           </div>
           <div>
-            <label className="text-xs text-muted-foreground uppercase tracking-wider mb-1 block">Close Spread %</label>
+            <label className="text-xs text-muted-foreground uppercase tracking-wider mb-1 block">Take Profit %</label>
             <Input
               value={botCloseSpread}
               onChange={(e) => setBotCloseSpread(e.target.value)}
               className="font-mono text-sm bg-background"
               data-testid="input-bot-close-spread"
+            />
+          </div>
+          <div className="col-span-2">
+            <label className="text-xs text-muted-foreground uppercase tracking-wider mb-1 block">
+              Stop Loss % <span className="normal-case text-muted-foreground/60">(0 = disabled)</span>
+            </label>
+            <Input
+              value={botStopLossSpread}
+              onChange={(e) => setBotStopLossSpread(e.target.value)}
+              className="font-mono text-sm bg-background"
+              data-testid="input-bot-stop-loss-spread"
+              placeholder="e.g. 0.8"
             />
           </div>
           <div>

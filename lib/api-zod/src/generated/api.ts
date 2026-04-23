@@ -366,7 +366,11 @@ export const CreateBotBody = zod.object({
   enterSpreadPct: zod.number().describe("Minimum spread % to open a new leg"),
   closeSpreadPct: zod
     .number()
-    .describe("Spread % at which open legs are closed"),
+    .describe("Spread % at which open legs are closed (take profit)"),
+  stopLossSpreadPct: zod
+    .number()
+    .optional()
+    .describe("Spread % at which open legs are closed on widening (stop loss, 0 = disabled)"),
   orderSizeUsd: zod.number().describe("Total USD size per leg"),
   maxOrders: zod.number().optional().describe("Maximum concurrent open legs"),
   forceStopUsd: zod
@@ -436,6 +440,7 @@ export const UpdateBotHeader = zod.object({
 export const UpdateBotBody = zod.object({
   enterSpreadPct: zod.number().optional(),
   closeSpreadPct: zod.number().optional(),
+  stopLossSpreadPct: zod.number().optional(),
   orderSizeUsd: zod.number().optional(),
   maxOrders: zod.number().optional(),
   forceStopUsd: zod.number().optional(),

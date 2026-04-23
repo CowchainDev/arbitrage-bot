@@ -9,6 +9,7 @@
 export interface UpdateBotRequest {
   enterSpreadPct?: number;
   closeSpreadPct?: number;
+  stopLossSpreadPct?: number;
   orderSizeUsd?: number;
   maxOrders?: number;
   forceStopUsd?: number;

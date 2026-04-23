@@ -274,8 +274,14 @@ function BotCard({ bot, openLegs }: { bot: BotConfig; openLegs: BotLeg[] }) {
           <span className="font-mono">{bot.enterSpreadPct}%</span>
         </div>
         <div className="flex items-center justify-between">
-          <span className="text-muted-foreground">Close spread</span>
+          <span className="text-muted-foreground">Take profit</span>
           <span className="font-mono">{bot.closeSpreadPct}%</span>
+        </div>
+        <div className="flex items-center justify-between">
+          <span className="text-muted-foreground">Stop loss</span>
+          <span className="font-mono">
+            {bot.stopLossSpreadPct > 0 ? `${bot.stopLossSpreadPct}%` : <span className="text-muted-foreground/50">off</span>}
+          </span>
         </div>
         <div className="flex items-center justify-between">
           <span className="text-muted-foreground">Order size</span>

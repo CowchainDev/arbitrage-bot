@@ -257,17 +257,27 @@ async function processBotConfig(config: BotConfig, canOpen: boolean): Promise<vo
   const forceStop = Number(config.forceStopUsd);
   const closeSpread = Number(config.closeSpreadPct);
   const enterSpread = Number(config.enterSpreadPct);
+  const stopLossSpread = Number(config.stopLossSpreadPct ?? 0);
   const forceStopTriggered = forceStop > 0 && openLegs.length > 0 && totalPnl <= -forceStop;
 
-  function legShouldClose(leg: BotLeg): boolean {
-    if (leg.bybitSide === "short") return spreadPct <= closeSpread;
-    return spreadPct >= -closeSpread;
+  function legShouldClose(leg: BotLeg): { close: boolean; reason: string } {
+    if (leg.bybitSide === "short") {
+      if (spreadPct <= closeSpread) return { close: true, reason: "take_profit" };
+      if (stopLossSpread > 0 && spreadPct >= stopLossSpread) return { close: true, reason: "stop_loss" };
+    } else {
+      if (spreadPct >= -closeSpread) return { close: true, reason: "take_profit" };
+      if (stopLossSpread > 0 && spreadPct <= -stopLossSpread) return { close: true, reason: "stop_loss" };
+    }
+    return { close: false, reason: "" };
   }
 
   let confirmedClosedCount = 0;
   let anyForceStop = false;
   for (const leg of openLegs) {
-    if (legShouldClose(leg) || forceStopTriggered) {
+    const { close, reason } = legShouldClose(leg);
+    if (close || forceStopTriggered) {
+      const trigger = forceStopTriggered ? "force_stop" : reason;
+      logger.info({ legId: leg.id, symbol: leg.symbol, trigger, spreadPct }, "Bot: close trigger fired");
       const closed = await closeLeg(config, leg, priceA, priceB);
       if (closed) confirmedClosedCount++;
       if (forceStopTriggered) anyForceStop = true;
