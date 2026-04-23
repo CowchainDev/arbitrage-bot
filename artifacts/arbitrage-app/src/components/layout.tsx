@@ -90,7 +90,7 @@ function BotsNavItem() {
   return (
     <NavLink href="/bots">
       <Bot className="w-4 h-4" />
-      Bots
+      Automations
       {running > 0 && (
         <span className="ml-0.5 bg-emerald-500/20 text-emerald-400 text-xs font-bold px-1.5 py-0 rounded-full leading-5">
           {running}

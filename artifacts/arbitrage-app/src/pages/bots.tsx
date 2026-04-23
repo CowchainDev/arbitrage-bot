@@ -164,7 +164,7 @@ export default function Bots() {
     <div className="max-w-5xl mx-auto space-y-6">
       <div className="flex items-center gap-2">
         <Bot className="w-5 h-5 text-primary" />
-        <h1 className="text-lg font-bold tracking-wider">Bots</h1>
+        <h1 className="text-lg font-bold tracking-wider">Automations</h1>
       </div>
 
       {/* Summary strip */}
