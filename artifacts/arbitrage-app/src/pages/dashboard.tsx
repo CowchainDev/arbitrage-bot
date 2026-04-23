@@ -1106,6 +1106,128 @@ function TokenDetailPanel({
   );
 }
 
+function BotSummaryRow({
+  positions,
+  isExpanded,
+  onToggle,
+}: {
+  positions: Position[];
+  isExpanded: boolean;
+  onToggle: () => void;
+}) {
+  const symbol = positions[0].symbol;
+  const totalPnl = positions.reduce((s, p) => s + (p.totalPnl ?? 0), 0);
+  const pnlPositive = totalPnl >= 0;
+
+  const firstBybitSide = positions[0].bybitSide;
+  const firstBinanceSide = positions[0].binanceSide;
+  // Both exchange sides must agree for "same side" to be displayed accurately.
+  const allSameSide =
+    positions.every((p) => p.bybitSide === firstBybitSide) &&
+    positions.every((p) => p.binanceSide === firstBinanceSide);
+
+  // Net signed quantities per exchange: long = +qty, short = -qty.
+  // Two equal-and-opposite legs yield net qty = 0, and thus net size = 0.
+  const netBybitQty = positions.reduce(
+    (s, p) => s + (p.bybitSide === "long" ? 1 : -1) * (p.bybitQty ?? 0),
+    0
+  );
+  const netBinanceQty = positions.reduce(
+    (s, p) => s + (p.binanceSide === "long" ? 1 : -1) * (p.binanceQty ?? 0),
+    0
+  );
+
+  // Signed cost basis (notional) per exchange.
+  const signedBybitNotional = positions.reduce(
+    (s, p) => s + (p.bybitSide === "long" ? 1 : -1) * (p.bybitEntryPrice ?? 0) * (p.bybitQty ?? 0),
+    0
+  );
+  const signedBinanceNotional = positions.reduce(
+    (s, p) => s + (p.binanceSide === "long" ? 1 : -1) * (p.binanceEntryPrice ?? 0) * (p.binanceQty ?? 0),
+    0
+  );
+
+  const bybitCurrentPrice = positions[positions.length - 1].bybitCurrentPrice;
+  const binanceCurrentPrice = positions[positions.length - 1].binanceCurrentPrice;
+
+  // Valuation price: current market price if available, otherwise VWAP of entry prices.
+  const totalBybitQty = positions.reduce((s, p) => s + (p.bybitQty ?? 0), 0);
+  const bybitEntryVwap = totalBybitQty > 0
+    ? positions.reduce((s, p) => s + (p.bybitEntryPrice ?? 0) * (p.bybitQty ?? 0), 0) / totalBybitQty
+    : 0;
+  const totalBinanceQty = positions.reduce((s, p) => s + (p.binanceQty ?? 0), 0);
+  const binanceEntryVwap = totalBinanceQty > 0
+    ? positions.reduce((s, p) => s + (p.binanceEntryPrice ?? 0) * (p.binanceQty ?? 0), 0) / totalBinanceQty
+    : 0;
+
+  const bybitValuation = bybitCurrentPrice ?? bybitEntryVwap;
+  const binanceValuation = binanceCurrentPrice ?? binanceEntryVwap;
+
+  // Net USD size = |net qty| × valuation price; opposite legs fully cancel to 0.
+  const netUsdSize = Math.abs(netBybitQty) * bybitValuation + Math.abs(netBinanceQty) * binanceValuation;
+
+  // Avg entry = signed net cost basis / net signed qty — the true breakeven for the net position.
+  // Shows "-" only when net qty is 0 (fully offset, no remaining exposure).
+  const avgBybitEntry = netBybitQty !== 0 ? signedBybitNotional / netBybitQty : undefined;
+  const avgBinanceEntry = netBinanceQty !== 0 ? signedBinanceNotional / netBinanceQty : undefined;
+  const avgSpread = positions.reduce((s, p) => s + p.currentSpread, 0) / positions.length;
+
+  const earliestOpenedAt = positions
+    .map((p) => p.openedAt)
+    .filter(Boolean)
+    .sort()[0];
+
+  return (
+    <div
+      data-testid={`position-summary-${symbol}`}
+      className="grid grid-cols-9 gap-2 px-3 py-2.5 text-xs border-b border-border/50 bg-muted/20 hover:bg-muted/40 transition-colors items-center cursor-pointer"
+      onClick={onToggle}
+    >
+      <span className="font-semibold flex items-center gap-1 min-w-0">
+        {isExpanded ? <ChevronUp className="w-3 h-3 text-muted-foreground shrink-0" /> : <ChevronDown className="w-3 h-3 text-muted-foreground shrink-0" />}
+        <span className="truncate">{symbol}</span>
+        <span className="text-[10px] text-muted-foreground bg-muted px-1 rounded shrink-0">{positions.length}</span>
+      </span>
+      <span>
+        {allSameSide ? (
+          <>
+            <span className={firstBybitSide === "long" ? "text-primary" : "text-destructive"}>
+              {firstBybitSide?.toUpperCase()}
+            </span>
+            {" / "}
+            <span className={positions[0].binanceSide === "long" ? "text-primary" : "text-destructive"}>
+              {positions[0].binanceSide?.toUpperCase()}
+            </span>
+          </>
+        ) : (
+          <span className="text-muted-foreground">Mixed</span>
+        )}
+      </span>
+      <span className="font-mono font-semibold">${netUsdSize.toFixed(2)}</span>
+      <span className="font-mono leading-tight">
+        <span className="flex flex-col gap-0.5">
+          <span className="text-amber-400">{avgBybitEntry != null ? formatPrice(avgBybitEntry) : "-"}</span>
+          <span className="text-violet-400">{avgBinanceEntry != null ? formatPrice(avgBinanceEntry) : "-"}</span>
+        </span>
+      </span>
+      <span className="font-mono leading-tight">
+        <span className="flex flex-col gap-0.5">
+          <span className="text-amber-400">{bybitCurrentPrice != null ? formatPrice(bybitCurrentPrice) : "-"}</span>
+          <span className="text-violet-400">{binanceCurrentPrice != null ? formatPrice(binanceCurrentPrice) : "-"}</span>
+        </span>
+      </span>
+      <span className="font-mono">{formatPct(avgSpread)}</span>
+      <span className={`font-mono font-semibold ${pnlPositive ? "text-primary" : "text-destructive"}`}>
+        {formatPnlWithPct(totalPnl, netUsdSize)}
+      </span>
+      <span className="font-mono text-muted-foreground">
+        {earliestOpenedAt ? new Date(earliestOpenedAt).toLocaleTimeString() : "-"}
+      </span>
+      <span className="text-xs text-muted-foreground italic">Bot managed</span>
+    </div>
+  );
+}
+
 function PositionRow({
   position,
   onCloseSuccess,
@@ -1370,6 +1492,13 @@ export default function Dashboard() {
     });
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
   const [showPositions, setShowPositions] = useState(true);
+  const [expandedBotSymbols, setExpandedBotSymbols] = useState<Set<string>>(new Set());
+  const toggleBotSymbol = (symbol: string) =>
+    setExpandedBotSymbols((prev) => {
+      const next = new Set(prev);
+      if (next.has(symbol)) next.delete(symbol); else next.add(symbol);
+      return next;
+    });
 
   const { tokens: streamTokens, isDemoData: streamIsDemo, streamStatus, isFetching: streamFetching } = usePriceStream();
   const isPageVisible = usePageVisibility();
@@ -1467,6 +1596,31 @@ export default function Dashboard() {
     return new Set(localPositions.filter((p) => !polledSymbols.has(p.symbol)).map((p) => p.symbol));
   }, [polledPositions, localPositions]);
 
+  const botLegGroupsBySymbol = useMemo(() => {
+    const groups = new Map<string, Position[]>();
+    for (const pos of positions) {
+      if (pos.id.startsWith("bot-leg-")) {
+        const existing = groups.get(pos.symbol) ?? [];
+        existing.push(pos);
+        groups.set(pos.symbol, existing);
+      }
+    }
+    return groups;
+  }, [positions]);
+
+  // Number of visible rows in the positions table (grouped multi-leg symbols count as 1)
+  const visiblePositionCount = useMemo(() => {
+    const multiLegSymbols = new Set(
+      [...botLegGroupsBySymbol.entries()]
+        .filter(([, legs]) => legs.length > 1)
+        .map(([sym]) => sym)
+    );
+    const nonGrouped = positions.filter(
+      (p) => !p.id.startsWith("bot-leg-") || (botLegGroupsBySymbol.get(p.symbol)?.length ?? 0) <= 1
+    );
+    return multiLegSymbols.size + nonGrouped.length;
+  }, [positions, botLegGroupsBySymbol]);
+
   const filteredTokens = useMemo(() => {
     let list = [...tokens];
     if (favsOnly) list = list.filter((t) => isFavourite(t.symbol));
@@ -1559,7 +1713,7 @@ export default function Dashboard() {
             <div className="flex items-center gap-2 text-sm font-semibold">
               <TrendingUp className="w-4 h-4 text-primary" />
               Open Positions
-              <span className="bg-primary/20 text-primary text-xs px-1.5 py-0.5 rounded">{positions.length}</span>
+              <span className="bg-primary/20 text-primary text-xs px-1.5 py-0.5 rounded">{visiblePositionCount}</span>
               {streamStatus === "open" ? (
                 <span className="flex items-center gap-1 text-xs font-medium px-1.5 py-0.5 rounded bg-green-500/15 text-green-500">
                   <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
@@ -1593,16 +1747,49 @@ export default function Dashboard() {
                 <span>Opened</span>
                 <span></span>
               </div>
-              {positions.map((pos) => (
-                <PositionRow
-                  key={pos.id}
-                  position={pos}
-                  onCloseSuccess={removePosition}
-                  onDismiss={removePosition}
-                  isLocalOnly={!hasCredentials && localOnlySymbols.has(pos.symbol)}
-                  requestHeaders={requestHeaders}
-                />
-              ))}
+              {(() => {
+                const rendered = new Set<string>();
+                return positions.map((pos) => {
+                  if (pos.id.startsWith("bot-leg-")) {
+                    const group = botLegGroupsBySymbol.get(pos.symbol)!;
+                    if (group.length > 1) {
+                      if (rendered.has(pos.symbol)) return null;
+                      rendered.add(pos.symbol);
+                      const isExpanded = expandedBotSymbols.has(pos.symbol);
+                      return (
+                        <div key={`group-${pos.symbol}`}>
+                          <BotSummaryRow
+                            positions={group}
+                            isExpanded={isExpanded}
+                            onToggle={() => toggleBotSymbol(pos.symbol)}
+                          />
+                          {isExpanded && group.map((legPos) => (
+                            <div key={legPos.id} className="pl-4 border-l-2 border-primary/20">
+                              <PositionRow
+                                position={legPos}
+                                onCloseSuccess={removePosition}
+                                onDismiss={removePosition}
+                                isLocalOnly={false}
+                                requestHeaders={requestHeaders}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    }
+                  }
+                  return (
+                    <PositionRow
+                      key={pos.id}
+                      position={pos}
+                      onCloseSuccess={removePosition}
+                      onDismiss={removePosition}
+                      isLocalOnly={!hasCredentials && localOnlySymbols.has(pos.symbol)}
+                      requestHeaders={requestHeaders}
+                    />
+                  );
+                });
+              })()}
             </div>
           )}
         </div>
