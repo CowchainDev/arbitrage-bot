@@ -1444,12 +1444,22 @@ export default function Dashboard() {
   );
 
   const positions = useMemo(() => {
+    // Symbols with at least one bot leg — the exchange-polled row for these is
+    // the exchange's aggregated total (inflated), so we hide it in favour of the
+    // individual bot leg rows which already track each trade accurately.
+    const botLegSymbols = new Set(botLegPositions.map((p) => p.symbol));
+    const filteredPolled = polledPositions.filter((p) => !botLegSymbols.has(p.symbol));
+    // Use original polledPositions (pre-filter) so local cached positions for
+    // polled symbols are still suppressed, AND additionally exclude any local
+    // position whose symbol is covered by bot legs.
     const polledSymbols = new Set(polledPositions.map((p) => p.symbol));
-    const localOnly = localPositions.filter((p) => !polledSymbols.has(p.symbol));
+    const localOnly = localPositions.filter(
+      (p) => !polledSymbols.has(p.symbol) && !botLegSymbols.has(p.symbol)
+    );
     // Bot legs have distinct IDs (bot-leg-{id}); include them alongside other positions
-    const existingIds = new Set([...polledPositions.map((p) => p.id), ...localOnly.map((p) => p.id)]);
+    const existingIds = new Set([...filteredPolled.map((p) => p.id), ...localOnly.map((p) => p.id)]);
     const uniqueBotLegs = botLegPositions.filter((p) => !existingIds.has(p.id));
-    return [...polledPositions, ...localOnly, ...uniqueBotLegs];
+    return [...filteredPolled, ...localOnly, ...uniqueBotLegs];
   }, [polledPositions, localPositions, botLegPositions]);
 
   const localOnlySymbols = useMemo(() => {
