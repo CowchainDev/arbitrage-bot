@@ -565,7 +565,7 @@ router.get("/exchanges/klines", async (req: Request, res: Response) => {
     function generateKlines(startBase: number, vol: number): { t: number; c: number }[] {
       const pts: { t: number; c: number }[] = [];
       let price = startBase;
-      for (let i = limit; i >= 0; i--) {
+      for (let i = limit - 1; i >= 0; i--) {
         price = price * (1 + (Math.random() - 0.5) * vol);
         pts.push({ t: now - i * ms, c: price });
       }

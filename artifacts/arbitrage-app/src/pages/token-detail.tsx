@@ -348,7 +348,6 @@ export default function TokenDetail({ params }: { params: { symbol: string } }) 
           {token ? (
             <TokenDetailPanel
               token={token}
-              onClose={() => {}}
               bot={botStatus?.bot}
               botOpenLegsCount={botStatus?.openLegsCount ?? 0}
               botRequestOptions={botRequestOptions}

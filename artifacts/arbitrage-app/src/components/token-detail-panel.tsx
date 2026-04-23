@@ -53,7 +53,7 @@ export function TokenDetailPanel({
   botRequestOptions,
 }: {
   token: TokenSpread;
-  onClose: () => void;
+  onClose?: () => void;
   bot?: BotConfig;
   botOpenLegsCount: number;
   botRequestOptions?: RequestInit;
@@ -239,9 +239,11 @@ export function TokenDetailPanel({
             )
           ) : null}
         </div>
-        <button onClick={onClose} className="text-muted-foreground hover:text-foreground ml-2 shrink-0" data-testid="btn-close-detail">
-          <X className="w-4 h-4" />
-        </button>
+        {onClose && (
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground ml-2 shrink-0" data-testid="btn-close-detail">
+            <X className="w-4 h-4" />
+          </button>
+        )}
       </div>
 
       <div className="space-y-3">
