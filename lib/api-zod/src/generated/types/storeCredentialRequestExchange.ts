@@ -15,4 +15,7 @@ export type StoreCredentialRequestExchange =
 export const StoreCredentialRequestExchange = {
   bybit: "bybit",
   binance: "binance",
+  gate: "gate",
+  okx: "okx",
+  mexc: "mexc",
 } as const;

@@ -1,4 +1,3 @@
-import ccxt from "ccxt";
 import { db } from "@workspace/db";
 import {
   botConfigsTable,
@@ -12,13 +11,12 @@ import { logger } from "../lib/logger";
 import {
   fetchPriceSpreads,
   getPriceCacheEntry,
-  createBybitExchange,
-  createBinanceExchange,
-  bybitCreateOrder,
+  createExchangeForName,
   placeOrderInternal,
   closePositionInternal,
+  type SupportedCcxtExchange,
 } from "../routes/exchanges";
-import { getStoredCredentials } from "../routes/credentials";
+import { getStoredCredentials, type SupportedExchange } from "../routes/credentials";
 
 let watcherTimer: ReturnType<typeof setTimeout> | null = null;
 let priceRefreshTimer: ReturnType<typeof setTimeout> | null = null;
@@ -29,44 +27,67 @@ const WATCHER_INTERVAL_MS = 1500;
 const PRICE_REFRESH_INTERVAL_MS = 5000;
 const RECONCILE_INTERVAL_MS = 30_000;
 
-type PriceRow = { symbol: string; bybitPrice: number | null; binancePrice: number | null };
-
-function getSpreadPct(bybitPrice: number | null, binancePrice: number | null): number | null {
-  if (!bybitPrice || !binancePrice) return null;
-  return ((bybitPrice - binancePrice) / binancePrice) * 100;
+function getSpreadPct(priceA: number | null, priceB: number | null): number | null {
+  if (!priceA || !priceB) return null;
+  return ((priceA - priceB) / priceB) * 100;
 }
 
 function computeLegPnl(
   leg: BotLeg,
-  bybitPrice: number,
-  binancePrice: number,
+  priceA: number,
+  priceB: number,
 ): number {
-  const bybitQty = Number(leg.bybitQty);
-  const binanceQty = Number(leg.binanceQty);
-  const bybitEntry = Number(leg.bybitEntry);
-  const binanceEntry = Number(leg.binanceEntry);
+  const qtyA = Number(leg.bybitQty);
+  const qtyB = Number(leg.binanceQty);
+  const entryA = Number(leg.bybitEntry);
+  const entryB = Number(leg.binanceEntry);
 
-  const bybitPnl =
+  const pnlA =
     leg.bybitSide === "long"
-      ? (bybitPrice - bybitEntry) * bybitQty
-      : (bybitEntry - bybitPrice) * bybitQty;
+      ? (priceA - entryA) * qtyA
+      : (entryA - priceA) * qtyA;
 
-  const binancePnl =
+  const pnlB =
     leg.binanceSide === "long"
-      ? (binancePrice - binanceEntry) * binanceQty
-      : (binanceEntry - binancePrice) * binanceQty;
+      ? (priceB - entryB) * qtyB
+      : (entryB - priceB) * qtyB;
 
-  return bybitPnl + binancePnl;
+  return pnlA + pnlB;
+}
+
+function botExchangeNames(config: BotConfig): { exchangeA: string; exchangeB: string } {
+  return {
+    exchangeA: config.exchangeA ?? "bybit",
+    exchangeB: config.exchangeB ?? "binance",
+  };
+}
+
+async function getExchangePairForBot(
+  config: BotConfig,
+): Promise<{ exA: SupportedCcxtExchange; exB: SupportedCcxtExchange } | null> {
+  const { exchangeA, exchangeB } = botExchangeNames(config);
+
+  const [credsA, credsB] = await Promise.all([
+    getStoredCredentials(exchangeA as SupportedExchange),
+    getStoredCredentials(exchangeB as SupportedExchange),
+  ]);
+
+  if (!credsA || !credsB) {
+    logger.warn({ symbol: config.symbol, exchangeA, exchangeB }, "Bot: missing credentials for exchange pair");
+    return null;
+  }
+
+  return {
+    exA: createExchangeForName(exchangeA, credsA.apiKey, credsA.apiSecret),
+    exB: createExchangeForName(exchangeB, credsB.apiKey, credsB.apiSecret),
+  };
 }
 
 async function openLeg(config: BotConfig, spreadPct: number): Promise<void> {
-  const bybitCreds = await getStoredCredentials("bybit");
-  const binanceCreds = await getStoredCredentials("binance");
-
-  if (!bybitCreds || !binanceCreds) {
-    logger.warn({ symbol: config.symbol }, "Bot: no server-side credentials, skipping leg open");
-    return;
-  }
+  const pair = await getExchangePairForBot(config);
+  if (!pair) return;
+  const { exA, exB } = pair;
+  const { exchangeA, exchangeB } = botExchangeNames(config);
 
   const halfSize = Number(config.orderSizeUsd) / 2;
   if (halfSize < 5) {
@@ -74,99 +95,82 @@ async function openLeg(config: BotConfig, spreadPct: number): Promise<void> {
     return;
   }
 
-  const bybitSide: "long" | "short" = spreadPct >= 0 ? "short" : "long";
-  const binanceSide: "long" | "short" = bybitSide === "long" ? "short" : "long";
+  const sideA: "long" | "short" = spreadPct >= 0 ? "short" : "long";
+  const sideB: "long" | "short" = sideA === "long" ? "short" : "long";
+  const leverageA = (config.leverageA ?? config.bybitLeverage) || 1;
+  const leverageB = (config.leverageB ?? config.binanceLeverage) || 1;
 
-  const bybitEx = createBybitExchange(bybitCreds.apiKey, bybitCreds.apiSecret);
-  const binanceEx = createBinanceExchange(binanceCreds.apiKey, binanceCreds.apiSecret);
-
-  let bybitResult: Awaited<ReturnType<typeof placeOrderInternal>> | null = null;
+  let resultA: Awaited<ReturnType<typeof placeOrderInternal>> | null = null;
 
   try {
-    bybitResult = await placeOrderInternal(bybitEx, config.symbol, bybitSide, halfSize, config.bybitLeverage ?? undefined);
+    resultA = await placeOrderInternal(exA, config.symbol, sideA, halfSize, leverageA);
   } catch (err) {
-    logger.error({ err, symbol: config.symbol }, "Bot: Bybit leg open failed");
+    logger.error({ err, symbol: config.symbol, exchange: exchangeA }, `Bot: ${exchangeA} leg open failed`);
     return;
   }
 
   try {
-    const binanceResult = await placeOrderInternal(binanceEx, config.symbol, binanceSide, halfSize, config.binanceLeverage ?? undefined);
+    const resultB = await placeOrderInternal(exB, config.symbol, sideB, halfSize, leverageB);
 
     await db.insert(botLegsTable).values({
       botConfigId: config.id,
       symbol: config.symbol,
-      bybitOrderId: bybitResult.orderId,
-      binanceOrderId: binanceResult.orderId,
-      bybitQty: String(bybitResult.filledQty),
-      binanceQty: String(binanceResult.filledQty),
-      bybitEntry: String(bybitResult.avgPrice),
-      binanceEntry: String(binanceResult.avgPrice),
-      bybitSide,
-      binanceSide,
+      bybitOrderId: resultA.orderId,
+      binanceOrderId: resultB.orderId,
+      bybitQty: String(resultA.filledQty),
+      binanceQty: String(resultB.filledQty),
+      bybitEntry: String(resultA.avgPrice),
+      binanceEntry: String(resultB.avgPrice),
+      bybitSide: sideA,
+      binanceSide: sideB,
       spreadAtEntry: String(spreadPct),
       status: "open",
       openedAt: new Date(),
     });
 
-    logger.info({ symbol: config.symbol, bybitSide, spreadPct }, "Bot: opened new leg");
+    logger.info({ symbol: config.symbol, exchangeA, sideA, exchangeB, sideB, spreadPct }, "Bot: opened new leg");
   } catch (err) {
-    logger.error({ err, symbol: config.symbol }, "Bot: Binance leg open failed, compensating Bybit");
-    const compensateSide = bybitSide === "long" ? "sell" : "buy";
+    logger.error({ err, symbol: config.symbol, exchange: exchangeB }, `Bot: ${exchangeB} leg open failed, compensating ${exchangeA}`);
+    const compensateSide = sideA === "long" ? "sell" : "buy";
     try {
-      await bybitCreateOrder(
-        bybitEx as InstanceType<typeof ccxt.bybit>,
-        `${config.symbol}/USDT:USDT`,
-        compensateSide,
-        bybitResult.filledQty,
-        { reduceOnly: true },
-        bybitSide,
-      );
-      logger.info({ symbol: config.symbol }, "Bot: Bybit compensation order placed");
+      await exA.createMarketOrder(`${config.symbol}/USDT:USDT`, compensateSide, resultA.filledQty, undefined, { reduceOnly: true });
+      logger.info({ symbol: config.symbol }, `Bot: ${exchangeA} compensation order placed`);
     } catch (compErr) {
-      logger.error({ compErr, symbol: config.symbol }, "Bot: Bybit compensation FAILED — manual intervention required");
+      logger.error({ compErr, symbol: config.symbol }, `Bot: ${exchangeA} compensation FAILED — manual intervention required`);
     }
   }
 }
 
 async function closeLeg(
+  config: BotConfig,
   leg: BotLeg,
-  bybitPrice: number,
-  binancePrice: number,
+  priceA: number,
+  priceB: number,
 ): Promise<boolean> {
-  const bybitCreds = await getStoredCredentials("bybit");
-  const binanceCreds = await getStoredCredentials("binance");
-
-  if (!bybitCreds || !binanceCreds) return false;
-
-  const bybitEx = createBybitExchange(bybitCreds.apiKey, bybitCreds.apiSecret);
-  const binanceEx = createBinanceExchange(binanceCreds.apiKey, binanceCreds.apiSecret);
-
-  const bybitQty = Number(leg.bybitQty);
-  const binanceQty = Number(leg.binanceQty);
+  const pair = await getExchangePairForBot(config);
+  if (!pair) return false;
+  const { exA, exB } = pair;
+  const { exchangeA } = botExchangeNames(config);
 
   const result = await closePositionInternal({
-    bybit: bybitEx,
-    binance: binanceEx,
+    exA,
+    exB,
     symbol: leg.symbol,
-    bybitSide: leg.bybitSide as "long" | "short",
-    binanceSide: leg.binanceSide as "long" | "short",
-    bybitQty,
-    binanceQty,
+    sideA: leg.bybitSide as "long" | "short",
+    sideB: leg.binanceSide as "long" | "short",
+    qtyA: Number(leg.bybitQty),
+    qtyB: Number(leg.binanceQty),
+    longExchange: leg.bybitSide === "long" ? exchangeA : config.exchangeB ?? "binance",
+    shortExchange: leg.bybitSide === "short" ? exchangeA : config.exchangeB ?? "binance",
   });
 
   if (!result.bothClosed) {
-    if (result.bybitError) {
-      logger.error({ err: result.bybitError, symbol: leg.symbol, legId: leg.id },
-        "Bot: Bybit leg close failed — leg remains open for retry");
-    }
-    if (result.binanceError) {
-      logger.error({ err: result.binanceError, symbol: leg.symbol, legId: leg.id },
-        "Bot: Binance leg close failed — leg remains open for retry");
-    }
+    if (result.errorA) logger.error({ err: result.errorA, symbol: leg.symbol, legId: leg.id }, "Bot: exA leg close failed");
+    if (result.errorB) logger.error({ err: result.errorB, symbol: leg.symbol, legId: leg.id }, "Bot: exB leg close failed");
     return false;
   }
 
-  const realizedPnl = computeLegPnl(leg, bybitPrice, binancePrice);
+  const realizedPnl = computeLegPnl(leg, priceA, priceB);
 
   await db
     .update(botLegsTable)
@@ -176,11 +180,11 @@ async function closeLeg(
   try {
     await db.insert(closedTradesTable).values({
       symbol: leg.symbol,
-      longExchange: leg.bybitSide === "long" ? "bybit" : "binance",
-      shortExchange: leg.bybitSide === "short" ? "bybit" : "binance",
+      longExchange: leg.bybitSide === "long" ? (config.exchangeA ?? "bybit") : (config.exchangeB ?? "binance"),
+      shortExchange: leg.bybitSide === "short" ? (config.exchangeA ?? "bybit") : (config.exchangeB ?? "binance"),
       spreadAtEntry: String(leg.spreadAtEntry),
       realizedPnl: String(realizedPnl),
-      quantity: String((bybitQty * bybitPrice + binanceQty * binancePrice) / 2),
+      quantity: String((Number(leg.bybitQty) * priceA + Number(leg.binanceQty) * priceB) / 2),
       entryTime: leg.openedAt,
       closeTime: new Date(),
     });
@@ -203,8 +207,8 @@ async function processBotConfig(config: BotConfig, canOpen: boolean): Promise<vo
   if (spreadPctRaw === null) return;
   const spreadPct: number = spreadPctRaw;
 
-  const bybitPrice = priceRow.bybitPrice!;
-  const binancePrice = priceRow.binancePrice!;
+  const priceA = priceRow.bybitPrice!;
+  const priceB = priceRow.binancePrice!;
 
   const openLegs = await db
     .select()
@@ -212,7 +216,7 @@ async function processBotConfig(config: BotConfig, canOpen: boolean): Promise<vo
     .where(and(eq(botLegsTable.botConfigId, config.id), eq(botLegsTable.status, "open")));
 
   const totalPnl = openLegs.reduce(
-    (sum, leg) => sum + computeLegPnl(leg, bybitPrice, binancePrice),
+    (sum, leg) => sum + computeLegPnl(leg, priceA, priceB),
     0,
   );
 
@@ -221,10 +225,6 @@ async function processBotConfig(config: BotConfig, canOpen: boolean): Promise<vo
   const enterSpread = Number(config.enterSpreadPct);
   const forceStopTriggered = forceStop > 0 && openLegs.length > 0 && totalPnl <= -forceStop;
 
-  // Per-leg directional close: close when spread has returned to threshold
-  // - bybit-short leg (opened at positive spread): close when spreadPct <= closeSpread
-  // - bybit-long leg (opened at negative spread): close when spreadPct >= -closeSpread
-  // Both catch spread crossing zero (fully reversed arbitrage)
   function legShouldClose(leg: BotLeg): boolean {
     if (leg.bybitSide === "short") return spreadPct <= closeSpread;
     return spreadPct >= -closeSpread;
@@ -234,36 +234,34 @@ async function processBotConfig(config: BotConfig, canOpen: boolean): Promise<vo
   let anyForceStop = false;
   for (const leg of openLegs) {
     if (legShouldClose(leg) || forceStopTriggered) {
-      const closed = await closeLeg(leg, bybitPrice, binancePrice);
+      const closed = await closeLeg(config, leg, priceA, priceB);
       if (closed) confirmedClosedCount++;
       if (forceStopTriggered) anyForceStop = true;
     }
   }
 
   if (anyForceStop) {
-    logger.warn({ symbol: config.symbol, totalPnl, forceStopUsd: forceStop },
-      "Bot: force-stop triggered — skipping new open this tick");
+    logger.warn({ symbol: config.symbol, totalPnl, forceStopUsd: forceStop }, "Bot: force-stop triggered");
     return;
   }
 
   if (!canOpen) return;
 
   const remainingOpen = openLegs.length - confirmedClosedCount;
-  // Open: abs spread >= threshold (works for both spread directions)
   const shouldOpen = Math.abs(spreadPct) >= enterSpread && remainingOpen < config.maxOrders;
   if (shouldOpen) {
     await openLeg(config, spreadPct);
   }
 }
 
-// Exported so the stop-and-close API route can reuse it
 export async function closeAllLegsForBot(botId: number): Promise<{ closed: number; failed: number }> {
-  const bybitCreds = await getStoredCredentials("bybit");
-  const binanceCreds = await getStoredCredentials("binance");
+  const [botConfig] = await db.select().from(botConfigsTable).where(eq(botConfigsTable.id, botId)).limit(1);
+  if (!botConfig) return { closed: 0, failed: 0 };
 
-  if (!bybitCreds || !binanceCreds) {
-    return { closed: 0, failed: 0 };
-  }
+  const pair = await getExchangePairForBot(botConfig);
+  if (!pair) return { closed: 0, failed: 0 };
+  const { exA, exB } = pair;
+  const { exchangeA, exchangeB } = botExchangeNames(botConfig);
 
   const openLegs = await db
     .select()
@@ -274,36 +272,35 @@ export async function closeAllLegsForBot(botId: number): Promise<{ closed: numbe
   let failed = 0;
 
   for (const leg of openLegs) {
-    const bybitEx = createBybitExchange(bybitCreds.apiKey, bybitCreds.apiSecret);
-    const binanceEx = createBinanceExchange(binanceCreds.apiKey, binanceCreds.apiSecret);
-
     const priceRow = getPriceCacheEntry(leg.symbol);
-    const bybitPrice = priceRow?.bybitPrice ?? Number(leg.bybitEntry);
-    const binancePrice = priceRow?.binancePrice ?? Number(leg.binanceEntry);
+    const priceA = priceRow?.bybitPrice ?? Number(leg.bybitEntry);
+    const priceB = priceRow?.binancePrice ?? Number(leg.binanceEntry);
 
     const result = await closePositionInternal({
-      bybit: bybitEx,
-      binance: binanceEx,
+      exA,
+      exB,
       symbol: leg.symbol,
-      bybitSide: leg.bybitSide as "long" | "short",
-      binanceSide: leg.binanceSide as "long" | "short",
-      bybitQty: Number(leg.bybitQty),
-      binanceQty: Number(leg.binanceQty),
+      sideA: leg.bybitSide as "long" | "short",
+      sideB: leg.binanceSide as "long" | "short",
+      qtyA: Number(leg.bybitQty),
+      qtyB: Number(leg.binanceQty),
       spreadAtEntry: Number(leg.spreadAtEntry),
       entryTime: leg.openedAt,
+      longExchange: leg.bybitSide === "long" ? exchangeA : exchangeB,
+      shortExchange: leg.bybitSide === "short" ? exchangeA : exchangeB,
     });
 
     if (result.bothClosed) {
-      const realizedPnl = computeLegPnl(leg, bybitPrice, binancePrice);
+      const realizedPnl = computeLegPnl(leg, priceA, priceB);
       await db.update(botLegsTable).set({ status: "closed", closedAt: new Date() }).where(eq(botLegsTable.id, leg.id));
       try {
         await db.insert(closedTradesTable).values({
           symbol: leg.symbol,
-          longExchange: leg.bybitSide === "long" ? "bybit" : "binance",
-          shortExchange: leg.bybitSide === "short" ? "bybit" : "binance",
+          longExchange: leg.bybitSide === "long" ? exchangeA : exchangeB,
+          shortExchange: leg.bybitSide === "short" ? exchangeA : exchangeB,
           spreadAtEntry: String(leg.spreadAtEntry),
           realizedPnl: String(realizedPnl),
-          quantity: String((Number(leg.bybitQty) * bybitPrice + Number(leg.binanceQty) * binancePrice) / 2),
+          quantity: String((Number(leg.bybitQty) * priceA + Number(leg.binanceQty) * priceB) / 2),
           entryTime: leg.openedAt,
           closeTime: new Date(),
         });
@@ -312,21 +309,14 @@ export async function closeAllLegsForBot(botId: number): Promise<{ closed: numbe
       logger.info({ legId: leg.id, symbol: leg.symbol }, "stop-and-close: leg closed");
     } else {
       failed++;
-      logger.warn({ legId: leg.id, bybitErr: result.bybitError, binanceErr: result.binanceError },
-        "stop-and-close: leg close failed");
+      logger.warn({ legId: leg.id, errorA: result.errorA, errorB: result.errorB }, "stop-and-close: leg close failed");
     }
   }
 
   return { closed, failed };
 }
 
-// Reconcile open legs against actual exchange positions.
-// Marks legs as closed when both exchange sides are gone (manually closed by user).
 async function reconcileOpenLegs(): Promise<void> {
-  const bybitCreds = await getStoredCredentials("bybit");
-  const binanceCreds = await getStoredCredentials("binance");
-  if (!bybitCreds || !binanceCreds) return;
-
   const openLegs = await db
     .select()
     .from(botLegsTable)
@@ -334,61 +324,74 @@ async function reconcileOpenLegs(): Promise<void> {
 
   if (openLegs.length === 0) return;
 
-  const bybitEx = createBybitExchange(bybitCreds.apiKey, bybitCreds.apiSecret);
-  const binanceEx = createBinanceExchange(binanceCreds.apiKey, binanceCreds.apiSecret);
+  const botIds = [...new Set(openLegs.map(l => l.botConfigId))];
+  const botConfigs = botIds.length > 0
+    ? await db.select().from(botConfigsTable).where(inArray(botConfigsTable.id, botIds))
+    : [];
+  const configMap = new Map(botConfigs.map(c => [c.id, c]));
 
-  const [bybitPositions, binancePositions] = await Promise.allSettled([
-    bybitEx.fetchPositions(undefined, { type: "linear" }),
-    binanceEx.fetchPositions(undefined, { type: "future" }),
-  ]);
-
-  // Build sets: "SYMBOL:side" => qty  for non-zero positions
-  const bybitActive = new Set<string>();
-  if (bybitPositions.status === "fulfilled") {
-    for (const pos of bybitPositions.value) {
-      if ((pos.contracts ?? 0) === 0) continue;
-      const sym = (pos.symbol ?? "").split("/")[0];
-      const side = pos.side === "long" ? "long" : "short";
-      bybitActive.add(`${sym}:${side}`);
-    }
+  const exchangePairCache = new Map<number, Awaited<ReturnType<typeof getExchangePairForBot>>>();
+  for (const config of botConfigs) {
+    exchangePairCache.set(config.id, await getExchangePairForBot(config));
   }
 
-  const binanceActive = new Set<string>();
-  if (binancePositions.status === "fulfilled") {
-    for (const pos of binancePositions.value) {
-      if ((pos.contracts ?? 0) === 0) continue;
-      const sym = (pos.symbol ?? "").split("/")[0];
-      const side = pos.side === "long" ? "long" : "short";
-      binanceActive.add(`${sym}:${side}`);
-    }
+  const activePositionsByExchange = new Map<string, Set<string>>();
+
+  const allExchanges = new Set<string>();
+  for (const config of botConfigs) {
+    allExchanges.add(config.exchangeA ?? "bybit");
+    allExchanges.add(config.exchangeB ?? "binance");
   }
 
-  // Both fetches failed — don't reconcile (could incorrectly mark legs as closed)
-  if (bybitPositions.status === "rejected" && binancePositions.status === "rejected") return;
+  for (const exName of allExchanges) {
+    const creds = await getStoredCredentials(exName as SupportedExchange);
+    if (!creds) continue;
+    try {
+      const ex = createExchangeForName(exName, creds.apiKey, creds.apiSecret);
+      const fetchType = exName === "binance" ? "future" : "linear";
+      const positions = await ex.fetchPositions(undefined, { type: fetchType });
+      const active = new Set<string>();
+      for (const pos of positions) {
+        if ((pos.contracts ?? 0) === 0) continue;
+        const sym = (pos.symbol ?? "").split("/")[0];
+        const side = pos.side === "long" ? "long" : "short";
+        active.add(`${sym}:${side}`);
+      }
+      activePositionsByExchange.set(exName, active);
+    } catch (err) {
+      logger.warn({ err, exchange: exName }, "Reconcile: failed to fetch positions from exchange");
+    }
+  }
 
   for (const leg of openLegs) {
-    const bbKey = `${leg.symbol}:${leg.bybitSide}`;
-    const bnKey = `${leg.symbol}:${leg.binanceSide}`;
+    const config = configMap.get(leg.botConfigId);
+    if (!config) continue;
 
-    const bybitGone = bybitPositions.status === "fulfilled" && !bybitActive.has(bbKey);
-    const binanceGone = binancePositions.status === "fulfilled" && !binanceActive.has(bnKey);
+    const exAName = config.exchangeA ?? "bybit";
+    const exBName = config.exchangeB ?? "binance";
 
-    if (bybitGone && binanceGone) {
-      // Both sides are gone — must have been closed manually
+    const activeA = activePositionsByExchange.get(exAName);
+    const activeB = activePositionsByExchange.get(exBName);
+
+    if (!activeA && !activeB) continue;
+
+    const keyA = `${leg.symbol}:${leg.bybitSide}`;
+    const keyB = `${leg.symbol}:${leg.binanceSide}`;
+
+    const aGone = activeA ? !activeA.has(keyA) : false;
+    const bGone = activeB ? !activeB.has(keyB) : false;
+
+    if (aGone && bGone) {
       await db.update(botLegsTable)
         .set({ status: "closed", closedAt: new Date() })
         .where(eq(botLegsTable.id, leg.id));
-      logger.info({ legId: leg.id, symbol: leg.symbol },
-        "Reconcile: leg marked closed (both sides gone from exchange)");
+      logger.info({ legId: leg.id, symbol: leg.symbol }, "Reconcile: leg marked closed (both sides gone)");
     }
   }
 }
 
 async function watcherTick(): Promise<void> {
   try {
-    // Phase 1: collect configs to process this tick
-    // - Enabled bots: can open new legs AND close existing legs
-    // - Disabled bots with open legs: close-only (bot stopped but legs still need monitoring)
     const enabledBots = await db
       .select()
       .from(botConfigsTable)
@@ -411,7 +414,6 @@ async function watcherTick(): Promise<void> {
 
     if (enabledBots.length === 0 && disabledWithLegConfigs.length === 0) return;
 
-    // Reads from in-memory cache only — priceRefreshLoop keeps it fresh every 5 s
     for (const config of enabledBots) {
       await processBotConfig(config, true);
     }
@@ -466,17 +468,8 @@ export function startBotWatcher(): void {
 
 export function stopBotWatcher(): void {
   running = false;
-  if (watcherTimer) {
-    clearTimeout(watcherTimer);
-    watcherTimer = null;
-  }
-  if (priceRefreshTimer) {
-    clearTimeout(priceRefreshTimer);
-    priceRefreshTimer = null;
-  }
-  if (reconcileTimer) {
-    clearTimeout(reconcileTimer);
-    reconcileTimer = null;
-  }
+  if (watcherTimer) { clearTimeout(watcherTimer); watcherTimer = null; }
+  if (priceRefreshTimer) { clearTimeout(priceRefreshTimer); priceRefreshTimer = null; }
+  if (reconcileTimer) { clearTimeout(reconcileTimer); reconcileTimer = null; }
   logger.info("Bot watcher stopped");
 }

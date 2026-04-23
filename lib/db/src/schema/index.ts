@@ -50,6 +50,10 @@ export const botConfigsTable = pgTable("bot_configs", {
   forceStopUsd: numeric("force_stop_usd", { precision: 20, scale: 8 }).notNull().default("20"),
   bybitLeverage: integer("bybit_leverage").notNull().default(1),
   binanceLeverage: integer("binance_leverage").notNull().default(1),
+  exchangeA: text("exchange_a").notNull().default("bybit"),
+  exchangeB: text("exchange_b").notNull().default("binance"),
+  leverageA: integer("leverage_a").notNull().default(1),
+  leverageB: integer("leverage_b").notNull().default(1),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

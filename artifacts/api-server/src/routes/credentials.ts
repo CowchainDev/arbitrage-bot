@@ -6,6 +6,10 @@ import { eq } from "drizzle-orm";
 
 const router: IRouter = Router();
 
+export type SupportedExchange = "bybit" | "binance" | "gate" | "okx" | "mexc";
+
+export const SUPPORTED_EXCHANGES: SupportedExchange[] = ["bybit", "binance", "gate", "okx", "mexc"];
+
 router.post("/credentials", async (req: Request, res: Response) => {
   const parsed = StoreCredentialBody.safeParse(req.body);
   if (!parsed.success) {
@@ -43,7 +47,22 @@ router.get("/credentials", async (_req: Request, res: Response) => {
   }
 });
 
-export async function getStoredCredentials(exchange: "bybit" | "binance"): Promise<{ apiKey: string; apiSecret: string } | null> {
+router.delete("/credentials/:exchange", async (req: Request, res: Response) => {
+  const { exchange } = req.params;
+  if (!SUPPORTED_EXCHANGES.includes(exchange as SupportedExchange)) {
+    res.status(400).json({ error: "bad_request", message: "Unknown exchange" });
+    return;
+  }
+  try {
+    await db.delete(credentialsTable).where(eq(credentialsTable.exchange, exchange as string));
+    res.json({ exchange, deleted: true });
+  } catch (err) {
+    req.log.error({ err }, "Failed to delete credentials");
+    res.status(500).json({ error: "internal_error", message: "Failed to delete credentials" });
+  }
+});
+
+export async function getStoredCredentials(exchange: SupportedExchange): Promise<{ apiKey: string; apiSecret: string } | null> {
   try {
     const [row] = await db
       .select({ apiKey: credentialsTable.apiKey, apiSecret: credentialsTable.apiSecret })

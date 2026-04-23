@@ -24,6 +24,7 @@ export * from "./createBotRequest";
 export * from "./credentialStatus";
 export * from "./credentialStatusResponse";
 export * from "./deleteBotResult";
+export * from "./deleteCredential200";
 export * from "./exchangeBalances";
 export * from "./healthStatus";
 export * from "./jumpInRequest";

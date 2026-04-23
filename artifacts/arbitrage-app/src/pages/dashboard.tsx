@@ -341,6 +341,22 @@ function TokenDetailPanel({
   const [botOrderSize, setBotOrderSize] = useState(() => bot ? String(bot.orderSizeUsd) : orderSize);
   const [botMaxOrders, setBotMaxOrders] = useState(() => bot ? String(bot.maxOrders) : "3");
   const [botForceStop, setBotForceStop] = useState(() => bot ? String(bot.forceStopUsd) : "50");
+  const [botExchangeA, setBotExchangeA] = useState<string>(() => {
+    if (bot?.exchangeA) return bot.exchangeA;
+    try { return localStorage.getItem("arbitrage-botExchangeA") ?? "bybit"; } catch { return "bybit"; }
+  });
+  const [botExchangeB, setBotExchangeB] = useState<string>(() => {
+    if (bot?.exchangeB) return bot.exchangeB;
+    try { return localStorage.getItem("arbitrage-botExchangeB") ?? "binance"; } catch { return "binance"; }
+  });
+  const [botLeverageA, setBotLeverageA] = useState<string>(() => {
+    if (bot?.leverageA) return String(bot.leverageA);
+    try { return localStorage.getItem("arbitrage-botLeverageA") ?? "1"; } catch { return "1"; }
+  });
+  const [botLeverageB, setBotLeverageB] = useState<string>(() => {
+    if (bot?.leverageB) return String(bot.leverageB);
+    try { return localStorage.getItem("arbitrage-botLeverageB") ?? "1"; } catch { return "1"; }
+  });
   const [botBusy, setBotBusy] = useState(false);
 
   // Sync bot form when the bot config changes (e.g., navigating to a different symbol)
@@ -351,6 +367,10 @@ function TokenDetailPanel({
       setBotOrderSize(String(bot.orderSizeUsd));
       setBotMaxOrders(String(bot.maxOrders));
       setBotForceStop(String(bot.forceStopUsd));
+      if (bot.exchangeA) setBotExchangeA(bot.exchangeA);
+      if (bot.exchangeB) setBotExchangeB(bot.exchangeB);
+      if (bot.leverageA) setBotLeverageA(String(bot.leverageA));
+      if (bot.leverageB) setBotLeverageB(String(bot.leverageB));
     } else {
       setBotEnterSpread(openSpread);
       setBotCloseSpread(closeSpread);
@@ -379,6 +399,22 @@ function TokenDetailPanel({
     try { localStorage.setItem("arbitrage-binanceLeverage", binanceLeverage); } catch {}
   }, [binanceLeverage]);
 
+  useEffect(() => {
+    try { localStorage.setItem("arbitrage-botExchangeA", botExchangeA); } catch {}
+  }, [botExchangeA]);
+
+  useEffect(() => {
+    try { localStorage.setItem("arbitrage-botExchangeB", botExchangeB); } catch {}
+  }, [botExchangeB]);
+
+  useEffect(() => {
+    try { localStorage.setItem("arbitrage-botLeverageA", botLeverageA); } catch {}
+  }, [botLeverageA]);
+
+  useEffect(() => {
+    try { localStorage.setItem("arbitrage-botLeverageB", botLeverageB); } catch {}
+  }, [botLeverageB]);
+
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -404,9 +440,13 @@ function TokenDetailPanel({
             orderSizeUsd: orderSizeVal,
             maxOrders: maxOrdersVal,
             forceStopUsd: forceStopVal,
-            bybitLeverage: useLeverage ? Number(bybitLeverage) || 1 : 1,
-            binanceLeverage: useLeverage ? Number(binanceLeverage) || 1 : 1,
-          },
+            bybitLeverage: Number(botLeverageA) || 1,
+            binanceLeverage: Number(botLeverageB) || 1,
+            exchangeA: botExchangeA,
+            exchangeB: botExchangeB,
+            leverageA: Number(botLeverageA) || 1,
+            leverageB: Number(botLeverageB) || 1,
+          } as Parameters<typeof createBotMutation.mutateAsync>[0]["data"],
         });
         botId = created.bot.id;
       } else {
@@ -778,6 +818,60 @@ function TokenDetailPanel({
           ) : (
             <span className="text-xs text-muted-foreground/60 italic">no bot configured</span>
           )}
+        </div>
+
+        {/* Exchange pair selectors */}
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <label className="text-xs text-muted-foreground uppercase tracking-wider mb-1 block">Exchange A</label>
+            <select
+              value={botExchangeA}
+              onChange={(e) => setBotExchangeA(e.target.value)}
+              className="w-full font-mono text-sm bg-background border border-border rounded-md px-2 h-9 text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+              data-testid="select-bot-exchange-a"
+            >
+              {["bybit", "binance", "gate", "okx", "mexc"].map((ex) => (
+                <option key={ex} value={ex} disabled={ex === botExchangeB}>{ex.toUpperCase()}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs text-muted-foreground uppercase tracking-wider mb-1 block">Exchange B</label>
+            <select
+              value={botExchangeB}
+              onChange={(e) => setBotExchangeB(e.target.value)}
+              className="w-full font-mono text-sm bg-background border border-border rounded-md px-2 h-9 text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+              data-testid="select-bot-exchange-b"
+            >
+              {["bybit", "binance", "gate", "okx", "mexc"].map((ex) => (
+                <option key={ex} value={ex} disabled={ex === botExchangeA}>{ex.toUpperCase()}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs text-muted-foreground uppercase tracking-wider mb-1 block">Leverage A</label>
+            <div className="flex gap-1 items-center">
+              <Input
+                value={botLeverageA}
+                onChange={(e) => setBotLeverageA(e.target.value)}
+                className="font-mono text-sm bg-background"
+                data-testid="input-bot-leverage-a"
+              />
+              <span className="text-xs text-muted-foreground">x</span>
+            </div>
+          </div>
+          <div>
+            <label className="text-xs text-muted-foreground uppercase tracking-wider mb-1 block">Leverage B</label>
+            <div className="flex gap-1 items-center">
+              <Input
+                value={botLeverageB}
+                onChange={(e) => setBotLeverageB(e.target.value)}
+                className="font-mono text-sm bg-background"
+                data-testid="input-bot-leverage-b"
+              />
+              <span className="text-xs text-muted-foreground">x</span>
+            </div>
+          </div>
         </div>
 
         <div className="grid grid-cols-2 gap-2">

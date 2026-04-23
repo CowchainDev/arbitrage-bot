@@ -21,4 +21,12 @@ export interface CreateBotRequest {
   forceStopUsd?: number;
   bybitLeverage?: number;
   binanceLeverage?: number;
+  /** First exchange (default bybit) */
+  exchangeA?: string;
+  /** Second exchange (default binance) */
+  exchangeB?: string;
+  /** Leverage for exchange A */
+  leverageA?: number;
+  /** Leverage for exchange B */
+  leverageB?: number;
 }

@@ -12,4 +12,7 @@ export type OrderRequestExchange =
 export const OrderRequestExchange = {
   bybit: "bybit",
   binance: "binance",
+  gate: "gate",
+  okx: "okx",
+  mexc: "mexc",
 } as const;

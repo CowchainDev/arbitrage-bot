@@ -139,7 +139,7 @@ export const PlaceOrderHeader = zod.object({
 });
 
 export const PlaceOrderBody = zod.object({
-  exchange: zod.enum(["bybit", "binance"]),
+  exchange: zod.enum(["bybit", "binance", "gate", "okx", "mexc"]),
   symbol: zod.string().describe("Token symbol e.g. BTC"),
   side: zod.enum(["long", "short"]),
   usdAmount: zod.number().describe("Order size in USD"),
@@ -337,6 +337,14 @@ export const ListBotsResponse = zod.object({
         ),
       bybitLeverage: zod.number(),
       binanceLeverage: zod.number(),
+      exchangeA: zod
+        .string()
+        .describe("First exchange in the arbitrage pair (e.g. bybit)"),
+      exchangeB: zod
+        .string()
+        .describe("Second exchange in the arbitrage pair (e.g. binance)"),
+      leverageA: zod.number().describe("Leverage for exchange A"),
+      leverageB: zod.number().describe("Leverage for exchange B"),
       createdAt: zod.string(),
       updatedAt: zod.string(),
     }),
@@ -367,6 +375,13 @@ export const CreateBotBody = zod.object({
     .describe("Force-stop loss threshold in USD"),
   bybitLeverage: zod.number().optional(),
   binanceLeverage: zod.number().optional(),
+  exchangeA: zod.string().optional().describe("First exchange (default bybit)"),
+  exchangeB: zod
+    .string()
+    .optional()
+    .describe("Second exchange (default binance)"),
+  leverageA: zod.number().optional().describe("Leverage for exchange A"),
+  leverageB: zod.number().optional().describe("Leverage for exchange B"),
 });
 
 export const CreateBotResponse = zod.object({
@@ -391,6 +406,14 @@ export const CreateBotResponse = zod.object({
       ),
     bybitLeverage: zod.number(),
     binanceLeverage: zod.number(),
+    exchangeA: zod
+      .string()
+      .describe("First exchange in the arbitrage pair (e.g. bybit)"),
+    exchangeB: zod
+      .string()
+      .describe("Second exchange in the arbitrage pair (e.g. binance)"),
+    leverageA: zod.number().describe("Leverage for exchange A"),
+    leverageB: zod.number().describe("Leverage for exchange B"),
     createdAt: zod.string(),
     updatedAt: zod.string(),
   }),
@@ -418,6 +441,10 @@ export const UpdateBotBody = zod.object({
   forceStopUsd: zod.number().optional(),
   bybitLeverage: zod.number().optional(),
   binanceLeverage: zod.number().optional(),
+  exchangeA: zod.string().optional(),
+  exchangeB: zod.string().optional(),
+  leverageA: zod.number().optional(),
+  leverageB: zod.number().optional(),
 });
 
 export const UpdateBotResponse = zod.object({
@@ -442,6 +469,14 @@ export const UpdateBotResponse = zod.object({
       ),
     bybitLeverage: zod.number(),
     binanceLeverage: zod.number(),
+    exchangeA: zod
+      .string()
+      .describe("First exchange in the arbitrage pair (e.g. bybit)"),
+    exchangeB: zod
+      .string()
+      .describe("Second exchange in the arbitrage pair (e.g. binance)"),
+    leverageA: zod.number().describe("Leverage for exchange A"),
+    leverageB: zod.number().describe("Leverage for exchange B"),
     createdAt: zod.string(),
     updatedAt: zod.string(),
   }),
@@ -501,6 +536,14 @@ export const StartBotResponse = zod.object({
       ),
     bybitLeverage: zod.number(),
     binanceLeverage: zod.number(),
+    exchangeA: zod
+      .string()
+      .describe("First exchange in the arbitrage pair (e.g. bybit)"),
+    exchangeB: zod
+      .string()
+      .describe("Second exchange in the arbitrage pair (e.g. binance)"),
+    leverageA: zod.number().describe("Leverage for exchange A"),
+    leverageB: zod.number().describe("Leverage for exchange B"),
     createdAt: zod.string(),
     updatedAt: zod.string(),
   }),
@@ -542,6 +585,14 @@ export const StopBotResponse = zod.object({
       ),
     bybitLeverage: zod.number(),
     binanceLeverage: zod.number(),
+    exchangeA: zod
+      .string()
+      .describe("First exchange in the arbitrage pair (e.g. bybit)"),
+    exchangeB: zod
+      .string()
+      .describe("Second exchange in the arbitrage pair (e.g. binance)"),
+    leverageA: zod.number().describe("Leverage for exchange A"),
+    leverageB: zod.number().describe("Leverage for exchange B"),
     createdAt: zod.string(),
     updatedAt: zod.string(),
   }),
@@ -583,6 +634,14 @@ export const StopAndCloseBotResponse = zod.object({
       ),
     bybitLeverage: zod.number(),
     binanceLeverage: zod.number(),
+    exchangeA: zod
+      .string()
+      .describe("First exchange in the arbitrage pair (e.g. bybit)"),
+    exchangeB: zod
+      .string()
+      .describe("Second exchange in the arbitrage pair (e.g. binance)"),
+    leverageA: zod.number().describe("Leverage for exchange A"),
+    leverageB: zod.number().describe("Leverage for exchange B"),
     createdAt: zod.string(),
     updatedAt: zod.string(),
   }),
@@ -623,9 +682,15 @@ export const GetBotLegsResponse = zod.object({
  * @summary Store or update API credentials for an exchange server-side
  */
 export const StoreCredentialBody = zod.object({
-  exchange: zod.enum(["bybit", "binance"]).describe("Exchange identifier"),
+  exchange: zod
+    .enum(["bybit", "binance", "gate", "okx", "mexc"])
+    .describe("Exchange identifier"),
   apiKey: zod.string().describe("API key for the exchange"),
   apiSecret: zod.string().describe("API secret for the exchange"),
+  passphrase: zod
+    .string()
+    .optional()
+    .describe("API passphrase (required for OKX only)"),
 });
 
 export const StoreCredentialResponse = zod.object({
@@ -643,6 +708,18 @@ export const GetCredentialStatusResponse = zod.object({
       updatedAt: zod.string(),
     }),
   ),
+});
+
+/**
+ * @summary Remove stored API credentials for an exchange
+ */
+export const DeleteCredentialParams = zod.object({
+  exchange: zod.enum(["bybit", "binance", "gate", "okx", "mexc"]),
+});
+
+export const DeleteCredentialResponse = zod.object({
+  exchange: zod.string(),
+  deleted: zod.boolean(),
 });
 
 /**

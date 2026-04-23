@@ -14,4 +14,8 @@ export interface UpdateBotRequest {
   forceStopUsd?: number;
   bybitLeverage?: number;
   binanceLeverage?: number;
+  exchangeA?: string;
+  exchangeB?: string;
+  leverageA?: number;
+  leverageB?: number;
 }

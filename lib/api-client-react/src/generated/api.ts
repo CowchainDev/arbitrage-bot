@@ -26,6 +26,7 @@ import type {
   CreateBotRequest,
   CredentialStatusResponse,
   DeleteBotResult,
+  DeleteCredential200,
   ExchangeBalances,
   HealthStatus,
   JumpInRequest,
@@ -1434,6 +1435,92 @@ export function useGetCredentialStatus<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * @summary Remove stored API credentials for an exchange
+ */
+export const getDeleteCredentialUrl = (
+  exchange: "bybit" | "binance" | "gate" | "okx" | "mexc",
+) => {
+  return `/api/credentials/${exchange}`;
+};
+
+export const deleteCredential = async (
+  exchange: "bybit" | "binance" | "gate" | "okx" | "mexc",
+  options?: RequestInit,
+): Promise<DeleteCredential200> => {
+  return customFetch<DeleteCredential200>(getDeleteCredentialUrl(exchange), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getDeleteCredentialMutationOptions = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteCredential>>,
+    TError,
+    { exchange: "bybit" | "binance" | "gate" | "okx" | "mexc" },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteCredential>>,
+  TError,
+  { exchange: "bybit" | "binance" | "gate" | "okx" | "mexc" },
+  TContext
+> => {
+  const mutationKey = ["deleteCredential"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteCredential>>,
+    { exchange: "bybit" | "binance" | "gate" | "okx" | "mexc" }
+  > = (props) => {
+    const { exchange } = props ?? {};
+
+    return deleteCredential(exchange, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteCredentialMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteCredential>>
+>;
+
+export type DeleteCredentialMutationError = ErrorType<ApiError>;
+
+/**
+ * @summary Remove stored API credentials for an exchange
+ */
+export const useDeleteCredential = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteCredential>>,
+    TError,
+    { exchange: "bybit" | "binance" | "gate" | "okx" | "mexc" },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deleteCredential>>,
+  TError,
+  { exchange: "bybit" | "binance" | "gate" | "okx" | "mexc" },
+  TContext
+> => {
+  return useMutation(getDeleteCredentialMutationOptions(options));
+};
 
 /**
  * @summary Get trade history with aggregate stats

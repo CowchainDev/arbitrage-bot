@@ -600,6 +600,44 @@ paths:
               schema:
                 $ref: "#/components/schemas/ApiError"
 
+  /credentials/{exchange}:
+    delete:
+      operationId: deleteCredential
+      tags: [credentials]
+      summary: Remove stored API credentials for an exchange
+      parameters:
+        - name: exchange
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [bybit, binance, gate, okx, mexc]
+      responses:
+        "200":
+          description: Credential deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  exchange:
+                    type: string
+                  deleted:
+                    type: boolean
+                required: [exchange, deleted]
+        "400":
+          description: Unknown exchange
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
   /trades:
     get:
       operationId: getTrades
@@ -755,7 +793,7 @@ components:
       properties:
         exchange:
           type: string
-          enum: [bybit, binance]
+          enum: [bybit, binance, gate, okx, mexc]
         symbol:
           type: string
           description: Token symbol e.g. BTC
@@ -1017,7 +1055,7 @@ components:
       properties:
         exchange:
           type: string
-          enum: [bybit, binance]
+          enum: [bybit, binance, gate, okx, mexc]
           description: Exchange identifier
         apiKey:
           type: string
@@ -1025,6 +1063,9 @@ components:
         apiSecret:
           type: string
           description: API secret for the exchange
+        passphrase:
+          type: string
+          description: API passphrase (required for OKX only)
       required:
         - exchange
         - apiKey
@@ -1090,6 +1131,18 @@ components:
           type: number
         binanceLeverage:
           type: number
+        exchangeA:
+          type: string
+          description: First exchange in the arbitrage pair (e.g. bybit)
+        exchangeB:
+          type: string
+          description: Second exchange in the arbitrage pair (e.g. binance)
+        leverageA:
+          type: number
+          description: Leverage for exchange A
+        leverageB:
+          type: number
+          description: Leverage for exchange B
         createdAt:
           type: string
         updatedAt:
@@ -1105,6 +1158,10 @@ components:
         - forceStopUsd
         - bybitLeverage
         - binanceLeverage
+        - exchangeA
+        - exchangeB
+        - leverageA
+        - leverageB
         - createdAt
         - updatedAt
 
@@ -1178,6 +1235,18 @@ components:
           type: number
         binanceLeverage:
           type: number
+        exchangeA:
+          type: string
+          description: First exchange (default bybit)
+        exchangeB:
+          type: string
+          description: Second exchange (default binance)
+        leverageA:
+          type: number
+          description: Leverage for exchange A
+        leverageB:
+          type: number
+          description: Leverage for exchange B
       required:
         - symbol
         - enterSpreadPct
@@ -1200,6 +1269,14 @@ components:
         bybitLeverage:
           type: number
         binanceLeverage:
+          type: number
+        exchangeA:
+          type: string
+        exchangeB:
+          type: string
+        leverageA:
+          type: number
+        leverageB:
           type: number
 
     BotResponse:

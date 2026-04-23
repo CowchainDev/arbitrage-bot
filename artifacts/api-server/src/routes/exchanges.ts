@@ -316,22 +316,52 @@ export function createBinanceExchange(apiKey = "", secret = "") {
   });
 }
 
-function createGateExchange() {
+export function createGateExchange(apiKey = "", secret = "") {
   return new ccxt.gateio({
+    apiKey,
+    secret,
     options: { defaultType: "swap" },
   });
 }
 
-function createOkxExchange() {
+export function createOkxExchange(apiKey = "", secret = "", password = "") {
   return new ccxt.okx({
+    apiKey,
+    secret,
+    password,
     options: { defaultType: "swap" },
   });
 }
 
-function createMexcExchange() {
+export function createMexcExchange(apiKey = "", secret = "") {
   return new ccxt.mexc({
+    apiKey,
+    secret,
     options: { defaultType: "swap" },
   });
+}
+
+export type SupportedCcxtExchange =
+  | ReturnType<typeof createBybitExchange>
+  | ReturnType<typeof createBinanceExchange>
+  | ReturnType<typeof createGateExchange>
+  | ReturnType<typeof createOkxExchange>
+  | ReturnType<typeof createMexcExchange>;
+
+export function createExchangeForName(
+  name: string,
+  apiKey: string,
+  apiSecret: string,
+  extraPassphrase?: string,
+): SupportedCcxtExchange {
+  switch (name) {
+    case "bybit":   return createBybitExchange(apiKey, apiSecret);
+    case "binance": return createBinanceExchange(apiKey, apiSecret);
+    case "gate":    return createGateExchange(apiKey, apiSecret);
+    case "okx":     return createOkxExchange(apiKey, apiSecret, extraPassphrase ?? "");
+    case "mexc":    return createMexcExchange(apiKey, apiSecret);
+    default:        throw new Error(`Unsupported exchange: ${name}`);
+  }
 }
 
 
@@ -641,21 +671,23 @@ router.post("/exchanges/close-position", async (req: Request, res: Response) => 
     const binance = createBinanceExchange(binanceCreds.apiKey, binanceCreds.secret);
 
     const result = await closePositionInternal({
-      bybit,
-      binance,
+      exA: bybit,
+      exB: binance,
       symbol,
-      bybitSide: bybitSide as "long" | "short",
-      binanceSide: binanceSide as "long" | "short",
-      bybitQty,
-      binanceQty,
+      sideA: bybitSide as "long" | "short",
+      sideB: binanceSide as "long" | "short",
+      qtyA: bybitQty,
+      qtyB: binanceQty,
       spreadAtEntry,
       entryTime: entryTime ? new Date(entryTime) : new Date(),
       quantity,
+      longExchange,
+      shortExchange,
     });
 
     if (!result.bothClosed) {
       req.log.warn(
-        { bybitError: result.bybitError, binanceError: result.binanceError },
+        { errorA: result.errorA, errorB: result.errorB },
         "close-position: partial failure",
       );
     }
@@ -664,11 +696,11 @@ router.post("/exchanges/close-position", async (req: Request, res: Response) => 
 
     res.json({
       success: result.bothClosed,
-      bybitResult: result.bybitOrderId
-        ? { orderId: result.bybitOrderId, exchange: "bybit", symbol, filledQty: bybitQty }
+      bybitResult: result.orderIdA
+        ? { orderId: result.orderIdA, exchange: "bybit", symbol, filledQty: bybitQty }
         : null,
-      binanceResult: result.binanceOrderId
-        ? { orderId: result.binanceOrderId, exchange: "binance", symbol, filledQty: binanceQty }
+      binanceResult: result.orderIdB
+        ? { orderId: result.orderIdB, exchange: "binance", symbol, filledQty: binanceQty }
         : null,
       realizedPnl,
     });
@@ -784,51 +816,69 @@ router.get("/positions", async (req: Request, res: Response) => {
   }
 });
 
+const MIN_NOTIONAL_BY_EXCHANGE: Record<string, number> = {
+  binance: 5.5,
+  gate:    1.0,
+  okx:     1.0,
+  mexc:    1.0,
+};
+
 export async function placeOrderInternal(
-  ex: ReturnType<typeof createBybitExchange> | ReturnType<typeof createBinanceExchange>,
+  ex: SupportedCcxtExchange,
   symbol: string,
   side: "long" | "short",
   usdAmount: number,
   leverage: number | undefined
 ): Promise<{ orderId: string; exchange: string; symbol: string; side: string; filledQty: number; avgPrice: number; status: string }> {
+  const marketSymbol = `${symbol}/USDT:USDT`;
+
   if (leverage && leverage !== 1) {
     try {
-      await ex.setLeverage(leverage, `${symbol}/USDT:USDT`);
+      await ex.setLeverage(leverage, marketSymbol);
     } catch (_) {}
   }
 
-  const marketSymbol = `${symbol}/USDT:USDT`;
   const ticker = await ex.fetchTicker(marketSymbol);
   const price = ticker.last ?? ticker.bid ?? 1;
   let qty = usdAmount / price;
   const ccxtSide = side === "long" ? "buy" : "sell";
   const exchangeName = ex.id;
 
-  // For Binance futures: round qty to market step size and ensure the notional
-  // meets Binance's minimum of $5 (error -4164).
-  if (ex.id === "binance") {
+  const minNotional = MIN_NOTIONAL_BY_EXCHANGE[exchangeName];
+  if (minNotional) {
     try {
       await ex.loadMarkets();
-      const BINANCE_MIN_NOTIONAL = 5.5; // small buffer above Binance's $5 floor
       const market = ex.market(marketSymbol);
-      // precision.amount is decimal-places count (e.g. 2 → step 0.01)
       const decimalPlaces: number = market?.precision?.amount ?? 8;
       const stepSize = Math.pow(10, -decimalPlaces);
-      // Round qty UP to next step and ensure notional >= minimum
       const stepsNeeded = Math.max(
         Math.ceil(qty / stepSize),
-        Math.ceil(BINANCE_MIN_NOTIONAL / (stepSize * price)),
+        Math.ceil(minNotional / (stepSize * price)),
       );
       qty = stepsNeeded * stepSize;
     } catch (_) {
-      // If market info unavailable, ensure at least $5.5 notional
-      qty = Math.max(qty, 5.5 / price);
+      qty = Math.max(qty, minNotional / price);
     }
   }
 
-  const order = ex.id === "bybit"
-    ? await bybitCreateOrder(ex as InstanceType<typeof ccxt.bybit>, marketSymbol, ccxtSide, qty, { reduceOnly: false }, side)
-    : await ex.createMarketOrder(marketSymbol, ccxtSide, qty, undefined, { reduceOnly: false });
+  let order;
+  if (ex.id === "bybit") {
+    order = await bybitCreateOrder(
+      ex as InstanceType<typeof ccxt.bybit>,
+      marketSymbol,
+      ccxtSide,
+      qty,
+      { reduceOnly: false },
+      side,
+    );
+  } else if (ex.id === "okx") {
+    order = await ex.createMarketOrder(marketSymbol, ccxtSide, qty, undefined, {
+      tdMode: "cross",
+      posSide: side === "long" ? "long" : "short",
+    });
+  } else {
+    order = await ex.createMarketOrder(marketSymbol, ccxtSide, qty, undefined, { reduceOnly: false });
+  }
 
   return {
     orderId: String(order.id),
@@ -905,57 +955,91 @@ router.post("/exchanges/jump-in", async (req: Request, res: Response) => {
 ensurePriceFetch();
 
 export type ClosePositionInternalParams = {
-  bybit: InstanceType<typeof ccxt.bybit>;
-  binance: InstanceType<typeof ccxt.binance>;
+  exA: SupportedCcxtExchange;
+  exB: SupportedCcxtExchange;
   symbol: string;
-  bybitSide: "long" | "short";
-  binanceSide: "long" | "short";
-  bybitQty: number;
-  binanceQty: number;
+  sideA: "long" | "short";
+  sideB: "long" | "short";
+  qtyA: number;
+  qtyB: number;
   spreadAtEntry?: number;
   entryTime?: Date;
   quantity?: number;
+  longExchange?: string;
+  shortExchange?: string;
 };
 
 export type ClosePositionInternalResult = {
   bothClosed: boolean;
-  bybitOrderId: string | null;
-  binanceOrderId: string | null;
-  bybitError?: string;
-  binanceError?: string;
+  orderIdA: string | null;
+  orderIdB: string | null;
+  errorA?: string;
+  errorB?: string;
+  /** @deprecated use orderIdA */ bybitOrderId: string | null;
+  /** @deprecated use orderIdB */ binanceOrderId: string | null;
+  /** @deprecated use errorA */ bybitError?: string;
+  /** @deprecated use errorB */ binanceError?: string;
 };
+
+async function closeOnExchange(
+  ex: SupportedCcxtExchange,
+  symbol: string,
+  positionSide: "long" | "short",
+  qty: number,
+): Promise<string> {
+  const marketSymbol = `${symbol}/USDT:USDT`;
+  const closeSide = positionSide === "long" ? "sell" : "buy";
+  if (ex.id === "bybit") {
+    const order = await bybitCreateOrder(
+      ex as InstanceType<typeof ccxt.bybit>,
+      marketSymbol,
+      closeSide,
+      qty,
+      { reduceOnly: true },
+      positionSide,
+    );
+    return String(order.id);
+  } else if (ex.id === "okx") {
+    const order = await ex.createMarketOrder(marketSymbol, closeSide, qty, undefined, {
+      tdMode: "cross",
+      posSide: positionSide === "long" ? "long" : "short",
+      reduceOnly: true,
+    });
+    return String(order.id);
+  } else {
+    const order = await ex.createMarketOrder(marketSymbol, closeSide, qty, undefined, { reduceOnly: true });
+    return String(order.id);
+  }
+}
 
 export async function closePositionInternal(
   params: ClosePositionInternalParams,
 ): Promise<ClosePositionInternalResult> {
   const {
-    bybit, binance, symbol, bybitSide, binanceSide, bybitQty, binanceQty,
-    spreadAtEntry, entryTime, quantity,
+    exA, exB, symbol, sideA, sideB, qtyA, qtyB,
+    spreadAtEntry, entryTime, quantity, longExchange, shortExchange,
   } = params;
 
-  const bybitCloseSide = bybitSide === "long" ? "sell" : "buy";
-  const binanceCloseSide = binanceSide === "long" ? "sell" : "buy";
-
-  const [bybitOrder, binanceOrder] = await Promise.allSettled([
-    bybitCreateOrder(bybit, `${symbol}/USDT:USDT`, bybitCloseSide, bybitQty, { reduceOnly: true }, bybitSide),
-    binance.createMarketOrder(`${symbol}/USDT:USDT`, binanceCloseSide, binanceQty, undefined, { reduceOnly: true }),
+  const [orderA, orderB] = await Promise.allSettled([
+    closeOnExchange(exA, symbol, sideA, qtyA),
+    closeOnExchange(exB, symbol, sideB, qtyB),
   ]);
 
-  const bothClosed = bybitOrder.status === "fulfilled" && binanceOrder.status === "fulfilled";
-  const bybitOrderId = bybitOrder.status === "fulfilled" ? String(bybitOrder.value.id) : null;
-  const binanceOrderId = binanceOrder.status === "fulfilled" ? String(binanceOrder.value.id) : null;
-  const bybitError = bybitOrder.status === "rejected" ? String(bybitOrder.reason) : undefined;
-  const binanceError = binanceOrder.status === "rejected" ? String(binanceOrder.reason) : undefined;
+  const bothClosed = orderA.status === "fulfilled" && orderB.status === "fulfilled";
+  const orderIdA = orderA.status === "fulfilled" ? orderA.value : null;
+  const orderIdB = orderB.status === "fulfilled" ? orderB.value : null;
+  const errorA = orderA.status === "rejected" ? String(orderA.reason) : undefined;
+  const errorB = orderB.status === "rejected" ? String(orderB.reason) : undefined;
 
   if (bothClosed && spreadAtEntry !== undefined) {
     try {
       await db.insert(closedTradesTable).values({
         symbol,
-        longExchange: bybitSide === "long" ? "bybit" : "binance",
-        shortExchange: bybitSide === "short" ? "bybit" : "binance",
+        longExchange: longExchange ?? (sideA === "long" ? exA.id : exB.id),
+        shortExchange: shortExchange ?? (sideA === "short" ? exA.id : exB.id),
         spreadAtEntry: String(spreadAtEntry),
         realizedPnl: "0",
-        quantity: String(quantity ?? bybitQty),
+        quantity: String(quantity ?? qtyA),
         entryTime: entryTime ?? new Date(),
         closeTime: new Date(),
       });
@@ -964,7 +1048,17 @@ export async function closePositionInternal(
     }
   }
 
-  return { bothClosed, bybitOrderId, binanceOrderId, bybitError, binanceError };
+  return {
+    bothClosed,
+    orderIdA,
+    orderIdB,
+    errorA,
+    errorB,
+    bybitOrderId: orderIdA,
+    binanceOrderId: orderIdB,
+    bybitError: errorA,
+    binanceError: errorB,
+  };
 }
 
 export default router;

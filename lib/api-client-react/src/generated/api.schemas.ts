@@ -81,6 +81,9 @@ export type OrderRequestExchange =
 export const OrderRequestExchange = {
   bybit: "bybit",
   binance: "binance",
+  gate: "gate",
+  okx: "okx",
+  mexc: "mexc",
 } as const;
 
 export type OrderRequestSide =
@@ -273,6 +276,9 @@ export type StoreCredentialRequestExchange =
 export const StoreCredentialRequestExchange = {
   bybit: "bybit",
   binance: "binance",
+  gate: "gate",
+  okx: "okx",
+  mexc: "mexc",
 } as const;
 
 export interface StoreCredentialRequest {
@@ -282,6 +288,8 @@ export interface StoreCredentialRequest {
   apiKey: string;
   /** API secret for the exchange */
   apiSecret: string;
+  /** API passphrase (required for OKX only) */
+  passphrase?: string;
 }
 
 export interface StoreCredentialResult {
@@ -314,6 +322,14 @@ export interface BotConfig {
   forceStopUsd: number;
   bybitLeverage: number;
   binanceLeverage: number;
+  /** First exchange in the arbitrage pair (e.g. bybit) */
+  exchangeA: string;
+  /** Second exchange in the arbitrage pair (e.g. binance) */
+  exchangeB: string;
+  /** Leverage for exchange A */
+  leverageA: number;
+  /** Leverage for exchange B */
+  leverageB: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -374,6 +390,14 @@ export interface CreateBotRequest {
   forceStopUsd?: number;
   bybitLeverage?: number;
   binanceLeverage?: number;
+  /** First exchange (default bybit) */
+  exchangeA?: string;
+  /** Second exchange (default binance) */
+  exchangeB?: string;
+  /** Leverage for exchange A */
+  leverageA?: number;
+  /** Leverage for exchange B */
+  leverageB?: number;
 }
 
 export interface UpdateBotRequest {
@@ -384,6 +408,10 @@ export interface UpdateBotRequest {
   forceStopUsd?: number;
   bybitLeverage?: number;
   binanceLeverage?: number;
+  exchangeA?: string;
+  exchangeB?: string;
+  leverageA?: number;
+  leverageB?: number;
 }
 
 export interface BotResponse {
@@ -408,4 +436,9 @@ export type StopAndCloseBot200 = {
   closed: number;
   /** Number of legs that failed to close */
   failed: number;
+};
+
+export type DeleteCredential200 = {
+  exchange: string;
+  deleted: boolean;
 };

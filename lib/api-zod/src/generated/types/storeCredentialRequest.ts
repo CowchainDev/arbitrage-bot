@@ -14,4 +14,6 @@ export interface StoreCredentialRequest {
   apiKey: string;
   /** API secret for the exchange */
   apiSecret: string;
+  /** API passphrase (required for OKX only) */
+  passphrase?: string;
 }

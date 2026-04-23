@@ -22,6 +22,14 @@ export interface BotConfig {
   forceStopUsd: number;
   bybitLeverage: number;
   binanceLeverage: number;
+  /** First exchange in the arbitrage pair (e.g. bybit) */
+  exchangeA: string;
+  /** Second exchange in the arbitrage pair (e.g. binance) */
+  exchangeB: string;
+  /** Leverage for exchange A */
+  leverageA: number;
+  /** Leverage for exchange B */
+  leverageB: number;
   createdAt: string;
   updatedAt: string;
 }

@@ -63,7 +63,8 @@ router.post("/bots", requireBotSecret, async (req: Request, res: Response) => {
   const {
     symbol, enterSpreadPct, closeSpreadPct, orderSizeUsd,
     maxOrders, forceStopUsd, bybitLeverage, binanceLeverage,
-  } = parsed.data;
+    exchangeA, exchangeB, leverageA, leverageB,
+  } = parsed.data as typeof parsed.data & { exchangeA?: string; exchangeB?: string; leverageA?: number; leverageB?: number };
 
   try {
     const [bot] = await db
@@ -78,6 +79,10 @@ router.post("/bots", requireBotSecret, async (req: Request, res: Response) => {
         forceStopUsd: String(forceStopUsd ?? 20),
         bybitLeverage: bybitLeverage ?? 1,
         binanceLeverage: binanceLeverage ?? 1,
+        exchangeA: exchangeA ?? "bybit",
+        exchangeB: exchangeB ?? "binance",
+        leverageA: leverageA ?? bybitLeverage ?? 1,
+        leverageB: leverageB ?? binanceLeverage ?? 1,
         createdAt: new Date(),
         updatedAt: new Date(),
       })
@@ -106,7 +111,8 @@ router.put("/bots/:id", requireBotSecret, async (req: Request, res: Response) =>
   const {
     enterSpreadPct, closeSpreadPct, orderSizeUsd,
     maxOrders, forceStopUsd, bybitLeverage, binanceLeverage,
-  } = parsed.data;
+    exchangeA, exchangeB, leverageA, leverageB,
+  } = parsed.data as typeof parsed.data & { exchangeA?: string; exchangeB?: string; leverageA?: number; leverageB?: number };
 
   const updates: Record<string, unknown> = { updatedAt: new Date() };
   if (enterSpreadPct !== undefined) updates.enterSpreadPct = String(enterSpreadPct);
@@ -116,6 +122,10 @@ router.put("/bots/:id", requireBotSecret, async (req: Request, res: Response) =>
   if (forceStopUsd !== undefined) updates.forceStopUsd = String(forceStopUsd);
   if (bybitLeverage !== undefined) updates.bybitLeverage = bybitLeverage;
   if (binanceLeverage !== undefined) updates.binanceLeverage = binanceLeverage;
+  if (exchangeA !== undefined) updates.exchangeA = exchangeA;
+  if (exchangeB !== undefined) updates.exchangeB = exchangeB;
+  if (leverageA !== undefined) updates.leverageA = leverageA;
+  if (leverageB !== undefined) updates.leverageB = leverageB;
 
   try {
     const [bot] = await db
