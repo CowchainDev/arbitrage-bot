@@ -249,6 +249,7 @@ export interface ClosedTrade {
   shortExchange: string;
   spreadAtEntry: number;
   realizedPnl: number;
+  totalFees: number;
   quantity: number;
   entryTime: string;
   closeTime: string;
@@ -258,6 +259,7 @@ export interface TradeStats {
   totalTrades: number;
   winningTrades: number;
   totalPnl: number;
+  totalFees: number;
   bestTrade: number;
   worstTrade: number;
 }

@@ -150,6 +150,7 @@ function TradeTable({ trades }: { trades: ClosedTrade[] }) {
             <th className="text-left px-3 py-2 font-medium">Long / Short</th>
             <th className="text-right px-3 py-2 font-medium">Entry Spread</th>
             <th className="text-right px-3 py-2 font-medium">Size (USD)</th>
+            <th className="text-right px-3 py-2 font-medium">Fees ($)</th>
             <th className="text-right px-3 py-2 font-medium">Realized PnL ($)</th>
             <th className="text-right px-3 py-2 font-medium">PnL (%)</th>
             <th className="text-right px-3 py-2 font-medium">Duration</th>
@@ -181,6 +182,9 @@ function TradeTable({ trades }: { trades: ClosedTrade[] }) {
                 </td>
                 <td className="px-3 py-2.5 text-right">
                   {trade.quantity > 0 ? `$${trade.quantity.toFixed(2)}` : "—"}
+                </td>
+                <td className="px-3 py-2.5 text-right text-muted-foreground">
+                  {trade.totalFees > 0 ? `-$${trade.totalFees.toFixed(4)}` : "—"}
                 </td>
                 <td
                   className={`px-3 py-2.5 text-right font-semibold ${pnlPositive ? "text-primary" : "text-destructive"}`}
@@ -247,7 +251,7 @@ export default function History() {
         </div>
       )}
 
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
         <StatCard
           label="Total Trades"
           value={stats ? String(stats.totalTrades) : "—"}
@@ -263,6 +267,11 @@ export default function History() {
           label="Total PnL"
           value={stats ? formatPnl(stats.totalPnl) : "—"}
           positive={stats ? stats.totalPnl >= 0 : null}
+        />
+        <StatCard
+          label="Total Fees"
+          value={stats && stats.totalFees > 0 ? `-$${stats.totalFees.toFixed(2)}` : "—"}
+          positive={false}
         />
         <StatCard
           label="Best Trade"

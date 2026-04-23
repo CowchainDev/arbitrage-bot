@@ -26,6 +26,7 @@ router.get("/trades", async (req: Request, res: Response) => {
         .select({
           totalTrades: count(),
           totalPnl: sum(closedTradesTable.realizedPnl),
+          totalFees: sum(closedTradesTable.totalFees),
           bestTrade: max(closedTradesTable.realizedPnl),
           worstTrade: min(closedTradesTable.realizedPnl),
           winningTrades: sql<number>`count(*) filter (where ${closedTradesTable.realizedPnl} > 0)`,
@@ -43,6 +44,7 @@ router.get("/trades", async (req: Request, res: Response) => {
         shortExchange: t.shortExchange,
         spreadAtEntry: Number(t.spreadAtEntry),
         realizedPnl: Number(t.realizedPnl),
+        totalFees: Number(t.totalFees),
         quantity: Number(t.quantity),
         entryTime: t.entryTime.toISOString(),
         closeTime: t.closeTime.toISOString(),
@@ -51,6 +53,7 @@ router.get("/trades", async (req: Request, res: Response) => {
         totalTrades: Number(s?.totalTrades ?? 0),
         winningTrades: Number(s?.winningTrades ?? 0),
         totalPnl: Number(s?.totalPnl ?? 0),
+        totalFees: Number(s?.totalFees ?? 0),
         bestTrade: Number(s?.bestTrade ?? 0),
         worstTrade: Number(s?.worstTrade ?? 0),
       },
