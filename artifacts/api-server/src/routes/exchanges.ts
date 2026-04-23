@@ -825,6 +825,14 @@ const MIN_NOTIONAL_BY_EXCHANGE: Record<string, number> = {
 
 const FEE_RETRY_DELAY_MS = 2000;
 
+const TAKER_FEE_RATES: Record<string, number> = {
+  bybit:   0.00055,
+  binance: 0.00040,
+  gate:    0.00050,
+  okx:     0.00050,
+  mexc:    0.00050,
+};
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function sumFeesFromOrder(order: any): number {
   if (order == null) return 0;
@@ -842,9 +850,18 @@ export function sumFeesFromOrder(order: any): number {
   return 0;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function estimateFeeFromOrderValue(ex: SupportedCcxtExchange, order: any): number {
+  const cost = Number(order?.cost ?? 0) ||
+    (Number(order?.filled ?? 0) * Number(order?.average ?? order?.price ?? 0));
+  if (cost <= 0) return 0;
+  const rate = TAKER_FEE_RATES[ex.id] ?? 0.0005;
+  return cost * rate;
+}
+
 async function extractFeeFromOrder(
   ex: SupportedCcxtExchange,
-  order: { id: unknown; fee?: { cost?: unknown } | null },
+  order: { id: unknown; fee?: { cost?: unknown } | null; [key: string]: unknown },
   marketSymbol: string,
 ): Promise<number> {
   const inline = sumFeesFromOrder(order);
@@ -854,8 +871,11 @@ async function extractFeeFromOrder(
     const fetched = await ex.fetchOrder(String(order.id), marketSymbol);
     const retried = sumFeesFromOrder(fetched);
     if (retried > 0) return retried;
+    const estimated = estimateFeeFromOrderValue(ex, fetched);
+    if (estimated > 0) return estimated;
   } catch (_) {}
-  return 0;
+  const estimated = estimateFeeFromOrderValue(ex, order);
+  return estimated;
 }
 
 export async function placeOrderInternal(
