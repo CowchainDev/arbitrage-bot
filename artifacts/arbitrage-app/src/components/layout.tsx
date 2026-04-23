@@ -1,8 +1,9 @@
-import { Link } from "wouter";
-import { Settings, LayoutDashboard, Activity, History } from "lucide-react";
+import { Link, useLocation } from "wouter";
+import { Settings, LayoutDashboard, Activity, History, Bot } from "lucide-react";
 import { useApiCredentials } from "@/hooks/use-api-credentials";
 import { useGetExchangeBalances, getGetExchangeBalancesQueryKey } from "@workspace/api-client-react";
 import { useConnectionStatus } from "@/contexts/connection-status";
+import { useBots } from "@/hooks/use-bots";
 
 function HeaderBalances() {
   const { getRequestHeaders, hasCredentials } = useApiCredentials();
@@ -68,6 +69,37 @@ function ConnectionBadge() {
   );
 }
 
+function NavLink({ href, children }: { href: string; children: React.ReactNode }) {
+  const [location] = useLocation();
+  const active = href === "/" ? location === "/" : location.startsWith(href);
+  return (
+    <Link
+      href={href}
+      className={`px-3 py-1.5 rounded transition-colors flex items-center gap-2 ${
+        active ? "bg-muted text-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"
+      }`}
+    >
+      {children}
+    </Link>
+  );
+}
+
+function BotsNavItem() {
+  const { bots } = useBots();
+  const running = bots.filter((b) => b.enabled).length;
+  return (
+    <NavLink href="/bots">
+      <Bot className="w-4 h-4" />
+      Bots
+      {running > 0 && (
+        <span className="ml-0.5 bg-emerald-500/20 text-emerald-400 text-xs font-bold px-1.5 py-0 rounded-full leading-5">
+          {running}
+        </span>
+      )}
+    </NavLink>
+  );
+}
+
 export function Layout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col font-mono text-sm">
@@ -78,18 +110,19 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <span>ARB_TERM</span>
           </div>
           <nav className="flex items-center gap-2 ml-4">
-            <Link href="/" className="px-3 py-1.5 rounded hover:bg-muted transition-colors flex items-center gap-2 text-muted-foreground hover:text-foreground">
+            <NavLink href="/">
               <LayoutDashboard className="w-4 h-4" />
               Dashboard
-            </Link>
-            <Link href="/history" className="px-3 py-1.5 rounded hover:bg-muted transition-colors flex items-center gap-2 text-muted-foreground hover:text-foreground">
+            </NavLink>
+            <BotsNavItem />
+            <NavLink href="/history">
               <History className="w-4 h-4" />
               History
-            </Link>
-            <Link href="/settings" className="px-3 py-1.5 rounded hover:bg-muted transition-colors flex items-center gap-2 text-muted-foreground hover:text-foreground">
+            </NavLink>
+            <NavLink href="/settings">
               <Settings className="w-4 h-4" />
               Settings
-            </Link>
+            </NavLink>
           </nav>
           <ConnectionBadge />
         </div>
