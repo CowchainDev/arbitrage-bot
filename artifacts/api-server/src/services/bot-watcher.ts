@@ -62,6 +62,7 @@ function computeLegPnl(
   leg: BotLeg,
   priceA: number,
   priceB: number,
+  extraFees = 0,
 ): number {
   const qtyA = Number(leg.bybitQty);
   const qtyB = Number(leg.binanceQty);
@@ -78,7 +79,8 @@ function computeLegPnl(
       ? (priceB - entryB) * qtyB
       : (entryB - priceB) * qtyB;
 
-  return pnlA + pnlB;
+  const openFees = Number(leg.openFeeA ?? 0) + Number(leg.openFeeB ?? 0);
+  return pnlA + pnlB - openFees - extraFees;
 }
 
 function botExchangeNames(config: BotConfig): { exchangeA: string; exchangeB: string } {
@@ -150,6 +152,8 @@ async function openLeg(config: BotConfig, spreadPct: number): Promise<void> {
       bybitSide: sideA,
       binanceSide: sideB,
       spreadAtEntry: String(spreadPct),
+      openFeeA: String(resultA.feeCost),
+      openFeeB: String(resultB.feeCost),
       status: "open",
       openedAt: new Date(),
     });
@@ -196,7 +200,10 @@ async function closeLeg(
     return false;
   }
 
-  const realizedPnl = computeLegPnl(leg, priceA, priceB);
+  const closeFees = result.closeFeeA + result.closeFeeB;
+  const realizedPnl = computeLegPnl(leg, priceA, priceB, closeFees);
+  const totalFees =
+    Number(leg.openFeeA ?? 0) + Number(leg.openFeeB ?? 0) + closeFees;
 
   await db
     .update(botLegsTable)
@@ -210,6 +217,7 @@ async function closeLeg(
       shortExchange: leg.bybitSide === "short" ? (config.exchangeA ?? "bybit") : (config.exchangeB ?? "binance"),
       spreadAtEntry: String(leg.spreadAtEntry),
       realizedPnl: String(realizedPnl),
+      totalFees: String(totalFees),
       quantity: String((Number(leg.bybitQty) * priceA + Number(leg.binanceQty) * priceB) / 2),
       entryTime: leg.openedAt,
       closeTime: new Date(),
@@ -218,7 +226,7 @@ async function closeLeg(
     logger.error({ dbErr }, "Bot: failed to record closed trade to history");
   }
 
-  logger.info({ legId: leg.id, symbol: leg.symbol, realizedPnl }, "Bot: closed leg successfully");
+  logger.info({ legId: leg.id, symbol: leg.symbol, realizedPnl, totalFees }, "Bot: closed leg successfully");
   return true;
 }
 
@@ -317,7 +325,9 @@ export async function closeAllLegsForBot(botId: number): Promise<{ closed: numbe
     });
 
     if (result.bothClosed) {
-      const realizedPnl = computeLegPnl(leg, priceA, priceB);
+      const closeFees = result.closeFeeA + result.closeFeeB;
+      const realizedPnl = computeLegPnl(leg, priceA, priceB, closeFees);
+      const totalFees = Number(leg.openFeeA ?? 0) + Number(leg.openFeeB ?? 0) + closeFees;
       await db.update(botLegsTable).set({ status: "closed", closedAt: new Date() }).where(eq(botLegsTable.id, leg.id));
       try {
         await db.insert(closedTradesTable).values({
@@ -326,13 +336,14 @@ export async function closeAllLegsForBot(botId: number): Promise<{ closed: numbe
           shortExchange: leg.bybitSide === "short" ? exchangeA : exchangeB,
           spreadAtEntry: String(leg.spreadAtEntry),
           realizedPnl: String(realizedPnl),
+          totalFees: String(totalFees),
           quantity: String((Number(leg.bybitQty) * priceA + Number(leg.binanceQty) * priceB) / 2),
           entryTime: leg.openedAt,
           closeTime: new Date(),
         });
       } catch {}
       closed++;
-      logger.info({ legId: leg.id, symbol: leg.symbol }, "stop-and-close: leg closed");
+      logger.info({ legId: leg.id, symbol: leg.symbol, realizedPnl, totalFees }, "stop-and-close: leg closed");
     } else {
       failed++;
       logger.warn({ legId: leg.id, errorA: result.errorA, errorB: result.errorB }, "stop-and-close: leg close failed");

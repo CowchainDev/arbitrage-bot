@@ -823,13 +823,48 @@ const MIN_NOTIONAL_BY_EXCHANGE: Record<string, number> = {
   mexc:    1.0,
 };
 
+const FEE_RETRY_DELAY_MS = 2000;
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function sumFeesFromOrder(order: any): number {
+  if (order == null) return 0;
+  if (order.fee?.cost != null) {
+    const cost = Number(order.fee.cost);
+    if (cost > 0) return cost;
+  }
+  if (Array.isArray(order.fees) && order.fees.length > 0) {
+    const total = (order.fees as Array<{ cost?: unknown }>).reduce(
+      (s, f) => s + (Number(f.cost) || 0),
+      0,
+    );
+    if (total > 0) return total;
+  }
+  return 0;
+}
+
+async function extractFeeFromOrder(
+  ex: SupportedCcxtExchange,
+  order: { id: unknown; fee?: { cost?: unknown } | null },
+  marketSymbol: string,
+): Promise<number> {
+  const inline = sumFeesFromOrder(order);
+  if (inline > 0) return inline;
+  await new Promise<void>((r) => setTimeout(r, FEE_RETRY_DELAY_MS));
+  try {
+    const fetched = await ex.fetchOrder(String(order.id), marketSymbol);
+    const retried = sumFeesFromOrder(fetched);
+    if (retried > 0) return retried;
+  } catch (_) {}
+  return 0;
+}
+
 export async function placeOrderInternal(
   ex: SupportedCcxtExchange,
   symbol: string,
   side: "long" | "short",
   usdAmount: number,
   leverage: number | undefined
-): Promise<{ orderId: string; exchange: string; symbol: string; side: string; filledQty: number; avgPrice: number; status: string }> {
+): Promise<{ orderId: string; exchange: string; symbol: string; side: string; filledQty: number; avgPrice: number; status: string; feeCost: number }> {
   const marketSymbol = `${symbol}/USDT:USDT`;
 
   if (leverage && leverage !== 1) {
@@ -880,6 +915,8 @@ export async function placeOrderInternal(
     order = await ex.createMarketOrder(marketSymbol, ccxtSide, qty, undefined, { reduceOnly: false });
   }
 
+  const feeCost = await extractFeeFromOrder(ex, order, marketSymbol);
+
   return {
     orderId: String(order.id),
     exchange: exchangeName,
@@ -888,6 +925,7 @@ export async function placeOrderInternal(
     filledQty: order.filled ?? qty,
     avgPrice: order.average ?? price,
     status: order.status ?? "closed",
+    feeCost,
   };
 }
 
@@ -973,6 +1011,8 @@ export type ClosePositionInternalResult = {
   bothClosed: boolean;
   orderIdA: string | null;
   orderIdB: string | null;
+  closeFeeA: number;
+  closeFeeB: number;
   errorA?: string;
   errorB?: string;
   /** @deprecated use orderIdA */ bybitOrderId: string | null;
@@ -986,11 +1026,12 @@ async function closeOnExchange(
   symbol: string,
   positionSide: "long" | "short",
   qty: number,
-): Promise<string> {
+): Promise<{ orderId: string; feeCost: number }> {
   const marketSymbol = `${symbol}/USDT:USDT`;
   const closeSide = positionSide === "long" ? "sell" : "buy";
+  let order;
   if (ex.id === "bybit") {
-    const order = await bybitCreateOrder(
+    order = await bybitCreateOrder(
       ex as InstanceType<typeof ccxt.bybit>,
       marketSymbol,
       closeSide,
@@ -998,18 +1039,17 @@ async function closeOnExchange(
       { reduceOnly: true },
       positionSide,
     );
-    return String(order.id);
   } else if (ex.id === "okx") {
-    const order = await ex.createMarketOrder(marketSymbol, closeSide, qty, undefined, {
+    order = await ex.createMarketOrder(marketSymbol, closeSide, qty, undefined, {
       tdMode: "cross",
       posSide: positionSide === "long" ? "long" : "short",
       reduceOnly: true,
     });
-    return String(order.id);
   } else {
-    const order = await ex.createMarketOrder(marketSymbol, closeSide, qty, undefined, { reduceOnly: true });
-    return String(order.id);
+    order = await ex.createMarketOrder(marketSymbol, closeSide, qty, undefined, { reduceOnly: true });
   }
+  const feeCost = await extractFeeFromOrder(ex, order, marketSymbol);
+  return { orderId: String(order.id), feeCost };
 }
 
 export async function closePositionInternal(
@@ -1026,8 +1066,10 @@ export async function closePositionInternal(
   ]);
 
   const bothClosed = orderA.status === "fulfilled" && orderB.status === "fulfilled";
-  const orderIdA = orderA.status === "fulfilled" ? orderA.value : null;
-  const orderIdB = orderB.status === "fulfilled" ? orderB.value : null;
+  const orderIdA = orderA.status === "fulfilled" ? orderA.value.orderId : null;
+  const orderIdB = orderB.status === "fulfilled" ? orderB.value.orderId : null;
+  const closeFeeA = orderA.status === "fulfilled" ? orderA.value.feeCost : 0;
+  const closeFeeB = orderB.status === "fulfilled" ? orderB.value.feeCost : 0;
   const errorA = orderA.status === "rejected" ? String(orderA.reason) : undefined;
   const errorB = orderB.status === "rejected" ? String(orderB.reason) : undefined;
 
@@ -1052,6 +1094,8 @@ export async function closePositionInternal(
     bothClosed,
     orderIdA,
     orderIdB,
+    closeFeeA,
+    closeFeeB,
     errorA,
     errorB,
     bybitOrderId: orderIdA,

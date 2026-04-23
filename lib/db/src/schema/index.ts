@@ -36,6 +36,7 @@ export const closedTradesTable = pgTable(
     quantity: numeric("quantity", { precision: 20, scale: 8 })
       .notNull()
       .default("0"),
+    totalFees: numeric("total_fees", { precision: 20, scale: 8 }).notNull().default("0"),
     entryTime: timestamp("entry_time").notNull().defaultNow(),
     closeTime: timestamp("close_time").notNull().defaultNow(),
   },
@@ -82,6 +83,8 @@ export const botLegsTable = pgTable(
     bybitSide: text("bybit_side").notNull().default("long"),
     binanceSide: text("binance_side").notNull().default("short"),
     spreadAtEntry: numeric("spread_at_entry", { precision: 20, scale: 8 }).notNull().default("0"),
+    openFeeA: numeric("open_fee_a", { precision: 20, scale: 8 }).notNull().default("0"),
+    openFeeB: numeric("open_fee_b", { precision: 20, scale: 8 }).notNull().default("0"),
     status: text("status").notNull().default("open"),
     openedAt: timestamp("opened_at").notNull().defaultNow(),
     closedAt: timestamp("closed_at"),
