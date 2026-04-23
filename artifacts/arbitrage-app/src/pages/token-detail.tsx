@@ -12,7 +12,12 @@ import {
   AreaChart,
   Area,
 } from "recharts";
-import { useGetExchangePrices, useGetExchangeKlines } from "@workspace/api-client-react";
+import {
+  useGetExchangePrices,
+  getGetExchangePricesQueryKey,
+  useGetExchangeKlines,
+  getGetExchangeKlinesQueryKey,
+} from "@workspace/api-client-react";
 import type { ExchangeKlinePoint } from "@workspace/api-client-react";
 import { TokenDetailPanel } from "@/components/token-detail-panel";
 import { useBots } from "@/hooks/use-bots";
@@ -62,12 +67,15 @@ export default function TokenDetail({ params }: { params: { symbol: string } }) 
   const symbol = params.symbol.toUpperCase();
   const [timeRange, setTimeRange] = useState<TimeRange>(TIME_RANGES[1]);
 
-  const { data: allTokens } = useGetExchangePrices({ query: { refetchInterval: 10_000 } });
+  const { data: allTokens } = useGetExchangePrices({
+    query: { queryKey: getGetExchangePricesQueryKey(), refetchInterval: 10_000 },
+  });
   const token = allTokens?.find((t) => t.symbol === symbol);
 
+  const klinesParams = { symbol, interval: timeRange.interval, limit: timeRange.limit };
   const { data: klines, isLoading: klinesLoading, isError: klinesError } = useGetExchangeKlines(
-    { symbol, interval: timeRange.interval, limit: timeRange.limit },
-    { query: { refetchInterval: 60_000, staleTime: 30_000 } }
+    klinesParams,
+    { query: { queryKey: getGetExchangeKlinesQueryKey(klinesParams), refetchInterval: 60_000, staleTime: 30_000 } }
   );
 
   const { getBotRequestOptions } = useBotSecret();
