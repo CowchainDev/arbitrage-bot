@@ -449,3 +449,21 @@ export type DeleteCredential200 = {
   exchange: string;
   deleted: boolean;
 };
+
+export interface ExchangeKlinePoint {
+  /** Unix timestamp in milliseconds */
+  t: number;
+  /** Close price */
+  c: number;
+}
+
+export type ExchangeKlinesResponse = Partial<Record<string, ExchangeKlinePoint[]>>;
+
+export interface GetExchangeKlinesParams {
+  /** Token symbol, e.g. BTC */
+  symbol: string;
+  /** Candle interval: 15m | 1h | 4h | 1d */
+  interval?: string;
+  /** Number of candles to return (max 500) */
+  limit?: number;
+}

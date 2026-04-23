@@ -1,7 +1,6 @@
 import { useState, useMemo } from "react";
 import { Link } from "wouter";
 import { ArrowLeft } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
 import {
   LineChart,
   Line,
@@ -13,14 +12,11 @@ import {
   AreaChart,
   Area,
 } from "recharts";
-import { useGetExchangePrices } from "@workspace/api-client-react";
+import { useGetExchangePrices, useGetExchangeKlines } from "@workspace/api-client-react";
+import type { ExchangeKlinePoint } from "@workspace/api-client-react";
 import { TokenDetailPanel } from "@/components/token-detail-panel";
-import { useApiCredentials } from "@/hooks/use-api-credentials";
 import { useBots } from "@/hooks/use-bots";
 import { useBotSecret } from "@/hooks/use-bot-secret";
-
-type KlinePoint = { t: number; c: number };
-type KlinesData = Record<string, KlinePoint[]>;
 
 type TimeRange = { label: string; interval: string; limit: number };
 const TIME_RANGES: TimeRange[] = [
@@ -42,15 +38,8 @@ const EXCHANGE_DISPLAY: Record<string, string> = {
   bybit: "Bybit", binance: "Binance", gate: "Gate", okx: "OKX", mexc: "MEXC",
 };
 
-const ALL_EXCHANGES = ["bybit", "binance", "gate", "okx", "mexc"];
-
-async function fetchKlines(symbol: string, interval: string, limit: number): Promise<KlinesData> {
-  const res = await fetch(
-    `/api/exchanges/klines?symbol=${encodeURIComponent(symbol)}&interval=${interval}&limit=${limit}`
-  );
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.json() as Promise<KlinesData>;
-}
+const ALL_EXCHANGES = ["bybit", "binance", "gate", "okx", "mexc"] as const;
+type ExchangeName = typeof ALL_EXCHANGES[number];
 
 function formatPriceAxis(price: number): string {
   if (price >= 100000) return `${(price / 1000).toFixed(0)}K`;
@@ -67,6 +56,8 @@ function formatPriceFull(price: number): string {
   return price.toFixed(6);
 }
 
+type ChartRow = { t: number } & Partial<Record<ExchangeName, number>>;
+
 export default function TokenDetail({ params }: { params: { symbol: string } }) {
   const symbol = params.symbol.toUpperCase();
   const [timeRange, setTimeRange] = useState<TimeRange>(TIME_RANGES[1]);
@@ -74,43 +65,43 @@ export default function TokenDetail({ params }: { params: { symbol: string } }) 
   const { data: allTokens } = useGetExchangePrices({ query: { refetchInterval: 10_000 } });
   const token = allTokens?.find((t) => t.symbol === symbol);
 
-  const { data: klines, isLoading: klinesLoading, isError: klinesError } = useQuery({
-    queryKey: ["klines", symbol, timeRange.interval, timeRange.limit],
-    queryFn: () => fetchKlines(symbol, timeRange.interval, timeRange.limit),
-    refetchInterval: 60_000,
-    staleTime: 30_000,
-  });
+  const { data: klines, isLoading: klinesLoading, isError: klinesError } = useGetExchangeKlines(
+    { symbol, interval: timeRange.interval, limit: timeRange.limit },
+    { query: { refetchInterval: 60_000, staleTime: 30_000 } }
+  );
 
-  const { getRequestHeaders } = useApiCredentials();
-  const requestHeaders = getRequestHeaders();
   const { getBotRequestOptions } = useBotSecret();
   const botRequestOptions = getBotRequestOptions();
 
   const { getBotStatusForSymbol } = useBots();
   const botStatus = getBotStatusForSymbol(symbol);
 
-  const activeExchanges = useMemo(() => {
+  const activeExchanges = useMemo((): ExchangeName[] => {
     if (!klines) return [];
     return ALL_EXCHANGES.filter((ex) => (klines[ex]?.length ?? 0) > 0);
   }, [klines]);
 
-  const chartData = useMemo(() => {
+  const chartData = useMemo((): ChartRow[] => {
     if (!klines || activeExchanges.length === 0) return [];
-    const base = activeExchanges[0];
-    const basePoints = klines[base];
-    return basePoints.map((pt, i) => {
-      const row: Record<string, number> = { t: pt.t };
-      for (const ex of activeExchanges) {
-        const p = klines[ex]?.[i];
-        if (p != null) row[ex] = p.c;
+
+    const tsMap = new Map<number, ChartRow>();
+    for (const ex of activeExchanges) {
+      const points: ExchangeKlinePoint[] = klines[ex] ?? [];
+      for (const pt of points) {
+        const existing = tsMap.get(pt.t) ?? ({ t: pt.t } as ChartRow);
+        (existing as Record<string, number>)[ex] = pt.c;
+        tsMap.set(pt.t, existing);
       }
-      return row;
-    });
+    }
+
+    return Array.from(tsMap.values()).sort((a, b) => a.t - b.t);
   }, [klines, activeExchanges]);
 
   const spreadData = useMemo(() => {
     return chartData.map((row) => {
-      const prices = activeExchanges.map((ex) => row[ex]).filter((p): p is number => p > 0);
+      const prices = activeExchanges
+        .map((ex) => row[ex])
+        .filter((p): p is number => p != null && p > 0);
       const spread =
         prices.length >= 2
           ? ((Math.max(...prices) - Math.min(...prices)) / Math.min(...prices)) * 100
@@ -125,7 +116,7 @@ export default function TokenDetail({ params }: { params: { symbol: string } }) 
       return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
     }
     if (timeRange.interval === "4h") {
-      return d.toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+      return d.toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit" });
     }
     return d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
   };

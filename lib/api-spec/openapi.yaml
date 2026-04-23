@@ -33,6 +33,50 @@ paths:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
 
+  /exchanges/klines:
+    get:
+      operationId: getExchangeKlines
+      tags: [exchanges]
+      summary: Get OHLCV candlestick data for a token across all exchanges
+      description: Returns close-price candle data (t, c) per exchange. Falls back to synthetic demo data if all live exchanges fail.
+      parameters:
+        - in: query
+          name: symbol
+          schema:
+            type: string
+          required: true
+          description: Token symbol e.g. BTC
+        - in: query
+          name: interval
+          schema:
+            type: string
+            enum: ["15m", "1h", "4h", "1d"]
+            default: "1h"
+          required: false
+          description: Candle interval
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 168
+          required: false
+          description: Number of candles to return
+      responses:
+        "200":
+          description: Kline data keyed by exchange name
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExchangeKlinesResponse"
+        "400":
+          description: Missing or invalid symbol parameter
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
   /exchanges/prices:
     get:
       operationId: getExchangePrices
@@ -1314,4 +1358,25 @@ components:
           type: boolean
       required:
         - deleted
+
+    ExchangeKlinePoint:
+      type: object
+      properties:
+        t:
+          type: number
+          description: Unix timestamp in milliseconds
+        c:
+          type: number
+          description: Close price
+      required:
+        - t
+        - c
+
+    ExchangeKlinesResponse:
+      type: object
+      description: Candle data per exchange, keyed by exchange name (bybit, binance, gate, okx, mexc)
+      additionalProperties:
+        type: array
+        items:
+          $ref: "#/components/schemas/ExchangeKlinePoint"
 

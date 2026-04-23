@@ -529,14 +529,14 @@ router.get("/exchanges/klines", async (req: Request, res: Response) => {
   const results = await Promise.allSettled(
     exchangeDefs.map(async ({ name, create }) => {
       const ex = create();
-      const ohlcv = await Promise.race([
-        ex.fetchOHLCV(ccxtSymbol, timeframe, undefined, limit),
+      type OhlcvRow = [number, number, number, number, number, number?];
+      const raw = await Promise.race([
+        ex.fetchOHLCV(ccxtSymbol, timeframe, undefined, limit) as Promise<OhlcvRow[]>,
         new Promise<never>((_, reject) =>
           setTimeout(() => reject(new Error("klines timeout")), KLINES_TIMEOUT_MS)
         ),
       ]);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const data = (ohlcv as any[]).map((row: any[]) => ({ t: row[0] as number, c: row[4] as number })).filter(p => p.t && p.c);
+      const data = raw.map((row) => ({ t: row[0], c: row[4] })).filter((p) => p.t > 0 && p.c > 0);
       return { name, data };
     })
   );

@@ -28,6 +28,8 @@ import type {
   DeleteBotResult,
   DeleteCredential200,
   ExchangeBalances,
+  ExchangeKlinesResponse,
+  GetExchangeKlinesParams,
   HealthStatus,
   JumpInRequest,
   JumpInResult,
@@ -1581,6 +1583,95 @@ export function useGetTrades<
   request?: SecondParameter<typeof customFetch>;
 }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getGetTradesQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * Returns OHLCV close-price candle data for a token across all available exchanges.
+ * Falls back to synthetic demo data when live exchanges are unavailable.
+ * @summary Get OHLCV candlestick data for a token across all exchanges
+ */
+export const getGetExchangeKlinesUrl = (params: GetExchangeKlinesParams) => {
+  const searchParams = new URLSearchParams();
+  searchParams.set("symbol", params.symbol);
+  if (params.interval != null) searchParams.set("interval", params.interval);
+  if (params.limit != null) searchParams.set("limit", String(params.limit));
+  return `/api/exchanges/klines?${searchParams.toString()}`;
+};
+
+export const getExchangeKlines = async (
+  params: GetExchangeKlinesParams,
+  options?: RequestInit,
+): Promise<ExchangeKlinesResponse> => {
+  return customFetch<ExchangeKlinesResponse>(getGetExchangeKlinesUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetExchangeKlinesQueryKey = (params: GetExchangeKlinesParams) => {
+  return [`/api/exchanges/klines`, params] as const;
+};
+
+export const getGetExchangeKlinesQueryOptions = <
+  TData = Awaited<ReturnType<typeof getExchangeKlines>>,
+  TError = ErrorType<ApiError>,
+>(
+  params: GetExchangeKlinesParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getExchangeKlines>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetExchangeKlinesQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getExchangeKlines>>
+  > = ({ signal }) =>
+    getExchangeKlines(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getExchangeKlines>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetExchangeKlinesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getExchangeKlines>>
+>;
+export type GetExchangeKlinesQueryError = ErrorType<ApiError>;
+
+/**
+ * @summary Get OHLCV candlestick data for a token across all exchanges
+ */
+export function useGetExchangeKlines<
+  TData = Awaited<ReturnType<typeof getExchangeKlines>>,
+  TError = ErrorType<ApiError>,
+>(
+  params: GetExchangeKlinesParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getExchangeKlines>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetExchangeKlinesQueryOptions(params, options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;
