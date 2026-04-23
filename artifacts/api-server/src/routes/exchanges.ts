@@ -500,6 +500,86 @@ export async function fetchPriceSpreads(): Promise<ReturnType<typeof generateDem
   }
 }
 
+router.get("/exchanges/klines", async (req: Request, res: Response) => {
+  const symbol = (req.query.symbol as string)?.toUpperCase() ?? "";
+  const interval = (req.query.interval as string) ?? "1h";
+  const limitRaw = parseInt(req.query.limit as string ?? "168", 10);
+  const limit = isNaN(limitRaw) ? 168 : Math.min(Math.max(limitRaw, 1), 500);
+
+  if (!symbol) {
+    res.status(400).json({ error: "bad_request", message: "symbol is required" });
+    return;
+  }
+
+  const ccxtSymbol = `${symbol}/USDT:USDT`;
+  const timeframeMap: Record<string, string> = {
+    "15m": "15m", "1h": "1h", "4h": "4h", "1d": "1d",
+  };
+  const timeframe = timeframeMap[interval] ?? "1h";
+
+  const exchangeDefs = [
+    { name: "bybit",   create: () => createBybitExchange() },
+    { name: "binance", create: () => createBinanceExchange() },
+    { name: "gate",    create: () => createGateExchange() },
+    { name: "okx",     create: () => createOkxExchange() },
+    { name: "mexc",    create: () => createMexcExchange() },
+  ];
+
+  const KLINES_TIMEOUT_MS = 4000;
+  const results = await Promise.allSettled(
+    exchangeDefs.map(async ({ name, create }) => {
+      const ex = create();
+      const ohlcv = await Promise.race([
+        ex.fetchOHLCV(ccxtSymbol, timeframe, undefined, limit),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("klines timeout")), KLINES_TIMEOUT_MS)
+        ),
+      ]);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const data = (ohlcv as any[]).map((row: any[]) => ({ t: row[0] as number, c: row[4] as number })).filter(p => p.t && p.c);
+      return { name, data };
+    })
+  );
+
+  const out: Record<string, { t: number; c: number }[]> = {};
+  let anySuccess = false;
+  for (const result of results) {
+    if (result.status === "fulfilled" && result.value.data.length > 0) {
+      out[result.value.name] = result.value.data;
+      anySuccess = true;
+    }
+  }
+
+  if (!anySuccess) {
+    // Demo mode: generate synthetic candlestick data seeded from DEMO_BASE_PRICES
+    const basePrice = DEMO_BASE_PRICES[symbol] ?? 100;
+    const intervalMs: Record<string, number> = {
+      "15m": 15 * 60 * 1000,
+      "1h":  60 * 60 * 1000,
+      "4h":  4  * 60 * 60 * 1000,
+      "1d":  24 * 60 * 60 * 1000,
+    };
+    const ms = intervalMs[interval] ?? intervalMs["1h"];
+    const now = Math.floor(Date.now() / ms) * ms;
+
+    function generateKlines(startBase: number, vol: number): { t: number; c: number }[] {
+      const pts: { t: number; c: number }[] = [];
+      let price = startBase;
+      for (let i = limit; i >= 0; i--) {
+        price = price * (1 + (Math.random() - 0.5) * vol);
+        pts.push({ t: now - i * ms, c: price });
+      }
+      return pts;
+    }
+    const volatility = 0.004;
+    for (const name of ["bybit", "binance", "gate", "okx", "mexc"]) {
+      out[name] = generateKlines(basePrice * (1 + (Math.random() - 0.5) * 0.005), volatility);
+    }
+  }
+
+  res.json(out);
+});
+
 router.get("/exchanges/prices", async (req: Request, res: Response) => {
   try {
     const spreads = await fetchPriceSpreads();
