@@ -422,7 +422,7 @@ export default function Bots() {
         <div className="flex flex-col items-center justify-center py-20 gap-3 text-muted-foreground">
           <Bot className="w-10 h-10 opacity-30" />
           <p className="text-sm">No bots configured yet.</p>
-          <p className="text-xs opacity-60">Open a token on the Dashboard, configure the Auto Bot section, and click START BOT.</p>
+          <p className="text-xs opacity-60">Open a token on the Dashboard, configure your bot settings, and click JUMP IN.</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">

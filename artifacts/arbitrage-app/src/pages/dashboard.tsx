@@ -1,8 +1,8 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import { Link } from "wouter";
 import { Star, Search, TrendingUp, TrendingDown, Zap, AlertCircle, ChevronDown, ChevronUp, X, Bell, BellOff, Bot, Power, XCircle } from "lucide-react";
-import { useGetExchangePrices, getGetExchangePricesQueryKey, useGetPositions, getGetPositionsQueryKey, useJumpIn, useClosePosition, useCreateBot, useStartBot, useStopBot, useStopAndCloseBot, useUpdateBot, getListBotsQueryKey, getGetBotLegsQueryKey } from "@workspace/api-client-react";
-import type { TokenSpread, Position, ClosePositionResult, JumpInResult, BotConfig, BotLeg } from "@workspace/api-client-react";
+import { useGetExchangePrices, getGetExchangePricesQueryKey, useGetPositions, getGetPositionsQueryKey, useClosePosition, useCreateBot, useStartBot, useStopBot, useStopAndCloseBot, useUpdateBot, getListBotsQueryKey, getGetBotLegsQueryKey } from "@workspace/api-client-react";
+import type { TokenSpread, Position, ClosePositionResult, BotConfig, BotLeg } from "@workspace/api-client-react";
 import { useBots } from "@/hooks/use-bots";
 import { useBotSecret } from "@/hooks/use-bot-secret";
 import { useLocalPositions } from "@/hooks/use-local-positions";
@@ -297,8 +297,6 @@ function TokenDetailPanel({
   token,
   onClose,
   requestHeaders,
-  activePosition,
-  onJumpInSuccess,
   bot,
   botOpenLegsCount,
   botRequestOptions,
@@ -306,40 +304,15 @@ function TokenDetailPanel({
   token: TokenSpread;
   onClose: () => void;
   requestHeaders: ReturnType<ReturnType<typeof useApiCredentials>["getRequestHeaders"]>;
-  activePosition?: Position;
-  onJumpInSuccess: (position: Position) => void;
   bot?: BotConfig;
   botOpenLegsCount: number;
   botRequestOptions?: RequestInit;
 }) {
-  // Auto-select: SHORT the expensive side, LONG the cheap side (convergence arb)
-  // spreadPct = (bybitPrice - binancePrice) / binancePrice → positive means Bybit is more expensive
-  const correctBybitSide = (token.spreadPct ?? 0) > 0 ? "short" : "long";
-  const [bybitSide, setBybitSide] = useState<"long" | "short">(correctBybitSide);
-
-  // Re-auto-select whenever the token changes
-  useEffect(() => {
-    setBybitSide((token.spreadPct ?? 0) > 0 ? "short" : "long");
-  }, [token.symbol, token.spreadPct]);
-  const [openSpread, setOpenSpread] = useState("0.5");
-  const [closeSpread, setCloseSpread] = useState("0.2");
-  const [orderSize, setOrderSize] = useState("10");
-  const [bybitLeverage, setBybitLeverage] = useState<string>(() => {
-    try { return localStorage.getItem("arbitrage-bybitLeverage") ?? "1"; } catch { return "1"; }
-  });
-  const [binanceLeverage, setBinanceLeverage] = useState<string>(() => {
-    try { return localStorage.getItem("arbitrage-binanceLeverage") ?? "1"; } catch { return "1"; }
-  });
-  const [useLeverage, setUseLeverage] = useState<boolean>(() => {
-    try { return localStorage.getItem("arbitrage-useLeverage") === "true"; } catch { return false; }
-  });
-  const [isJumping, setIsJumping] = useState(false);
-
-  // Bot form state — pre-filled from bot config or manual inputs
-  const [botEnterSpread, setBotEnterSpread] = useState(() => bot ? String(bot.enterSpreadPct) : openSpread);
-  const [botCloseSpread, setBotCloseSpread] = useState(() => bot ? String(bot.closeSpreadPct) : closeSpread);
+  // Bot form state — pre-filled from bot config or sensible defaults
+  const [botEnterSpread, setBotEnterSpread] = useState(() => bot ? String(bot.enterSpreadPct) : "0.5");
+  const [botCloseSpread, setBotCloseSpread] = useState(() => bot ? String(bot.closeSpreadPct) : "0.2");
   const [botStopLossSpread, setBotStopLossSpread] = useState(() => bot ? String(bot.stopLossSpreadPct ?? 0) : "0");
-  const [botOrderSize, setBotOrderSize] = useState(() => bot ? String(bot.orderSizeUsd) : orderSize);
+  const [botOrderSize, setBotOrderSize] = useState(() => bot ? String(bot.orderSizeUsd) : "10");
   const [botMaxOrders, setBotMaxOrders] = useState(() => bot ? String(bot.maxOrders) : "3");
   const [botForceStop, setBotForceStop] = useState(() => bot ? String(bot.forceStopUsd) : "50");
   const [botExchangeA, setBotExchangeA] = useState<string>(() => {
@@ -374,9 +347,9 @@ function TokenDetailPanel({
       if (bot.leverageA) setBotLeverageA(String(bot.leverageA));
       if (bot.leverageB) setBotLeverageB(String(bot.leverageB));
     } else {
-      setBotEnterSpread(openSpread);
-      setBotCloseSpread(closeSpread);
-      setBotOrderSize(orderSize);
+      setBotEnterSpread("0.5");
+      setBotCloseSpread("0.2");
+      setBotOrderSize("10");
       setBotMaxOrders("3");
       setBotForceStop("50");
     }
@@ -388,18 +361,6 @@ function TokenDetailPanel({
   const startBotMutation = useStartBot({ request: botRequestOptions });
   const stopBotMutation = useStopBot({ request: botRequestOptions });
   const stopAndCloseBotMutation = useStopAndCloseBot({ request: botRequestOptions });
-
-  useEffect(() => {
-    try { localStorage.setItem("arbitrage-useLeverage", String(useLeverage)); } catch {}
-  }, [useLeverage]);
-
-  useEffect(() => {
-    try { localStorage.setItem("arbitrage-bybitLeverage", bybitLeverage); } catch {}
-  }, [bybitLeverage]);
-
-  useEffect(() => {
-    try { localStorage.setItem("arbitrage-binanceLeverage", binanceLeverage); } catch {}
-  }, [binanceLeverage]);
 
   useEffect(() => {
     try { localStorage.setItem("arbitrage-botExchangeA", botExchangeA); } catch {}
@@ -508,103 +469,10 @@ function TokenDetailPanel({
     }
   };
 
-  const jumpIn = useJumpIn({ request: requestHeaders ?? undefined });
-
-  const MIN_ORDER_USD = 10;
-
-  const handleJumpIn = async () => {
-    const size = Number(orderSize);
-    if (!size || size <= 0) {
-      toast({ title: "Invalid size", description: "Enter a valid USD amount", variant: "destructive" });
-      return;
-    }
-    if (size < MIN_ORDER_USD) {
-      toast({ title: "Order too small", description: `Minimum order is $${MIN_ORDER_USD} total ($5 per exchange)`, variant: "destructive" });
-      return;
-    }
-    if (!requestHeaders) {
-      toast({ title: "API Keys required", description: "Configure your API keys in Settings", variant: "destructive" });
-      return;
-    }
-
-    setIsJumping(true);
-    const halfSize = size / 2;
-    const computedBinanceSide = bybitSide === "long" ? "short" : "long";
-
-    try {
-      const jumpResult = await new Promise<JumpInResult>((resolve, reject) =>
-        jumpIn.mutate(
-          {
-            data: {
-              symbol: token.symbol,
-              bybitSide,
-              binanceSide: computedBinanceSide,
-              usdAmount: size,
-              bybitLeverage: useLeverage ? Number(bybitLeverage) : 1,
-              binanceLeverage: useLeverage ? Number(binanceLeverage) : 1,
-            },
-          },
-          {
-            onSuccess: (data) => {
-              if (!data.success) {
-                reject(new Error(data.error ?? (data.compensated ? "Binance leg failed (Bybit position was closed)" : "Order failed")));
-              } else {
-                resolve(data);
-              }
-            },
-            onError: reject,
-          }
-        )
-      );
-
-      const bybitEntry = jumpResult.bybitResult?.avgPrice ?? 0;
-      const binanceEntry = jumpResult.binanceResult?.avgPrice ?? 0;
-      const bybitQty = jumpResult.bybitResult?.filledQty ?? halfSize / Math.max(bybitEntry, 1);
-      const binanceQty = jumpResult.binanceResult?.filledQty ?? halfSize / Math.max(binanceEntry, 1);
-      const spreadAtEntry = bybitEntry && binanceEntry
-        ? ((bybitEntry - binanceEntry) / binanceEntry) * 100
-        : token.spreadPct;
-
-      onJumpInSuccess({
-        id: `local-${token.symbol}-${Date.now()}`,
-        symbol: token.symbol,
-        bybitSide,
-        binanceSide: computedBinanceSide,
-        bybitQty,
-        binanceQty,
-        bybitEntryPrice: bybitEntry,
-        binanceEntryPrice: binanceEntry,
-        bybitCurrentPrice: bybitEntry,
-        binanceCurrentPrice: binanceEntry,
-        bybitPnl: 0,
-        binancePnl: 0,
-        totalPnl: 0,
-        spreadAtEntry,
-        currentSpread: spreadAtEntry,
-        usdSize: size,
-        openedAt: new Date().toISOString(),
-      });
-
-      toast({
-        title: "Position opened",
-        description: `${bybitSide.toUpperCase()} $${halfSize} on Bybit, ${computedBinanceSide.toUpperCase()} $${halfSize} on Binance`,
-      });
-
-      await queryClient.invalidateQueries({ queryKey: getGetPositionsQueryKey() });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Order failed";
-      toast({ title: "Order failed", description: msg, variant: "destructive" });
-    } finally {
-      setIsJumping(false);
-    }
-  };
-
-  const binanceSide = bybitSide === "long" ? "short" : "long";
-
   return (
     <div className="bg-card border border-border rounded-md p-4 space-y-4 h-fit sticky top-4">
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <span className="font-bold text-base">{token.symbol}</span>
           {token.bybitPrice != null && (
             <span className="text-xs text-amber-400 font-semibold bg-amber-400/10 px-2 py-0.5 rounded">
@@ -616,194 +484,6 @@ function TokenDetailPanel({
               BINANCE {token.bybitPrice != null ? (token.binancePrice > token.bybitPrice ? "↑" : "↓") : ""}
             </span>
           )}
-        </div>
-        <button onClick={onClose} className="text-muted-foreground hover:text-foreground" data-testid="btn-close-detail">
-          <X className="w-4 h-4" />
-        </button>
-      </div>
-
-      {/* Direction display (auto-assigned, read-only) */}
-      <div>
-        <label className="text-xs text-muted-foreground uppercase tracking-wider mb-1.5 block">Direction (auto)</label>
-        <div className="flex gap-2">
-          <div className={`flex-1 py-1.5 rounded text-xs font-bold text-center ${bybitSide === "long" ? "bg-primary/20 text-primary border border-primary/40" : "bg-destructive/20 text-destructive border border-destructive/40"}`}>
-            BB {bybitSide.toUpperCase()}
-          </div>
-          <div className={`flex-1 py-1.5 rounded text-xs font-bold text-center ${binanceSide === "long" ? "bg-primary/20 text-primary border border-primary/40" : "bg-destructive/20 text-destructive border border-destructive/40"}`}>
-            BN {binanceSide.toUpperCase()}
-          </div>
-        </div>
-        {token.bybitPrice != null && token.binancePrice != null && (
-          <p className="text-[11px] mt-1.5 text-muted-foreground">
-            {token.bybitPrice > token.binancePrice ? (
-              <><span className="text-amber-400 font-semibold">BB</span> is expensive · <span className="text-violet-400 font-semibold">BN</span> is cheap — short expensive, long cheap</>
-            ) : (
-              <><span className="text-violet-400 font-semibold">BN</span> is expensive · <span className="text-amber-400 font-semibold">BB</span> is cheap — short expensive, long cheap</>
-            )}
-          </p>
-        )}
-      </div>
-
-      {/* Spread settings */}
-      <div className="grid grid-cols-2 gap-2">
-        <div>
-          <label className="text-xs text-muted-foreground uppercase tracking-wider mb-1 block">Open Spread %</label>
-          <Input
-            value={openSpread}
-            onChange={(e) => setOpenSpread(e.target.value)}
-            className="font-mono text-sm bg-background"
-            data-testid="input-open-spread"
-          />
-        </div>
-        <div>
-          <label className="text-xs text-muted-foreground uppercase tracking-wider mb-1 block">Close Spread %</label>
-          <Input
-            value={closeSpread}
-            onChange={(e) => setCloseSpread(e.target.value)}
-            className="font-mono text-sm bg-background"
-            data-testid="input-close-spread"
-          />
-        </div>
-      </div>
-
-      {/* Order size */}
-      <div>
-        <label className="text-xs text-muted-foreground uppercase tracking-wider mb-1 block">Order Size (USD)</label>
-        <Input
-          value={orderSize}
-          onChange={(e) => setOrderSize(e.target.value)}
-          className="font-mono text-sm bg-background"
-          data-testid="input-order-size"
-        />
-        <p className="text-xs mt-1">
-          {Number(orderSize) > 0 && Number(orderSize) < MIN_ORDER_USD ? (
-            <span className="text-destructive">Min $10 total ($5 per exchange)</span>
-          ) : Number(orderSize) >= MIN_ORDER_USD ? (
-            <span className="text-muted-foreground">~${(Number(orderSize) / 2).toFixed(2)} per exchange</span>
-          ) : (
-            <span className="text-muted-foreground">Min $10 total ($5 per exchange)</span>
-          )}
-        </p>
-      </div>
-
-      {/* Leverage */}
-      <div className="space-y-2">
-        <label className="flex items-center gap-2 cursor-pointer w-fit">
-          <input
-            type="checkbox"
-            checked={useLeverage}
-            onChange={(e) => {
-              setUseLeverage(e.target.checked);
-              if (!e.target.checked) {
-                setBybitLeverage("1");
-                setBinanceLeverage("1");
-              }
-            }}
-            className="w-3.5 h-3.5 accent-primary cursor-pointer"
-            data-testid="checkbox-use-leverage"
-          />
-          <span className="text-xs text-muted-foreground uppercase tracking-wider">Use leverage</span>
-        </label>
-        {useLeverage && (
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="text-xs text-muted-foreground uppercase tracking-wider mb-1 block">Bybit Leverage</label>
-              <div className="flex gap-1">
-                <Input
-                  value={bybitLeverage}
-                  onChange={(e) => setBybitLeverage(e.target.value)}
-                  className="font-mono text-sm bg-background"
-                  data-testid="input-bybit-leverage"
-                />
-                <span className="flex items-center text-xs text-muted-foreground px-1">x</span>
-              </div>
-            </div>
-            <div>
-              <label className="text-xs text-muted-foreground uppercase tracking-wider mb-1 block">Binance Leverage</label>
-              <div className="flex gap-1">
-                <Input
-                  value={binanceLeverage}
-                  onChange={(e) => setBinanceLeverage(e.target.value)}
-                  className="font-mono text-sm bg-background"
-                  data-testid="input-binance-leverage"
-                />
-                <span className="flex items-center text-xs text-muted-foreground px-1">x</span>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Active position P&L */}
-      {activePosition && (
-        <div className="rounded border border-primary/20 bg-primary/5 px-3 py-2 space-y-1">
-          <div className="flex items-center justify-between text-xs">
-            <span className="text-muted-foreground uppercase tracking-wider font-semibold">Active Position</span>
-            <span className={`font-mono font-bold text-base ${(activePosition.totalPnl ?? 0) >= 0 ? "text-primary" : "text-destructive"}`}>
-              {formatPnlWithPct(activePosition.totalPnl, activePosition.usdSize)}
-            </span>
-          </div>
-          <div className="flex items-center justify-between text-xs text-muted-foreground">
-            <span>Entry spread: <span className="font-mono text-foreground">{formatPct(activePosition.spreadAtEntry)}</span></span>
-            <span>Now: <span className="font-mono text-foreground">{formatPct(activePosition.currentSpread)}</span></span>
-          </div>
-        </div>
-      )}
-
-      {/* Leverage summary */}
-      {(() => {
-        const effBybit = useLeverage ? (Number(bybitLeverage) || 1) : 1;
-        const effBinance = useLeverage ? (Number(binanceLeverage) || 1) : 1;
-        return useLeverage ? (
-          <p className="text-xs text-center text-amber-400 font-mono" data-testid="leverage-summary">
-            Leverage: Bybit {effBybit}x / Binance {effBinance}x
-          </p>
-        ) : (
-          <p className="text-xs text-center text-muted-foreground" data-testid="leverage-summary">
-            No leverage (1x)
-          </p>
-        );
-      })()}
-
-      {/* JUMP IN */}
-      {(!token.bybitPrice || !token.binancePrice) && (
-        <p className="text-xs text-muted-foreground text-center py-1">
-          <span className="text-amber-400">Trading unavailable</span> — not listed on both Bybit &amp; Binance
-        </p>
-      )}
-      <Button
-        onClick={handleJumpIn}
-        disabled={isJumping || !requestHeaders || !token.bybitPrice || !token.binancePrice}
-        className="w-full bg-primary text-primary-foreground hover:bg-primary/90 font-bold text-sm py-5 tracking-wider"
-        data-testid="button-jump-in"
-      >
-        {isJumping ? (
-          <span className="flex items-center gap-2">
-            <span className="w-3 h-3 border border-primary-foreground border-t-transparent rounded-full animate-spin" />
-            OPENING...
-          </span>
-        ) : (
-          <span className="flex items-center gap-2">
-            <Zap className="w-4 h-4" />
-            JUMP IN
-          </span>
-        )}
-      </Button>
-
-      {!requestHeaders && (
-        <p className="text-xs text-destructive text-center">
-          Configure API keys in{" "}
-          <Link href="/settings" className="underline hover:text-destructive/80">Settings</Link>
-        </p>
-      )}
-
-      {/* Bot Section */}
-      <div className="border-t border-border pt-3 space-y-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-1.5">
-            <Bot className="w-3.5 h-3.5 text-muted-foreground" />
-            <label className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Auto Bot</label>
-          </div>
           {bot ? (
             bot.enabled ? (
               botOpenLegsCount > 0 ? (
@@ -820,11 +500,14 @@ function TokenDetailPanel({
                 STOPPED
               </span>
             )
-          ) : (
-            <span className="text-xs text-muted-foreground/60 italic">no bot configured</span>
-          )}
+          ) : null}
         </div>
+        <button onClick={onClose} className="text-muted-foreground hover:text-foreground ml-2 shrink-0" data-testid="btn-close-detail">
+          <X className="w-4 h-4" />
+        </button>
+      </div>
 
+      <div className="space-y-3">
         {/* Exchange pair selectors */}
         <div className="grid grid-cols-2 gap-2">
           <div>
@@ -974,25 +657,32 @@ function TokenDetailPanel({
             </Button>
           </div>
         ) : (
-          <Button
-            onClick={handleBotStart}
-            disabled={botBusy}
-            className="w-full bg-emerald-600 hover:bg-emerald-500 text-white"
-            size="sm"
-            data-testid="btn-bot-start"
-          >
-            {botBusy ? (
-              <span className="flex items-center gap-2">
-                <span className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
-                Starting…
-              </span>
-            ) : (
-              <span className="flex items-center gap-2">
-                <Power className="w-3.5 h-3.5" />
-                START BOT
-              </span>
+          <>
+            <Button
+              onClick={handleBotStart}
+              disabled={botBusy || !botRequestOptions}
+              className="w-full bg-primary text-primary-foreground hover:bg-primary/90 font-bold text-sm py-5 tracking-wider"
+              data-testid="btn-bot-start"
+            >
+              {botBusy ? (
+                <span className="flex items-center gap-2">
+                  <span className="w-3 h-3 border border-primary-foreground border-t-transparent rounded-full animate-spin" />
+                  STARTING…
+                </span>
+              ) : (
+                <span className="flex items-center gap-2">
+                  <Zap className="w-4 h-4" />
+                  JUMP IN
+                </span>
+              )}
+            </Button>
+            {!botRequestOptions && (
+              <p className="text-xs text-destructive text-center">
+                Configure API keys in{" "}
+                <Link href="/settings" className="underline hover:text-destructive/80">Settings</Link>
+              </p>
             )}
-          </Button>
+          </>
         )}
       </div>
 
@@ -1977,8 +1667,6 @@ export default function Dashboard() {
                   token={selectedToken}
                   onClose={() => setSelectedSymbol(null)}
                   requestHeaders={requestHeaders}
-                  activePosition={positions.find((p) => p.symbol === selectedToken.symbol)}
-                  onJumpInSuccess={savePosition}
                   bot={botStatus?.bot}
                   botOpenLegsCount={botStatus?.openLegsCount ?? 0}
                   botRequestOptions={getBotRequestOptions()}
