@@ -26,6 +26,13 @@ const EXCHANGE_COLORS_TW: Record<string, string> = {
   okx: "text-emerald-400 bg-emerald-400/10",
   mexc: "text-rose-400 bg-rose-400/10",
 };
+const EXCHANGE_TEXT_COLOR: Record<string, string> = {
+  bybit: "text-amber-400",
+  binance: "text-violet-400",
+  gate: "text-sky-400",
+  okx: "text-emerald-400",
+  mexc: "text-rose-400",
+};
 
 function formatPrice(price: number | null | undefined): string {
   if (price == null) return "-";
@@ -447,8 +454,8 @@ export function TokenDetailPanel({
             {pairs.map(({ exA, exB, spread }, i) => {
               const labelA = EXCHANGE_LABELS[exA] ?? exA.toUpperCase();
               const labelB = EXCHANGE_LABELS[exB] ?? exB.toUpperCase();
-              const colorA = `text-${exA === "bybit" ? "amber" : exA === "binance" ? "violet" : exA === "gate" ? "sky" : exA === "okx" ? "emerald" : "rose"}-400`;
-              const colorB = `text-${exB === "bybit" ? "amber" : exB === "binance" ? "violet" : exB === "gate" ? "sky" : exB === "okx" ? "emerald" : "rose"}-400`;
+              const colorA = EXCHANGE_TEXT_COLOR[exA] ?? "text-muted-foreground";
+              const colorB = EXCHANGE_TEXT_COLOR[exB] ?? "text-muted-foreground";
               const isBest = Math.abs(spread) === bestAbs;
               const color = Math.abs(spread) >= 1 ? "text-primary" : Math.abs(spread) >= 0.3 ? "text-amber-400" : "text-muted-foreground";
               return (
