@@ -1,4 +1,4 @@
-import { Switch, Route, Router as WouterRouter } from "wouter";
+import { Switch, Route, Router as WouterRouter, Link } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -9,6 +9,16 @@ import History from "@/pages/history";
 import Settings from "@/pages/settings";
 import NotFound from "@/pages/not-found";
 import { ConnectionStatusProvider } from "@/contexts/connection-status";
+
+function TokenDetailStub({ params }: { params: { symbol: string } }) {
+  return (
+    <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4 text-center">
+      <p className="text-2xl font-bold">{params.symbol}</p>
+      <p className="text-muted-foreground text-sm">Token detail page coming soon.</p>
+      <Link href="/" className="text-sm text-primary underline underline-offset-2">← Back to Dashboard</Link>
+    </div>
+  );
+}
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -24,6 +34,7 @@ function Router() {
     <Layout>
       <Switch>
         <Route path="/" component={Dashboard} />
+        <Route path="/token/:symbol" component={TokenDetailStub} />
         <Route path="/bots" component={Bots} />
         <Route path="/history" component={History} />
         <Route path="/settings" component={Settings} />

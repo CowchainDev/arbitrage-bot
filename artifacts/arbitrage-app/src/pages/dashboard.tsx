@@ -1704,8 +1704,8 @@ export default function Dashboard() {
             <div className="bg-card border border-border rounded-md p-6 flex flex-col items-center justify-center text-center gap-3 sticky top-4 min-h-[200px]">
               <Zap className="w-8 h-8 text-muted-foreground/20" />
               <div>
-                <p className="text-sm font-medium text-muted-foreground">No token selected</p>
-                <p className="text-xs text-muted-foreground/50 mt-1">Click any card to configure and JUMP IN</p>
+                <p className="text-sm font-medium text-muted-foreground">Select a token to configure</p>
+                <p className="text-xs text-muted-foreground/50 mt-1">Click any card to trade and JUMP IN</p>
               </div>
             </div>
           )}
