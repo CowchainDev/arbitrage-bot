@@ -542,38 +542,9 @@ router.get("/exchanges/klines", async (req: Request, res: Response) => {
   );
 
   const out: Record<string, { t: number; c: number }[]> = {};
-  let anySuccess = false;
   for (const result of results) {
     if (result.status === "fulfilled" && result.value.data.length > 0) {
       out[result.value.name] = result.value.data;
-      anySuccess = true;
-    }
-  }
-
-  if (!anySuccess) {
-    // Demo mode: generate synthetic candlestick data seeded from DEMO_BASE_PRICES
-    const basePrice = DEMO_BASE_PRICES[symbol] ?? 100;
-    const intervalMs: Record<string, number> = {
-      "15m": 15 * 60 * 1000,
-      "1h":  60 * 60 * 1000,
-      "4h":  4  * 60 * 60 * 1000,
-      "1d":  24 * 60 * 60 * 1000,
-    };
-    const ms = intervalMs[interval] ?? intervalMs["1h"];
-    const now = Math.floor(Date.now() / ms) * ms;
-
-    function generateKlines(startBase: number, vol: number): { t: number; c: number }[] {
-      const pts: { t: number; c: number }[] = [];
-      let price = startBase;
-      for (let i = limit - 1; i >= 0; i--) {
-        price = price * (1 + (Math.random() - 0.5) * vol);
-        pts.push({ t: now - i * ms, c: price });
-      }
-      return pts;
-    }
-    const volatility = 0.004;
-    for (const name of ["bybit", "binance", "gate", "okx", "mexc"]) {
-      out[name] = generateKlines(basePrice * (1 + (Math.random() - 0.5) * 0.005), volatility);
     }
   }
 
