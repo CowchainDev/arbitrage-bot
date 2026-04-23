@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Bot, Power, TrendingUp, TrendingDown, Layers, XCircle } from "lucide-react";
+import { Bot, Power, TrendingUp, TrendingDown, Layers, XCircle, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { useBots } from "@/hooks/use-bots";
@@ -9,10 +9,20 @@ import {
   useStartBot,
   useStopBot,
   useStopAndCloseBot,
+  useDeleteBot,
+  useGetExchangePrices,
+  getGetExchangePricesQueryKey,
   getListBotsQueryKey,
   getGetBotLegsQueryKey,
 } from "@workspace/api-client-react";
-import type { BotConfig } from "@workspace/api-client-react";
+import type { BotConfig, BotLeg } from "@workspace/api-client-react";
+import {
+  AreaChart,
+  Area,
+  ResponsiveContainer,
+  Tooltip,
+  ReferenceLine,
+} from "recharts";
 
 function StatusBadge({ bot, legsCount }: { bot: BotConfig; legsCount: number }) {
   if (!bot.enabled) {
@@ -36,8 +46,71 @@ function StatusBadge({ bot, legsCount }: { bot: BotConfig; legsCount: number }) 
   );
 }
 
-function BotCard({ bot, legsCount }: { bot: BotConfig; legsCount: number }) {
+interface PnlPoint {
+  t: number;
+  pnl: number;
+}
+
+function PnlChart({ points, latestPnl }: { points: PnlPoint[]; latestPnl: number }) {
+  const isPositive = latestPnl >= 0;
+  const color = isPositive ? "#10b981" : "#ef4444";
+
+  const formatted =
+    latestPnl === 0
+      ? "$0.00"
+      : `${latestPnl >= 0 ? "+" : ""}$${latestPnl.toFixed(4)}`;
+
+  return (
+    <div className="mt-1">
+      <div className="flex items-baseline justify-between mb-1">
+        <span className="text-xs text-muted-foreground">Unrealized P&L</span>
+        <span
+          className="text-sm font-mono font-bold"
+          style={{ color }}
+        >
+          {formatted}
+        </span>
+      </div>
+      <div className="h-20">
+        <ResponsiveContainer width="100%" height="100%">
+          <AreaChart data={points} margin={{ top: 4, right: 0, left: 0, bottom: 0 }}>
+            <defs>
+              <linearGradient id={`pnlGrad-${isPositive}`} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor={color} stopOpacity={0.3} />
+                <stop offset="95%" stopColor={color} stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <ReferenceLine y={0} stroke="#555" strokeDasharray="3 3" />
+            <Tooltip
+              content={({ active, payload }) => {
+                if (!active || !payload?.length) return null;
+                const val: number = payload[0].value as number;
+                return (
+                  <div className="bg-background border border-border rounded px-2 py-1 text-xs font-mono">
+                    {val >= 0 ? "+" : ""}${val.toFixed(4)}
+                  </div>
+                );
+              }}
+            />
+            <Area
+              type="monotone"
+              dataKey="pnl"
+              stroke={color}
+              strokeWidth={1.5}
+              fill={`url(#pnlGrad-${isPositive})`}
+              dot={false}
+              isAnimationActive={false}
+            />
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
+}
+
+function BotCard({ bot, openLegs }: { bot: BotConfig; openLegs: BotLeg[] }) {
   const [busy, setBusy] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { getRequestHeaders } = useApiCredentials();
@@ -46,6 +119,50 @@ function BotCard({ bot, legsCount }: { bot: BotConfig; legsCount: number }) {
   const startMutation = useStartBot({ request: requestOptions });
   const stopMutation = useStopBot({ request: requestOptions });
   const stopAndCloseMutation = useStopAndCloseBot({ request: requestOptions });
+  const deleteMutation = useDeleteBot({ request: requestOptions });
+
+  const pricesQuery = useGetExchangePrices({
+    query: { refetchInterval: 2000, queryKey: getGetExchangePricesQueryKey() },
+    request: requestOptions,
+  });
+  const priceData = pricesQuery.data?.find((p) => p.symbol === bot.symbol);
+
+  const pnlHistoryRef = useRef<PnlPoint[]>([]);
+  const [pnlPoints, setPnlPoints] = useState<PnlPoint[]>([]);
+
+  const computePnl = () => {
+    if (!priceData) return null;
+    const { bybitPrice, binancePrice } = priceData;
+    if (!bybitPrice || !binancePrice) return null;
+    let total = 0;
+    for (const leg of openLegs) {
+      const bybitPnl =
+        leg.bybitSide === "long"
+          ? (bybitPrice - (leg.bybitEntry ?? bybitPrice)) * (leg.bybitQty ?? 0)
+          : ((leg.bybitEntry ?? bybitPrice) - bybitPrice) * (leg.bybitQty ?? 0);
+      const binancePnl =
+        leg.binanceSide === "long"
+          ? (binancePrice - (leg.binanceEntry ?? binancePrice)) * (leg.binanceQty ?? 0)
+          : ((leg.binanceEntry ?? binancePrice) - binancePrice) * (leg.binanceQty ?? 0);
+      total += bybitPnl + binancePnl;
+    }
+    return total;
+  };
+
+  useEffect(() => {
+    if (!bot.enabled || openLegs.length === 0) {
+      pnlHistoryRef.current = [];
+      setPnlPoints([]);
+      return;
+    }
+    const pnl = computePnl();
+    if (pnl === null) return;
+    const now = Date.now();
+    const updated = [...pnlHistoryRef.current, { t: now, pnl }].slice(-120);
+    pnlHistoryRef.current = updated;
+    setPnlPoints(updated);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [priceData?.bybitPrice, priceData?.binancePrice, openLegs.length, bot.enabled]);
 
   const invalidate = async () => {
     await queryClient.invalidateQueries({ queryKey: getListBotsQueryKey() });
@@ -94,11 +211,61 @@ function BotCard({ bot, legsCount }: { bot: BotConfig; legsCount: number }) {
     }
   };
 
+  const handleDelete = async () => {
+    setBusy(true);
+    try {
+      await deleteMutation.mutateAsync({ id: bot.id });
+      await queryClient.invalidateQueries({ queryKey: getListBotsQueryKey() });
+      toast({ title: "Automation deleted", description: `${bot.symbol} bot removed` });
+    } catch (err) {
+      toast({ title: "Failed to delete bot", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
+      setBusy(false);
+    }
+  };
+
+  const latestPnl = pnlPoints.length > 0 ? pnlPoints[pnlPoints.length - 1].pnl : 0;
+  const showChart = bot.enabled && openLegs.length > 0 && pnlPoints.length > 1;
+
   return (
     <div className="bg-card border border-border rounded-lg p-4 flex flex-col gap-3">
       <div className="flex items-center justify-between">
         <span className="font-bold text-base tracking-wider">{bot.symbol}</span>
-        <StatusBadge bot={bot} legsCount={legsCount} />
+        <div className="flex items-center gap-2">
+          <StatusBadge bot={bot} legsCount={openLegs.length} />
+          {!bot.enabled && (
+            confirmDelete ? (
+              <div className="flex items-center gap-1">
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  className="h-6 px-2 text-xs"
+                  disabled={busy}
+                  onClick={handleDelete}
+                >
+                  Confirm
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-6 px-2 text-xs"
+                  onClick={() => setConfirmDelete(false)}
+                >
+                  Cancel
+                </Button>
+              </div>
+            ) : (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                onClick={() => setConfirmDelete(true)}
+                title="Delete automation"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </Button>
+            )
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
@@ -124,9 +291,20 @@ function BotCard({ bot, legsCount }: { bot: BotConfig; legsCount: number }) {
         </div>
         <div className="flex items-center justify-between">
           <span className="text-muted-foreground">Open legs</span>
-          <span className="font-mono">{legsCount}</span>
+          <span className="font-mono">{openLegs.length}</span>
         </div>
       </div>
+
+      {showChart && (
+        <PnlChart points={pnlPoints} latestPnl={latestPnl} />
+      )}
+
+      {bot.enabled && openLegs.length > 0 && !showChart && (
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+          Tracking P&L…
+        </div>
+      )}
 
       {bot.enabled ? (
         <div className="flex flex-col gap-1.5">
@@ -203,7 +381,6 @@ export default function Bots() {
         <h1 className="text-lg font-bold tracking-wider">Automations</h1>
       </div>
 
-      {/* Summary strip */}
       {bots.length > 0 && (
         <div className="grid grid-cols-3 gap-3">
           <div className="bg-card border border-border rounded-lg px-4 py-3 flex items-center gap-3">
@@ -249,7 +426,7 @@ export default function Bots() {
               <BotCard
                 key={bot.id}
                 bot={bot}
-                legsCount={status?.openLegsCount ?? 0}
+                openLegs={status?.openLegs ?? []}
               />
             );
           })}
