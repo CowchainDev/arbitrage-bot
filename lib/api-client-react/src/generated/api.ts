@@ -33,6 +33,7 @@ import type {
   OrderRequest,
   OrderResult,
   Position,
+  StopAndCloseBot200,
   StoreCredentialRequest,
   StoreCredentialResult,
   TokenSpread,
@@ -1100,6 +1101,90 @@ export const useStopBot = <
   TContext
 > => {
   return useMutation(getStopBotMutationOptions(options));
+};
+
+/**
+ * @summary Stop a bot and immediately close all its open legs at market price
+ */
+export const getStopAndCloseBotUrl = (id: number) => {
+  return `/api/bots/${id}/stop-and-close`;
+};
+
+export const stopAndCloseBot = async (
+  id: number,
+  options?: RequestInit,
+): Promise<StopAndCloseBot200> => {
+  return customFetch<StopAndCloseBot200>(getStopAndCloseBotUrl(id), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getStopAndCloseBotMutationOptions = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof stopAndCloseBot>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof stopAndCloseBot>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["stopAndCloseBot"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof stopAndCloseBot>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return stopAndCloseBot(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type StopAndCloseBotMutationResult = NonNullable<
+  Awaited<ReturnType<typeof stopAndCloseBot>>
+>;
+
+export type StopAndCloseBotMutationError = ErrorType<ApiError>;
+
+/**
+ * @summary Stop a bot and immediately close all its open legs at market price
+ */
+export const useStopAndCloseBot = <
+  TError = ErrorType<ApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof stopAndCloseBot>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof stopAndCloseBot>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getStopAndCloseBotMutationOptions(options));
 };
 
 /**

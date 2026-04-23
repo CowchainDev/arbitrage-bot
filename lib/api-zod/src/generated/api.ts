@@ -548,6 +548,49 @@ export const StopBotResponse = zod.object({
 });
 
 /**
+ * @summary Stop a bot and immediately close all its open legs at market price
+ */
+export const StopAndCloseBotParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const StopAndCloseBotHeader = zod.object({
+  "x-bot-secret": zod
+    .string()
+    .optional()
+    .describe("Required in production when BOT_SECRET env var is set"),
+});
+
+export const StopAndCloseBotResponse = zod.object({
+  bot: zod.object({
+    id: zod.number(),
+    symbol: zod.string(),
+    enabled: zod.boolean(),
+    enterSpreadPct: zod.number().describe("Minimum spread % to open a new leg"),
+    closeSpreadPct: zod
+      .number()
+      .describe("Spread % at which open legs are closed"),
+    orderSizeUsd: zod
+      .number()
+      .describe("Total USD size per leg (split 50\/50 between exchanges)"),
+    maxOrders: zod
+      .number()
+      .describe("Maximum concurrent open legs (DCA limit)"),
+    forceStopUsd: zod
+      .number()
+      .describe(
+        "Close all legs if total PnL drops below this negative value (USD)",
+      ),
+    bybitLeverage: zod.number(),
+    binanceLeverage: zod.number(),
+    createdAt: zod.string(),
+    updatedAt: zod.string(),
+  }),
+  closed: zod.number().describe("Number of legs successfully closed"),
+  failed: zod.number().describe("Number of legs that failed to close"),
+});
+
+/**
  * @summary Get all open legs for a bot
  */
 export const GetBotLegsParams = zod.object({

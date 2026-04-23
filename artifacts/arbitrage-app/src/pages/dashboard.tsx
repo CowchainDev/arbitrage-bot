@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import { Link } from "wouter";
-import { Star, Search, TrendingUp, TrendingDown, Zap, AlertCircle, ChevronDown, ChevronUp, X, Bell, BellOff, Bot, Power } from "lucide-react";
-import { useGetExchangePrices, getGetExchangePricesQueryKey, useGetPositions, getGetPositionsQueryKey, useJumpIn, useClosePosition, useCreateBot, useStartBot, useStopBot, useUpdateBot, getListBotsQueryKey } from "@workspace/api-client-react";
+import { Star, Search, TrendingUp, TrendingDown, Zap, AlertCircle, ChevronDown, ChevronUp, X, Bell, BellOff, Bot, Power, XCircle } from "lucide-react";
+import { useGetExchangePrices, getGetExchangePricesQueryKey, useGetPositions, getGetPositionsQueryKey, useJumpIn, useClosePosition, useCreateBot, useStartBot, useStopBot, useStopAndCloseBot, useUpdateBot, getListBotsQueryKey, getGetBotLegsQueryKey } from "@workspace/api-client-react";
 import type { TokenSpread, Position, ClosePositionResult, JumpInResult, BotConfig, BotLeg } from "@workspace/api-client-react";
 import { useBots } from "@/hooks/use-bots";
 import { useBotSecret } from "@/hooks/use-bot-secret";
@@ -365,6 +365,7 @@ function TokenDetailPanel({
   const updateBotMutation = useUpdateBot({ request: botRequestOptions });
   const startBotMutation = useStartBot({ request: botRequestOptions });
   const stopBotMutation = useStopBot({ request: botRequestOptions });
+  const stopAndCloseBotMutation = useStopAndCloseBot({ request: botRequestOptions });
 
   useEffect(() => {
     try { localStorage.setItem("arbitrage-useLeverage", String(useLeverage)); } catch {}
@@ -439,6 +440,24 @@ function TokenDetailPanel({
       toast({ title: "Bot stopped", description: `${token.symbol} bot will no longer open new legs` });
     } catch (err) {
       toast({ title: "Failed to stop bot", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
+    } finally {
+      setBotBusy(false);
+    }
+  };
+
+  const handleBotStopAndClose = async () => {
+    if (!bot) return;
+    setBotBusy(true);
+    try {
+      const result = await stopAndCloseBotMutation.mutateAsync({ id: bot.id });
+      await queryClient.invalidateQueries({ queryKey: getListBotsQueryKey() });
+      await queryClient.invalidateQueries({ queryKey: getGetBotLegsQueryKey(bot.id) });
+      const desc = result.failed > 0
+        ? `${result.closed} leg(s) closed, ${result.failed} failed — check exchange manually`
+        : `${result.closed} leg(s) closed on both exchanges`;
+      toast({ title: `${token.symbol} stopped & closed`, description: desc, variant: result.failed > 0 ? "destructive" : "default" });
+    } catch (err) {
+      toast({ title: "Failed to stop & close", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
     } finally {
       setBotBusy(false);
     }
@@ -810,26 +829,39 @@ function TokenDetailPanel({
         </div>
 
         {bot?.enabled ? (
-          <Button
-            onClick={handleBotStop}
-            disabled={botBusy}
-            variant="destructive"
-            className="w-full"
-            size="sm"
-            data-testid="btn-bot-stop"
-          >
-            {botBusy ? (
-              <span className="flex items-center gap-2">
-                <span className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
-                Stopping…
-              </span>
-            ) : (
-              <span className="flex items-center gap-2">
-                <Power className="w-3.5 h-3.5" />
-                STOP BOT
-              </span>
-            )}
-          </Button>
+          <div className="flex flex-col gap-1.5">
+            <Button
+              onClick={handleBotStopAndClose}
+              disabled={botBusy}
+              variant="destructive"
+              className="w-full"
+              size="sm"
+              data-testid="btn-bot-stop-and-close"
+            >
+              {botBusy ? (
+                <span className="flex items-center gap-2">
+                  <span className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
+                  Processing…
+                </span>
+              ) : (
+                <span className="flex items-center gap-2">
+                  <XCircle className="w-3.5 h-3.5" />
+                  STOP & CLOSE ALL
+                </span>
+              )}
+            </Button>
+            <Button
+              onClick={handleBotStop}
+              disabled={botBusy}
+              variant="outline"
+              className="w-full text-xs"
+              size="sm"
+              data-testid="btn-bot-stop"
+            >
+              <Power className="w-3 h-3 mr-1.5" />
+              Stop only (keep positions open)
+            </Button>
+          </div>
         ) : (
           <Button
             onClick={handleBotStart}

@@ -486,6 +486,47 @@ paths:
               schema:
                 $ref: "#/components/schemas/ApiError"
 
+  /bots/{id}/stop-and-close:
+    post:
+      operationId: stopAndCloseBot
+      tags: [bots]
+      summary: Stop a bot and immediately close all its open legs at market price
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+        - in: header
+          name: x-bot-secret
+          required: false
+          description: Required in production when BOT_SECRET env var is set
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Bot stopped and positions closed
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [bot, closed, failed]
+                properties:
+                  bot:
+                    $ref: "#/components/schemas/BotConfig"
+                  closed:
+                    type: integer
+                    description: Number of legs successfully closed
+                  failed:
+                    type: integer
+                    description: Number of legs that failed to close
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
   /bots/{id}/legs:
     get:
       operationId: getBotLegs

@@ -401,3 +401,11 @@ export interface BotLegsResponse {
 export interface DeleteBotResult {
   deleted: boolean;
 }
+
+export type StopAndCloseBot200 = {
+  bot: BotConfig;
+  /** Number of legs successfully closed */
+  closed: number;
+  /** Number of legs that failed to close */
+  failed: number;
+};

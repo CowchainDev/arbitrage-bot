@@ -37,6 +37,7 @@ export * from "./orderResult";
 export * from "./position";
 export * from "./positionBinanceSide";
 export * from "./positionBybitSide";
+export * from "./stopAndCloseBot200";
 export * from "./storeCredentialRequest";
 export * from "./storeCredentialRequestExchange";
 export * from "./storeCredentialResult";

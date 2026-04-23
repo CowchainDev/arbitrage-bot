@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { botConfigsTable, botLegsTable, type BotConfig, type BotLeg } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { CreateBotBody, UpdateBotBody } from "@workspace/api-zod";
+import { closeAllLegsForBot } from "../services/bot-watcher";
 
 const router: IRouter = Router();
 
@@ -206,6 +207,32 @@ router.post("/bots/:id/stop", requireBotSecret, async (req: Request, res: Respon
     res.json({ bot: normalizeBotConfig(bot) });
   } catch (err) {
     res.status(500).json({ error: "internal_error", message: "Failed to stop bot" });
+  }
+});
+
+router.post("/bots/:id/stop-and-close", requireBotSecret, async (req: Request, res: Response) => {
+  const id = Number(req.params.id);
+  if (!id) {
+    res.status(400).json({ error: "bad_request", message: "Invalid bot id" });
+    return;
+  }
+
+  try {
+    const [bot] = await db
+      .update(botConfigsTable)
+      .set({ enabled: false, updatedAt: new Date() })
+      .where(eq(botConfigsTable.id, id))
+      .returning();
+
+    if (!bot) {
+      res.status(404).json({ error: "not_found", message: "Bot not found" });
+      return;
+    }
+
+    const { closed, failed } = await closeAllLegsForBot(id);
+    res.json({ bot: normalizeBotConfig(bot), closed, failed });
+  } catch (err) {
+    res.status(500).json({ error: "internal_error", message: "Failed to stop bot and close positions" });
   }
 });
 
