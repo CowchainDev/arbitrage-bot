@@ -1,0 +1,203 @@
+import { Router, type IRouter } from "express";
+import { sql } from "drizzle-orm";
+import { db } from "@workspace/db";
+import { botLegsTable, botConfigsTable, closedTradesTable } from "@workspace/db";
+import { eq, and } from "drizzle-orm";
+import { requireBotSecret } from "../middleware/auth";
+import {
+  getStoredCredentials,
+  type SupportedExchange,
+} from "./credentials";
+import {
+  createExchangeForName,
+  sumFeesFromOrder,
+} from "./exchanges";
+
+const router: IRouter = Router();
+
+async function fetchFeeForOrder(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ex: any,
+  orderId: string,
+  marketSymbol: string,
+): Promise<number> {
+  try {
+    const order = await ex.fetchOrder(orderId, marketSymbol);
+    const fee = sumFeesFromOrder(order);
+    if (fee > 0) return fee;
+  } catch (_) {}
+  return 0;
+}
+
+async function fetchCloseFeesViaTrades(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ex: any,
+  marketSymbol: string,
+  closedAtMs: number,
+  closeSide: "buy" | "sell",
+): Promise<number> {
+  try {
+    const since = closedAtMs - 3 * 60 * 1000;
+    const until = closedAtMs + 3 * 60 * 1000;
+    const trades = await ex.fetchMyTrades(marketSymbol, since, 50);
+    const matched = (trades as Array<{ timestamp?: number; side?: string; fee?: { cost?: unknown } }>)
+      .filter((t) => {
+        if (!t.timestamp) return false;
+        if (t.timestamp < since || t.timestamp > until) return false;
+        return t.side === closeSide;
+      });
+    const total = matched.reduce((s, t) => s + sumFeesFromOrder(t), 0);
+    return total;
+  } catch (_) {}
+  return 0;
+}
+
+router.post("/admin/backfill-fees", requireBotSecret, async (req, res) => {
+  try {
+    // Step 1: Add missing columns to production if they don't exist yet
+    await db.execute(sql`
+      ALTER TABLE bot_legs
+        ADD COLUMN IF NOT EXISTS open_fee_a NUMERIC(20, 8) NOT NULL DEFAULT 0,
+        ADD COLUMN IF NOT EXISTS open_fee_b NUMERIC(20, 8) NOT NULL DEFAULT 0
+    `);
+    await db.execute(sql`
+      ALTER TABLE closed_trades
+        ADD COLUMN IF NOT EXISTS total_fees NUMERIC(20, 8) NOT NULL DEFAULT 0
+    `);
+
+    // Step 2: Get all closed legs that have no fees recorded yet
+    const closedLegs = await db
+      .select()
+      .from(botLegsTable)
+      .where(and(eq(botLegsTable.status, "closed")));
+
+    const legsToProcess = closedLegs.filter(
+      (l) => Number(l.openFeeA ?? 0) === 0 && Number(l.openFeeB ?? 0) === 0,
+    );
+
+    const results: Array<{
+      legId: number;
+      symbol: string;
+      openFeeA: number;
+      openFeeB: number;
+      closeFeeA: number;
+      closeFeeB: number;
+      totalFees: number;
+      oldPnl: number;
+      newPnl: number;
+    }> = [];
+
+    for (const leg of legsToProcess) {
+      try {
+        const [config] = await db
+          .select()
+          .from(botConfigsTable)
+          .where(eq(botConfigsTable.id, leg.botConfigId))
+          .limit(1);
+        if (!config) continue;
+
+        const exchangeA = config.exchangeA ?? "bybit";
+        const exchangeB = config.exchangeB ?? "binance";
+
+        const [credsA, credsB] = await Promise.all([
+          getStoredCredentials(exchangeA as SupportedExchange),
+          getStoredCredentials(exchangeB as SupportedExchange),
+        ]);
+        if (!credsA || !credsB) continue;
+
+        const exA = createExchangeForName(exchangeA, credsA.apiKey, credsA.apiSecret, credsA.passphrase ?? undefined);
+        const exB = createExchangeForName(exchangeB, credsB.apiKey, credsB.apiSecret, credsB.passphrase ?? undefined);
+
+        const marketSymbol = `${leg.symbol}/USDT:USDT`;
+
+        // Fetch open order fees using stored order IDs
+        const [openFeeA, openFeeB] = await Promise.all([
+          leg.bybitOrderId
+            ? fetchFeeForOrder(exA, leg.bybitOrderId, marketSymbol)
+            : Promise.resolve(0),
+          leg.binanceOrderId
+            ? fetchFeeForOrder(exB, leg.binanceOrderId, marketSymbol)
+            : Promise.resolve(0),
+        ]);
+
+        // Fetch close fees from trade history around the close timestamp
+        const closedAtMs = leg.closedAt ? new Date(leg.closedAt).getTime() : 0;
+        const closeASide: "buy" | "sell" = leg.bybitSide === "long" ? "sell" : "buy";
+        const closeBSide: "buy" | "sell" = leg.binanceSide === "long" ? "sell" : "buy";
+
+        let closeFeeA = 0;
+        let closeFeeB = 0;
+        if (closedAtMs > 0) {
+          [closeFeeA, closeFeeB] = await Promise.all([
+            fetchCloseFeesViaTrades(exA, marketSymbol, closedAtMs, closeASide),
+            fetchCloseFeesViaTrades(exB, marketSymbol, closedAtMs, closeBSide),
+          ]);
+        }
+
+        const totalFees = openFeeA + openFeeB + closeFeeA + closeFeeB;
+
+        // Update bot_legs with open fees
+        await db
+          .update(botLegsTable)
+          .set({
+            openFeeA: String(openFeeA),
+            openFeeB: String(openFeeB),
+          })
+          .where(eq(botLegsTable.id, leg.id));
+
+        // Find the matching closed_trade by symbol + entry_time ≈ opened_at
+        const matchingTrades = await db
+          .select()
+          .from(closedTradesTable)
+          .where(eq(closedTradesTable.symbol, leg.symbol));
+
+        const openedAtMs = new Date(leg.openedAt).getTime();
+        const match = matchingTrades.find(
+          (t) => Math.abs(new Date(t.entryTime).getTime() - openedAtMs) < 5000,
+        );
+
+        if (match && totalFees > 0) {
+          const oldPnl = Number(match.realizedPnl);
+          const newPnl = oldPnl - totalFees;
+          await db
+            .update(closedTradesTable)
+            .set({
+              totalFees: String(totalFees),
+              realizedPnl: String(newPnl),
+            })
+            .where(eq(closedTradesTable.id, match.id));
+
+          results.push({
+            legId: leg.id,
+            symbol: leg.symbol,
+            openFeeA,
+            openFeeB,
+            closeFeeA,
+            closeFeeB,
+            totalFees,
+            oldPnl,
+            newPnl,
+          });
+        } else if (match) {
+          await db
+            .update(closedTradesTable)
+            .set({ totalFees: "0" })
+            .where(eq(closedTradesTable.id, match.id));
+        }
+      } catch (legErr) {
+        req.log.warn({ legErr, legId: leg.id }, "backfill-fees: error processing leg");
+      }
+    }
+
+    res.json({
+      processed: legsToProcess.length,
+      updated: results.length,
+      results,
+    });
+  } catch (err) {
+    req.log.error({ err }, "backfill-fees: fatal error");
+    res.status(500).json({ error: "backfill_failed", message: String(err) });
+  }
+});
+
+export default router;

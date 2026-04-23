@@ -826,7 +826,7 @@ const MIN_NOTIONAL_BY_EXCHANGE: Record<string, number> = {
 const FEE_RETRY_DELAY_MS = 2000;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function sumFeesFromOrder(order: any): number {
+export function sumFeesFromOrder(order: any): number {
   if (order == null) return 0;
   if (order.fee?.cost != null) {
     const cost = Number(order.fee.cost);

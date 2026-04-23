@@ -4,6 +4,7 @@ import exchangesRouter from "./exchanges";
 import { tradesRouter } from "./trades";
 import { credentialsRouter } from "./credentials";
 import { botsRouter } from "./bots";
+import adminRouter from "./admin";
 
 const router: IRouter = Router();
 
@@ -12,5 +13,6 @@ router.use(exchangesRouter);
 router.use(tradesRouter);
 router.use(credentialsRouter);
 router.use(botsRouter);
+router.use(adminRouter);
 
 export default router;
