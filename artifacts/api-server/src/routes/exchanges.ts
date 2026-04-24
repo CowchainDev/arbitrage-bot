@@ -27,7 +27,53 @@ export const PREWARM_SYMBOLS = ["BTC", "ETH", "SOL"];
 export const PREWARM_INTERVALS = ["15m", "1h", "4h", "1d"];
 const PREWARM_LIMIT = 168;
 const KLINES_TIMEOUT_MS = 4000;
+const MEXC_KLINES_TIMEOUT_MS = 8000;
 const PREWARM_TOP_N = 10;
+
+const MEXC_INTERVAL_MAP: Record<string, string> = {
+  "15m": "Min15",
+  "1h":  "Min60",
+  "4h":  "Hour4",
+  "1d":  "Day1",
+};
+
+async function fetchMexcKlinesDirect(
+  symbol: string,
+  interval: string,
+  limit: number
+): Promise<{ t: number; c: number }[]> {
+  const mexcInterval = MEXC_INTERVAL_MAP[interval];
+  if (!mexcInterval) throw new Error(`Unsupported MEXC interval: ${interval}`);
+
+  const mexcSymbol = `${symbol}_USDT`;
+  const url = `https://contract.mexc.com/api/v1/contract/kline/${mexcSymbol}?interval=${mexcInterval}&limit=${limit}`;
+
+  const res = await fetch(url, { signal: AbortSignal.timeout(MEXC_KLINES_TIMEOUT_MS) });
+  if (!res.ok) throw new Error(`MEXC klines HTTP ${res.status}`);
+
+  type MexcKlineResponse = {
+    success: boolean;
+    code: number;
+    data: {
+      time: number[];
+      open: number[];
+      close: number[];
+      high: number[];
+      low: number[];
+    };
+  };
+  const json = await res.json() as MexcKlineResponse;
+  if (!json.success || !json.data?.time) throw new Error("MEXC klines bad response");
+
+  const { time, close } = json.data;
+  const points: { t: number; c: number }[] = [];
+  for (let i = 0; i < time.length; i++) {
+    const t = time[i] * 1000; // MEXC returns seconds
+    const c = close[i];
+    if (t > 0 && c > 0) points.push({ t, c });
+  }
+  return points;
+}
 
 async function fetchKlinesForSymbol(
   symbol: string,
@@ -45,17 +91,18 @@ async function fetchKlinesForSymbol(
   };
   const timeframe = timeframeMap[interval] ?? "1h";
 
-  const exchangeDefs = [
+  type OhlcvRow = [number, number, number, number, number, number?];
+
+  const ccxtExchanges = [
     { name: "bybit",   create: () => createBybitExchange() },
     { name: "binance", create: () => createBinanceExchange() },
     { name: "gate",    create: () => createGateExchange() },
     { name: "okx",     create: () => createOkxExchange() },
-    { name: "mexc",    create: () => createMexcExchange() },
   ];
 
-  type OhlcvRow = [number, number, number, number, number, number?];
-  const results = await Promise.allSettled(
-    exchangeDefs.map(async ({ name, create }) => {
+  const results = await Promise.allSettled([
+    // CCXT-based exchanges (Bybit, Binance, Gate, OKX)
+    ...ccxtExchanges.map(async ({ name, create }) => {
       const ex = create();
       const raw = await Promise.race([
         ex.fetchOHLCV(ccxtSymbol, timeframe, undefined, limit) as Promise<OhlcvRow[]>,
@@ -65,8 +112,13 @@ async function fetchKlinesForSymbol(
       ]);
       const data = raw.map((row) => ({ t: row[0], c: row[4] })).filter((p) => p.t > 0 && p.c > 0);
       return { name, data };
-    })
-  );
+    }),
+    // MEXC via direct REST (accessible from this server region)
+    (async () => {
+      const data = await fetchMexcKlinesDirect(symbol, interval, limit);
+      return { name: "mexc", data };
+    })(),
+  ]);
 
   const out: Record<string, { t: number; c: number }[]> = {};
   for (const result of results) {
@@ -621,18 +673,18 @@ router.get("/exchanges/klines", async (req: Request, res: Response) => {
   };
   const timeframe = timeframeMap[interval] ?? "1h";
 
-  const exchangeDefs = [
+  type OhlcvRow = [number, number, number, number, number, number?];
+
+  const ccxtExchanges = [
     { name: "bybit",   create: () => createBybitExchange() },
     { name: "binance", create: () => createBinanceExchange() },
     { name: "gate",    create: () => createGateExchange() },
     { name: "okx",     create: () => createOkxExchange() },
-    { name: "mexc",    create: () => createMexcExchange() },
   ];
 
-  const results = await Promise.allSettled(
-    exchangeDefs.map(async ({ name, create }) => {
+  const results = await Promise.allSettled([
+    ...ccxtExchanges.map(async ({ name, create }) => {
       const ex = create();
-      type OhlcvRow = [number, number, number, number, number, number?];
       const raw = await Promise.race([
         ex.fetchOHLCV(ccxtSymbol, timeframe, undefined, limit) as Promise<OhlcvRow[]>,
         new Promise<never>((_, reject) =>
@@ -641,8 +693,12 @@ router.get("/exchanges/klines", async (req: Request, res: Response) => {
       ]);
       const data = raw.map((row) => ({ t: row[0], c: row[4] })).filter((p) => p.t > 0 && p.c > 0);
       return { name, data };
-    })
-  );
+    }),
+    (async () => {
+      const data = await fetchMexcKlinesDirect(symbol, interval, limit);
+      return { name: "mexc", data };
+    })(),
+  ]);
 
   const out: Record<string, { t: number; c: number }[]> = {};
   for (const result of results) {
