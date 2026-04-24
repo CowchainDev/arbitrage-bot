@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import { Link } from "wouter";
-import { Star, Search, TrendingUp, Zap, AlertCircle, ChevronDown, ChevronUp, X, Bell, BellOff, Bot, LayoutList, LayoutGrid, ChevronsUpDown } from "lucide-react";
+import { Star, Search, TrendingUp, Zap, AlertCircle, ChevronDown, ChevronUp, X, Bell, BellOff, Bot, LayoutList, LayoutGrid, ChevronsUpDown, Clock } from "lucide-react";
 import { useGetExchangePrices, getGetExchangePricesQueryKey, useGetPositions, getGetPositionsQueryKey } from "@workspace/api-client-react";
 import type { TokenSpread, Position, BotConfig } from "@workspace/api-client-react";
 import { TokenDetailPanel } from "@/components/token-detail-panel";
@@ -568,7 +568,22 @@ export default function Dashboard() {
     });
 
   const { tokens: streamTokens, isDemoData: streamIsDemo, streamStatus, isFetching: streamFetching } = usePriceStream();
-  const isPageVisible = usePageVisibility();
+  const { isVisible: isPageVisible, absenceSeconds } = usePageVisibility();
+
+  const STALE_THRESHOLD_SECONDS = 5 * 60;
+  const [staleBannerSeconds, setStaleBannerSeconds] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (absenceSeconds !== null && absenceSeconds >= STALE_THRESHOLD_SECONDS) {
+      setStaleBannerSeconds(absenceSeconds);
+    }
+  }, [absenceSeconds]);
+
+  useEffect(() => {
+    if (staleBannerSeconds === null) return;
+    const timer = setTimeout(() => setStaleBannerSeconds(null), 10000);
+    return () => clearTimeout(timer);
+  }, [staleBannerSeconds]);
 
   const wsActive = streamTokens.length > 0 && (streamStatus === "open" || streamStatus === "connecting");
 
@@ -774,6 +789,27 @@ export default function Dashboard() {
   return (
     <div className="flex flex-col gap-2" style={{ height: "calc(100vh - 88px)" }}>
       {/* Banners */}
+      {staleBannerSeconds !== null && (
+        <div className="flex items-center gap-3 bg-card border border-amber-500/30 rounded px-3 py-2 text-xs shrink-0">
+          <Clock className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+          <span className="text-muted-foreground flex-1">
+            Prices were paused for{" "}
+            <span className="text-amber-400 font-semibold">
+              {staleBannerSeconds >= 60
+                ? `${Math.round(staleBannerSeconds / 60)} min`
+                : `${staleBannerSeconds}s`}
+            </span>
+            {" — "}refreshed on return. Market conditions may have changed significantly.
+          </span>
+          <button
+            onClick={() => setStaleBannerSeconds(null)}
+            className="text-muted-foreground hover:text-foreground transition-colors shrink-0"
+            aria-label="Dismiss"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
       {!hasCredentials && (
         <div className="flex items-center gap-3 bg-card border border-amber-500/20 rounded px-3 py-2 text-xs shrink-0">
           <AlertCircle className="w-3.5 h-3.5 text-amber-400 shrink-0" />

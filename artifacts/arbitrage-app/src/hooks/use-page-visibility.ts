@@ -1,13 +1,31 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 
-export function usePageVisibility(): boolean {
+export interface PageVisibilityResult {
+  isVisible: boolean;
+  absenceSeconds: number | null;
+}
+
+export function usePageVisibility(): PageVisibilityResult {
   const [isVisible, setIsVisible] = useState(
     typeof document !== "undefined" ? document.visibilityState === "visible" : true
   );
+  const [absenceSeconds, setAbsenceSeconds] = useState<number | null>(null);
+  const hiddenAtRef = useRef<number | null>(null);
 
   useEffect(() => {
     function handleVisibilityChange() {
-      setIsVisible(document.visibilityState === "visible");
+      if (document.visibilityState === "hidden") {
+        hiddenAtRef.current = Date.now();
+        setAbsenceSeconds(null);
+        setIsVisible(false);
+      } else {
+        if (hiddenAtRef.current !== null) {
+          const elapsed = Math.round((Date.now() - hiddenAtRef.current) / 1000);
+          setAbsenceSeconds(elapsed);
+          hiddenAtRef.current = null;
+        }
+        setIsVisible(true);
+      }
     }
 
     document.addEventListener("visibilitychange", handleVisibilityChange);
@@ -16,5 +34,5 @@ export function usePageVisibility(): boolean {
     };
   }, []);
 
-  return isVisible;
+  return { isVisible, absenceSeconds };
 }
