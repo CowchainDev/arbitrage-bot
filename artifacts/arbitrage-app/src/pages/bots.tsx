@@ -145,19 +145,24 @@ function BotCard({ bot, openLegs }: { bot: BotConfig; openLegs: BotLeg[] }) {
 
   const computePnl = () => {
     if (!priceData) return null;
-    const { bybitPrice, binancePrice } = priceData;
-    if (!bybitPrice || !binancePrice) return null;
+    // leg.bybitEntry/bybitQty/bybitSide = ExA fields (legacy naming)
+    // leg.binanceEntry/binanceQty/binanceSide = ExB fields (legacy naming)
+    // Must look up live prices by the actual configured exchanges, not assume bybit/binance.
+    const prices = priceData as unknown as Record<string, number | null>;
+    const exaPrice = prices[`${bot.exchangeA}Price`];
+    const exbPrice = prices[`${bot.exchangeB}Price`];
+    if (!exaPrice || !exbPrice) return null;
     let total = 0;
     for (const leg of openLegs) {
-      const bybitPnl =
+      const pnlA =
         leg.bybitSide === "long"
-          ? (bybitPrice - (leg.bybitEntry ?? bybitPrice)) * (leg.bybitQty ?? 0)
-          : ((leg.bybitEntry ?? bybitPrice) - bybitPrice) * (leg.bybitQty ?? 0);
-      const binancePnl =
+          ? (exaPrice - (leg.bybitEntry ?? exaPrice)) * (leg.bybitQty ?? 0)
+          : ((leg.bybitEntry ?? exaPrice) - exaPrice) * (leg.bybitQty ?? 0);
+      const pnlB =
         leg.binanceSide === "long"
-          ? (binancePrice - (leg.binanceEntry ?? binancePrice)) * (leg.binanceQty ?? 0)
-          : ((leg.binanceEntry ?? binancePrice) - binancePrice) * (leg.binanceQty ?? 0);
-      total += bybitPnl + binancePnl;
+          ? (exbPrice - (leg.binanceEntry ?? exbPrice)) * (leg.binanceQty ?? 0)
+          : ((leg.binanceEntry ?? exbPrice) - exbPrice) * (leg.binanceQty ?? 0);
+      total += pnlA + pnlB;
     }
     return total;
   };
@@ -175,7 +180,7 @@ function BotCard({ bot, openLegs }: { bot: BotConfig; openLegs: BotLeg[] }) {
     pnlHistoryRef.current = updated;
     setPnlPoints(updated);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [priceData?.bybitPrice, priceData?.binancePrice, openLegs.length, bot.enabled]);
+  }, [priceData, openLegs.length, bot.enabled]);
 
   const invalidate = async () => {
     await queryClient.invalidateQueries({ queryKey: getListBotsQueryKey() });
