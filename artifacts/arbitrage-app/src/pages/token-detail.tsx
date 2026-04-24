@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import { Link } from "wouter";
-import { ArrowLeft, TrendingUp, XCircle, ChevronDown, ChevronUp, PanelRight, PanelRightClose } from "lucide-react";
+import { ArrowLeft, TrendingUp, XCircle, ChevronDown, ChevronUp, PanelRight, PanelRightClose, History } from "lucide-react";
 import {
   LineChart,
   Line,
@@ -284,6 +284,204 @@ function loadAllExchangeHeaders(base: RequestInit | undefined): RequestInit {
     } catch {}
   }
   return { headers: { ...baseHeaders, ...extra } };
+}
+
+function PnlSummaryBar({ legs }: { legs: BotLeg[] }) {
+  const stats = useMemo(() => {
+    const withPnl = legs.filter((l) => l.realizedPnlUsd != null);
+    if (withPnl.length === 0) return null;
+    const pnls = withPnl.map((l) => l.realizedPnlUsd!);
+    const total = pnls.reduce((s, v) => s + v, 0);
+    const avg = total / pnls.length;
+    const best = Math.max(...pnls);
+    const worst = Math.min(...pnls);
+    return { total, count: legs.length, avg, best, worst };
+  }, [legs]);
+
+  if (!stats) return null;
+
+  const fmtPnl = (v: number) =>
+    `${v >= 0 ? "+" : "-"}$${Math.abs(v).toFixed(2)}`;
+  const pnlColor = (v: number) =>
+    v >= 0 ? "text-emerald-400" : "text-red-400";
+
+  const items: { label: string; value: string; color: string }[] = [
+    { label: "Total P&L", value: fmtPnl(stats.total), color: pnlColor(stats.total) },
+    { label: "Trades", value: String(stats.count), color: "text-foreground" },
+    { label: "Avg P&L", value: fmtPnl(stats.avg), color: pnlColor(stats.avg) },
+    { label: "Best", value: fmtPnl(stats.best), color: pnlColor(stats.best) },
+    { label: "Worst", value: fmtPnl(stats.worst), color: pnlColor(stats.worst) },
+  ];
+
+  return (
+    <div
+      className="flex flex-wrap items-center gap-x-6 gap-y-2 px-4 py-2.5 bg-muted/40 border-b border-border/60"
+      data-testid="pnl-summary-bar"
+    >
+      {items.map(({ label, value, color }) => (
+        <div key={label} className="flex items-baseline gap-1.5">
+          <span className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">
+            {label}
+          </span>
+          <span className={`text-xs font-semibold font-mono ${color}`}>
+            {value}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ClosedLegsSection({
+  legs,
+  loading,
+}: {
+  legs: BotLeg[];
+  loading?: boolean;
+}) {
+  const [expanded, setExpanded] = useState(true);
+
+  const sortedLegs = useMemo(
+    () =>
+      [...legs].sort(
+        (a, b) =>
+          new Date(b.closedAt ?? b.openedAt).getTime() -
+          new Date(a.closedAt ?? a.openedAt).getTime()
+      ),
+    [legs]
+  );
+
+  if (!loading && legs.length === 0) return null;
+
+  return (
+    <div
+      className="bg-card border border-border rounded-md overflow-hidden"
+      data-testid="closed-legs-section"
+    >
+      <button
+        onClick={() => setExpanded((v) => !v)}
+        className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-muted/30 transition-colors"
+        data-testid="btn-toggle-closed-legs"
+      >
+        <div className="flex items-center gap-2 text-sm font-semibold">
+          <History className="w-4 h-4 text-muted-foreground" />
+          Closed Trades
+          <span className="bg-muted text-muted-foreground text-xs px-1.5 py-0.5 rounded">
+            {loading ? "…" : legs.length}
+          </span>
+        </div>
+        {expanded ? (
+          <ChevronUp className="w-4 h-4 text-muted-foreground" />
+        ) : (
+          <ChevronDown className="w-4 h-4 text-muted-foreground" />
+        )}
+      </button>
+
+      {expanded && (
+        <div>
+          <PnlSummaryBar legs={sortedLegs} />
+
+          {loading ? (
+            <div className="flex items-center justify-center py-8 text-muted-foreground text-xs">
+              <span className="w-4 h-4 border-2 border-muted-foreground border-t-transparent rounded-full animate-spin mr-2" />
+              Loading closed trades…
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs font-mono">
+                <thead>
+                  <tr className="border-b border-border text-muted-foreground bg-muted/20">
+                    <th className="text-left px-3 py-2 font-semibold uppercase tracking-wider">
+                      Side
+                    </th>
+                    <th className="text-right px-3 py-2 font-semibold uppercase tracking-wider">
+                      Entry Spread
+                    </th>
+                    <th className="text-right px-3 py-2 font-semibold uppercase tracking-wider">
+                      Exit Spread
+                    </th>
+                    <th className="text-right px-3 py-2 font-semibold uppercase tracking-wider">
+                      Realized P&amp;L
+                    </th>
+                    <th className="text-right px-3 py-2 font-semibold uppercase tracking-wider">
+                      Opened
+                    </th>
+                    <th className="text-right px-3 py-2 font-semibold uppercase tracking-wider">
+                      Duration
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sortedLegs.map((leg) => {
+                    const pnl = leg.realizedPnlUsd;
+                    const pnlClass =
+                      pnl != null
+                        ? pnl >= 0
+                          ? "text-emerald-400"
+                          : "text-red-400"
+                        : "text-muted-foreground";
+                    const isLong = leg.bybitSide === "long";
+                    const durationMs =
+                      leg.closedAt
+                        ? new Date(leg.closedAt).getTime() -
+                          new Date(leg.openedAt).getTime()
+                        : null;
+                    const duration =
+                      durationMs != null ? formatDuration(durationMs) : "—";
+                    return (
+                      <tr
+                        key={leg.id}
+                        className="border-b border-border/40 hover:bg-muted/30 transition-colors"
+                      >
+                        <td className="px-3 py-2.5">
+                          <span
+                            className={
+                              isLong ? "text-emerald-400" : "text-red-400"
+                            }
+                          >
+                            {isLong ? "Long" : "Short"}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2.5 text-right text-muted-foreground">
+                          {leg.spreadAtEntry != null
+                            ? `+${leg.spreadAtEntry.toFixed(3)}%`
+                            : "—"}
+                        </td>
+                        <td className="px-3 py-2.5 text-right text-muted-foreground">
+                          {leg.spreadAtExit != null
+                            ? `+${leg.spreadAtExit.toFixed(3)}%`
+                            : "—"}
+                        </td>
+                        <td
+                          className={`px-3 py-2.5 text-right font-semibold ${pnlClass}`}
+                        >
+                          {pnl != null
+                            ? `${pnl >= 0 ? "+" : "-"}$${Math.abs(pnl).toFixed(2)}`
+                            : "—"}
+                        </td>
+                        <td className="px-3 py-2.5 text-right text-muted-foreground">
+                          {new Date(leg.openedAt).toLocaleString("en-US", {
+                            month: "short",
+                            day: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                            hour12: false,
+                          })}
+                        </td>
+                        <td className="px-3 py-2.5 text-right text-muted-foreground">
+                          {duration}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function OpenPositionsSection({
@@ -1131,6 +1329,14 @@ export default function TokenDetail({ params }: { params: { symbol: string } }) 
               tokens={allTokens ?? []}
               botRequestOptions={botRequestOptions}
               requestHeaders={requestHeaders}
+            />
+          )}
+
+          {/* Closed Trades — summary bar + table of closed bot legs */}
+          {botId != null && (
+            <ClosedLegsSection
+              legs={closedLegs}
+              loading={closedLegsQuery.isLoading}
             />
           )}
         </div>
