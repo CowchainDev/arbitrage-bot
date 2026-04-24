@@ -7,6 +7,7 @@ import {
 } from "@workspace/api-zod";
 import { db } from "@workspace/db";
 import { closedTradesTable } from "@workspace/db";
+import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
 
@@ -1487,7 +1488,8 @@ function estimateFeeFromOrderValue(ex: SupportedCcxtExchange, order: any): numbe
 
 async function extractFeeFromOrder(
   ex: SupportedCcxtExchange,
-  order: { id: unknown; fee?: { cost?: unknown } | null; [key: string]: unknown },
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  order: any,
   marketSymbol: string,
 ): Promise<number> {
   const inline = sumFeesFromOrder(order);
