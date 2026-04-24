@@ -88,6 +88,7 @@ export const botLegsTable = pgTable(
     realizedPnlUsd: numeric("realized_pnl_usd", { precision: 20, scale: 8 }),
     openFeeA: numeric("open_fee_a", { precision: 20, scale: 8 }).notNull().default("0"),
     openFeeB: numeric("open_fee_b", { precision: 20, scale: 8 }).notNull().default("0"),
+    contractSizeB: numeric("contract_size_b", { precision: 20, scale: 8 }),
     status: text("status").notNull().default("open"),
     openedAt: timestamp("opened_at").notNull().defaultNow(),
     closedAt: timestamp("closed_at"),

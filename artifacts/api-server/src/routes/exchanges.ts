@@ -1279,6 +1279,9 @@ router.post("/exchanges/close-position", async (req: Request, res: Response) => 
   const entryTime = typeof body["entryTime"] === "string" ? body["entryTime"] : undefined;
   const quantity = typeof body["quantity"] === "number" ? body["quantity"] : 0;
   const clientRealizedPnl = typeof body["realizedPnl"] === "number" ? body["realizedPnl"] : null;
+  // contractSizeB: provided for new-style bot legs where binanceQty is in base units.
+  // Absent (null/undefined) for legacy legs where binanceQty is already in contracts.
+  const contractSizeB = typeof body["contractSizeB"] === "number" ? body["contractSizeB"] : null;
 
   const credsA = getCredentialsForExchange(req, exchangeA);
   const credsB = getCredentialsForExchange(req, exchangeB);
@@ -1295,6 +1298,7 @@ router.post("/exchanges/close-position", async (req: Request, res: Response) => 
       sideB: binanceSide as "long" | "short",
       qtyA: bybitQty,
       qtyB: binanceQty,
+      contractSizeB,
       spreadAtEntry,
       entryTime: entryTime ? new Date(entryTime) : new Date(),
       quantity,
@@ -1519,7 +1523,7 @@ export async function placeOrderInternal(
   side: "long" | "short",
   usdAmount: number,
   leverage: number | undefined
-): Promise<{ orderId: string; exchange: string; symbol: string; side: string; filledQty: number; avgPrice: number; status: string; feeCost: number }> {
+): Promise<{ orderId: string; exchange: string; symbol: string; side: string; filledQty: number; avgPrice: number; status: string; feeCost: number; contractSize: number }> {
   const marketSymbol = `${symbol}/USDT:USDT`;
 
   if (leverage && leverage !== 1) {
@@ -1535,6 +1539,7 @@ export async function placeOrderInternal(
   const exchangeName = ex.id;
 
   const minNotional = MIN_NOTIONAL_BY_EXCHANGE[exchangeName];
+  let contractSize = 1;
   try {
     await ex.loadMarkets();
     const market = ex.market(marketSymbol);
@@ -1547,7 +1552,7 @@ export async function placeOrderInternal(
     // base-currency → contract conversion.  We must divide by contractSize
     // before calling amountToPrecision/createMarketOrder to avoid placing an
     // order that is contractSize× too large (e.g. contractSize=4 → 4× overshoot).
-    const contractSize: number = (market?.contractSize as number | null | undefined) ?? 1;
+    contractSize = (market?.contractSize as number | null | undefined) ?? 1;
     if (contractSize > 1) {
       qty = qty / contractSize;
     }
@@ -1582,15 +1587,22 @@ export async function placeOrderInternal(
 
   const feeCost = await extractFeeFromOrder(ex, order, marketSymbol);
 
+  // order.filled is in contracts when contractSize > 1 (exchanges like MEXC pass qty as vol/contracts).
+  // Multiply back by contractSize so callers always receive base-currency (e.g. SKR) quantities.
+  // This ensures stored qty values are in base units and P&L calculations are correct.
+  const filledInContracts = order.filled ?? qty;
+  const filledQty = contractSize > 1 ? filledInContracts * contractSize : filledInContracts;
+
   return {
     orderId: String(order.id),
     exchange: exchangeName,
     symbol,
     side,
-    filledQty: order.filled ?? qty,
+    filledQty,
     avgPrice: order.average ?? price,
     status: order.status ?? "closed",
     feeCost,
+    contractSize,
   };
 }
 
@@ -1665,6 +1677,12 @@ export type ClosePositionInternalParams = {
   sideB: "long" | "short";
   qtyA: number;
   qtyB: number;
+  /** contractSizeA > 1 means qtyA is in base units and must be ÷ contractSizeA before placing.
+   *  null/undefined = legacy leg where qty is already in contracts (no conversion needed). */
+  contractSizeA?: number | null;
+  /** contractSizeB > 1 means qtyB is in base units and must be ÷ contractSizeB before placing.
+   *  null/undefined = legacy leg where qty is already in contracts (no conversion needed). */
+  contractSizeB?: number | null;
   spreadAtEntry?: number;
   entryTime?: Date;
   quantity?: number;
@@ -1693,27 +1711,43 @@ async function closeOnExchange(
   symbol: string,
   positionSide: "long" | "short",
   qty: number,
+  contractSize?: number,
 ): Promise<{ orderId: string; feeCost: number; avgPrice: number | null }> {
   const marketSymbol = `${symbol}/USDT:USDT`;
   const closeSide = positionSide === "long" ? "sell" : "buy";
+
+  // When contractSize > 1 is provided, qty is stored in base units — convert to contracts for the exchange.
+  // When contractSize is absent (null/undefined), qty is already in contracts (legacy legs), use as-is.
+  let closeQty = qty;
+  if (contractSize != null && contractSize > 1) {
+    closeQty = qty / contractSize;
+  }
+
+  // Apply exchange precision rounding if available
+  try {
+    await ex.loadMarkets();
+    const rounded = parseFloat(ex.amountToPrecision(marketSymbol, closeQty));
+    if (rounded > 0) closeQty = rounded;
+  } catch (_) {}
+
   let order;
   if (ex.id === "bybit") {
     order = await bybitCreateOrder(
       ex as InstanceType<typeof ccxt.bybit>,
       marketSymbol,
       closeSide,
-      qty,
+      closeQty,
       { reduceOnly: true },
       positionSide,
     );
   } else if (ex.id === "okx") {
-    order = await ex.createMarketOrder(marketSymbol, closeSide, qty, undefined, {
+    order = await ex.createMarketOrder(marketSymbol, closeSide, closeQty, undefined, {
       tdMode: "cross",
       posSide: positionSide === "long" ? "long" : "short",
       reduceOnly: true,
     });
   } else {
-    order = await ex.createMarketOrder(marketSymbol, closeSide, qty, undefined, { reduceOnly: true });
+    order = await ex.createMarketOrder(marketSymbol, closeSide, closeQty, undefined, { reduceOnly: true });
   }
   const feeCost = await extractFeeFromOrder(ex, order, marketSymbol);
   return { orderId: String(order.id), feeCost, avgPrice: order.average ?? null };
@@ -1724,12 +1758,13 @@ export async function closePositionInternal(
 ): Promise<ClosePositionInternalResult> {
   const {
     exA, exB, symbol, sideA, sideB, qtyA, qtyB,
+    contractSizeA, contractSizeB,
     spreadAtEntry, entryTime, quantity, longExchange, shortExchange,
   } = params;
 
   const [orderA, orderB] = await Promise.allSettled([
-    closeOnExchange(exA, symbol, sideA, qtyA),
-    closeOnExchange(exB, symbol, sideB, qtyB),
+    closeOnExchange(exA, symbol, sideA, qtyA, contractSizeA ?? undefined),
+    closeOnExchange(exB, symbol, sideB, qtyB, contractSizeB ?? undefined),
   ]);
 
   const bothClosed = orderA.status === "fulfilled" && orderB.status === "fulfilled";

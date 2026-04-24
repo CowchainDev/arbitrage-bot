@@ -167,6 +167,9 @@ async function openLeg(config: BotConfig, spreadPct: number): Promise<void> {
       spreadAtEntry: String(spreadPct),
       openFeeA: String(resultA.feeCost),
       openFeeB: String(resultB.feeCost),
+      // Store ExB contractSize so closeOnExchange can convert base-unit qty back to contracts.
+      // null means qty is already in contracts (legacy behavior); a number means qty is in base units.
+      contractSizeB: resultB.contractSize > 1 ? String(resultB.contractSize) : null,
       status: "open",
       openedAt: new Date(),
     });
@@ -203,6 +206,9 @@ async function closeLeg(
     sideB: leg.binanceSide as "long" | "short",
     qtyA: Number(leg.bybitQty),
     qtyB: Number(leg.binanceQty),
+    // Pass stored contractSizeB so the close order qty is correctly converted back to contracts.
+    // null = legacy leg (qty already in contracts, no conversion needed).
+    contractSizeB: leg.contractSizeB != null ? Number(leg.contractSizeB) : null,
     longExchange: leg.bybitSide === "long" ? exchangeA : config.exchangeB ?? "binance",
     shortExchange: leg.bybitSide === "short" ? exchangeA : config.exchangeB ?? "binance",
   });
@@ -366,6 +372,7 @@ export async function closeAllLegsForBot(botId: number): Promise<{ closed: numbe
       sideB: leg.binanceSide as "long" | "short",
       qtyA: Number(leg.bybitQty),
       qtyB: Number(leg.binanceQty),
+      contractSizeB: leg.contractSizeB != null ? Number(leg.contractSizeB) : null,
       spreadAtEntry: Number(leg.spreadAtEntry),
       entryTime: leg.openedAt,
       longExchange: leg.bybitSide === "long" ? exchangeA : exchangeB,
