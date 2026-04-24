@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link } from "wouter";
-import { Zap, X, XCircle, Power } from "lucide-react";
+import { Zap, X, XCircle, Power, LineChart } from "lucide-react";
 import {
   useCreateBot,
   useUpdateBot,
@@ -247,11 +247,21 @@ export function TokenDetailPanel({
             )
           ) : null}
         </div>
-        {onClose && (
-          <button onClick={onClose} className="text-muted-foreground hover:text-foreground ml-2 shrink-0" data-testid="btn-close-detail">
-            <X className="w-4 h-4" />
-          </button>
-        )}
+        <div className="flex items-center gap-1 ml-2 shrink-0">
+          <Link
+            href={`/token/${token.symbol}`}
+            className="flex items-center gap-1 px-2 py-1 rounded text-[11px] font-mono font-semibold border border-border/60 text-muted-foreground hover:text-primary hover:border-primary/40 transition-colors"
+            data-testid="btn-view-chart"
+          >
+            <LineChart className="w-3 h-3" />
+            Chart
+          </Link>
+          {onClose && (
+            <button onClick={onClose} className="text-muted-foreground hover:text-foreground p-1 shrink-0" data-testid="btn-close-detail">
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="space-y-3">

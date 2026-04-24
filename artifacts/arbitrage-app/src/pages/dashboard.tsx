@@ -341,7 +341,7 @@ function TokenRow({
         <Link
           href={`/token/${token.symbol}`}
           onClick={(e: React.MouseEvent) => e.stopPropagation()}
-          className="text-[10px] text-muted-foreground/40 hover:text-primary border border-transparent hover:border-primary/30 rounded px-1.5 py-0.5 transition-colors font-mono shrink-0 opacity-0 group-hover:opacity-100"
+          className="text-[10px] text-muted-foreground/40 hover:text-primary border border-transparent hover:border-primary/30 rounded px-1.5 py-0.5 transition-colors font-mono shrink-0"
           data-testid={`btn-open-${token.symbol}`}
         >
           ↗
