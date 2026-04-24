@@ -1356,21 +1356,31 @@ export async function placeOrderInternal(
   const exchangeName = ex.id;
 
   const minNotional = MIN_NOTIONAL_BY_EXCHANGE[exchangeName];
-  if (minNotional) {
-    try {
-      await ex.loadMarkets();
-      const market = ex.market(marketSymbol);
-      const decimalPlaces: number = market?.precision?.amount ?? 8;
-      const stepSize = Math.pow(10, -decimalPlaces);
-      const stepsNeeded = Math.max(
-        Math.ceil(qty / stepSize),
-        Math.ceil(minNotional / (stepSize * price)),
-      );
-      qty = stepsNeeded * stepSize;
-    } catch (_) {
+  try {
+    await ex.loadMarkets();
+    const market = ex.market(marketSymbol);
+    // Enforce minimum notional if required by the exchange
+    if (minNotional) {
       qty = Math.max(qty, minNotional / price);
     }
+    // MEXC (and some other exchanges) use TICK_SIZE precision mode and pass
+    // the amount straight to the API as `vol` (number of contracts) with no
+    // base-currency → contract conversion.  We must divide by contractSize
+    // before calling amountToPrecision/createMarketOrder to avoid placing an
+    // order that is contractSize× too large (e.g. contractSize=4 → 4× overshoot).
+    const contractSize: number = (market?.contractSize as number | null | undefined) ?? 1;
+    if (contractSize > 1) {
+      qty = qty / contractSize;
+    }
+    // Use CCXT's own amountToPrecision so it handles each exchange's
+    // precision mode (TICK_SIZE vs DECIMAL_PLACES) correctly.
+    const rounded = parseFloat(ex.amountToPrecision(marketSymbol, qty));
+    if (rounded > 0) qty = rounded;
+  } catch (_) {
+    if (minNotional) qty = Math.max(qty, minNotional / price);
   }
+
+  logger.info({ exchange: exchangeName, symbol, side, usdAmount, price, qty }, "placeOrderInternal: placing order");
 
   let order;
   if (ex.id === "bybit") {
