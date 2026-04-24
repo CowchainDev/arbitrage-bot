@@ -23,8 +23,8 @@ function getKlinesCacheTtl(interval: string): number {
   return interval === "4h" || interval === "1d" ? KLINES_TTL_LONG_MS : KLINES_TTL_SHORT_MS;
 }
 
-const PREWARM_SYMBOLS = ["BTC", "ETH", "SOL"];
-const PREWARM_INTERVALS = ["1h"];
+export const PREWARM_SYMBOLS = ["BTC", "ETH", "SOL"];
+export const PREWARM_INTERVALS = ["15m", "1h", "4h", "1d"];
 const PREWARM_LIMIT = 168;
 const KLINES_TIMEOUT_MS = 4000;
 
