@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { Link } from "wouter";
 import { ArrowLeft, TrendingUp, XCircle, ChevronDown, ChevronUp } from "lucide-react";
 import {
@@ -11,6 +11,7 @@ import {
   ResponsiveContainer,
   AreaChart,
   Area,
+  ReferenceLine,
 } from "recharts";
 import {
   useGetExchangePrices,
@@ -25,6 +26,7 @@ import type { ExchangeKlinePoint, BotConfig, BotLeg, TokenSpread } from "@worksp
 import { TokenDetailPanel } from "@/components/token-detail-panel";
 import { useBots } from "@/hooks/use-bots";
 import { useBotSecret } from "@/hooks/use-bot-secret";
+import { usePriceStream } from "@/hooks/use-price-stream";
 import { useApiCredentials } from "@/hooks/use-api-credentials";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -35,12 +37,15 @@ import {
   botLegToPosition,
 } from "@/components/position-rows";
 
-type TimeRange = { label: string; interval: string; limit: number };
+type TimeRange = { label: string; interval: string; limit: number; liveSeconds?: number };
 const TIME_RANGES: TimeRange[] = [
-  { label: "15m", interval: "15m", limit: 96 },
-  { label: "1h",  interval: "1h",  limit: 168 },
-  { label: "4h",  interval: "4h",  limit: 90 },
-  { label: "1d",  interval: "1d",  limit: 60 },
+  { label: "30s", interval: "live", limit: 120, liveSeconds: 30  },
+  { label: "1m",  interval: "live", limit: 240, liveSeconds: 60  },
+  { label: "5m",  interval: "live", limit: 300, liveSeconds: 300 },
+  { label: "15m", interval: "15m",  limit: 96  },
+  { label: "1h",  interval: "1h",   limit: 168 },
+  { label: "4h",  interval: "4h",   limit: 90  },
+  { label: "1d",  interval: "1d",   limit: 60  },
 ];
 
 const EXCHANGE_LINE_COLORS: Record<string, string> = {
@@ -247,18 +252,73 @@ function OpenPositionsSection({
 
 export default function TokenDetail({ params }: { params: { symbol: string } }) {
   const symbol = params.symbol.toUpperCase();
-  const [timeRange, setTimeRange] = useState<TimeRange>(TIME_RANGES[1]);
+  const [timeRange, setTimeRange] = useState<TimeRange>(TIME_RANGES[3]); // default 15m
+
+  const isLiveMode = timeRange.interval === "live";
 
   const { data: allTokens, isLoading: pricesLoading } = useGetExchangePrices({
-    query: { queryKey: getGetExchangePricesQueryKey(), refetchInterval: 10_000 },
+    query: { queryKey: getGetExchangePricesQueryKey(), refetchInterval: isLiveMode ? 2000 : 10_000 },
   });
   const token = allTokens?.find((t) => t.symbol === symbol);
   const tokenNotFound = !pricesLoading && allTokens != null && token == null;
 
+  // Live price stream (WebSocket) for real-time chart updates
+  const { tokens: streamTokens, streamStatus } = usePriceStream();
+  const streamToken = streamTokens.find((t) => t.symbol === symbol);
+  // Use WebSocket data if available, otherwise polling data
+  const liveToken = streamStatus === "open" && streamToken ? streamToken : token;
+
+  // Rolling buffer for live short-timeframe chart
+  const liveBufferRef = useRef<ChartRow[]>([]);
+  const [liveBuffer, setLiveBuffer] = useState<ChartRow[]>([]);
+
+  // Reset buffer when timeframe changes
+  useEffect(() => {
+    liveBufferRef.current = [];
+    setLiveBuffer([]);
+  }, [timeRange.label]);
+
+  // Accumulate live price data into rolling buffer
+  useEffect(() => {
+    if (!isLiveMode || !liveToken) return;
+    const now = Date.now();
+    const windowMs = (timeRange.liveSeconds ?? 60) * 1000;
+    const point: ChartRow = { t: now };
+    const exFields: Array<[ExchangeName, keyof TokenSpread]> = [
+      ["bybit",   "bybitPrice"  ],
+      ["binance", "binancePrice"],
+      ["gate",    "gatePrice"   ],
+      ["okx",     "okxPrice"    ],
+      ["mexc",    "mexcPrice"   ],
+    ];
+    let hasData = false;
+    for (const [ex, field] of exFields) {
+      const val = liveToken[field] as number | null | undefined;
+      if (val != null && val > 0) {
+        (point as Record<string, number>)[ex] = val;
+        hasData = true;
+      }
+    }
+    if (!hasData) return;
+    const cutoff = now - windowMs;
+    liveBufferRef.current = [
+      ...liveBufferRef.current.filter((p) => p.t >= cutoff),
+      point,
+    ];
+    setLiveBuffer([...liveBufferRef.current]);
+  }, [liveToken, isLiveMode, timeRange.liveSeconds]);
+
   const klinesParams = { symbol, interval: timeRange.interval, limit: timeRange.limit };
   const { data: klines, isLoading: klinesLoading, isError: klinesError } = useGetExchangeKlines(
     klinesParams,
-    { query: { queryKey: getGetExchangeKlinesQueryKey(klinesParams), refetchInterval: 60_000, staleTime: 30_000 } }
+    {
+      query: {
+        queryKey: getGetExchangeKlinesQueryKey(klinesParams),
+        refetchInterval: 60_000,
+        staleTime: 30_000,
+        enabled: !isLiveMode,
+      },
+    }
   );
 
   const { getBotRequestOptions } = useBotSecret();
@@ -291,9 +351,21 @@ export default function TokenDetail({ params }: { params: { symbol: string } }) 
     return Array.from(tsMap.values()).sort((a, b) => a.t - b.t);
   }, [klines, activeExchanges]);
 
+  // Live mode: derive active exchanges from accumulated buffer
+  const liveActiveExchanges = useMemo((): ExchangeName[] => {
+    if (!isLiveMode) return [];
+    return ALL_EXCHANGES.filter((ex) =>
+      liveBuffer.some((row) => (row as Record<string, number>)[ex] != null)
+    );
+  }, [isLiveMode, liveBuffer]);
+
+  // Final data sent to the chart — live buffer or klines
+  const chartDataFinal = isLiveMode ? liveBuffer : chartData;
+  const activeExchangesFinal = isLiveMode ? liveActiveExchanges : activeExchanges;
+
   const spreadData = useMemo(() => {
-    return chartData.map((row) => {
-      const prices = activeExchanges
+    return chartDataFinal.map((row) => {
+      const prices = activeExchangesFinal
         .map((ex) => row[ex])
         .filter((p): p is number => p != null && p > 0);
       const spread =
@@ -302,10 +374,13 @@ export default function TokenDetail({ params }: { params: { symbol: string } }) 
           : 0;
       return { t: row.t, spread };
     });
-  }, [chartData, activeExchanges]);
+  }, [chartDataFinal, activeExchangesFinal]);
 
   const formatXAxis = (t: number) => {
     const d = new Date(t);
+    if (timeRange.interval === "live" && (timeRange.liveSeconds ?? 60) <= 60) {
+      return d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    }
     if (timeRange.interval === "1d") {
       return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
     }
@@ -314,6 +389,20 @@ export default function TokenDetail({ params }: { params: { symbol: string } }) 
     }
     return d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
   };
+
+  // BUY/SELL markers from open bot legs
+  const tradeMarkers = useMemo(() => {
+    if (!botStatus?.openLegs.length) return [];
+    return botStatus.openLegs.map((leg) => {
+      const ts = new Date(leg.openedAt).getTime();
+      const isBuy = leg.bybitSide === "Buy";
+      return {
+        t: ts,
+        label: isBuy ? "BUY" : "SELL",
+        color: isBuy ? "#22c55e" : "#ef4444",
+      };
+    });
+  }, [botStatus]);
 
   const hasOpenLegs = (botStatus?.openLegs.length ?? 0) > 0;
 
@@ -360,21 +449,36 @@ export default function TokenDetail({ params }: { params: { symbol: string } }) 
 
           {/* Price chart */}
           <div className="bg-card border border-border rounded-md p-3" data-testid="price-chart">
-            <div className="text-xs text-muted-foreground mb-2 uppercase tracking-wider font-semibold">
-              Price (USDT perpetual)
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">
+                Price (USDT perpetual)
+              </div>
+              {isLiveMode && (
+                <div className="flex items-center gap-1.5 text-xs text-emerald-400 font-mono">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  LIVE
+                </div>
+              )}
             </div>
-            {klinesLoading ? (
+            {!isLiveMode && klinesLoading ? (
               <div className="h-64 flex items-center justify-center">
                 <span className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
               </div>
-            ) : klinesError || chartData.length === 0 ? (
+            ) : !isLiveMode && (klinesError || chartDataFinal.length === 0) ? (
               <div className="h-64 flex items-center justify-center text-muted-foreground text-sm">
                 No chart data available
+              </div>
+            ) : isLiveMode && chartDataFinal.length === 0 ? (
+              <div className="h-64 flex items-center justify-center text-muted-foreground text-sm">
+                <div className="flex items-center gap-2">
+                  <span className="w-4 h-4 border-2 border-muted-foreground border-t-transparent rounded-full animate-spin" />
+                  Buffering live prices…
+                </div>
               </div>
             ) : (
               <div className="h-64">
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+                  <LineChart data={chartDataFinal} margin={{ top: 14, right: 8, left: 0, bottom: 0 }}>
                     <CartesianGrid
                       strokeDasharray="3 3"
                       stroke="hsl(var(--border))"
@@ -382,6 +486,9 @@ export default function TokenDetail({ params }: { params: { symbol: string } }) 
                     />
                     <XAxis
                       dataKey="t"
+                      type="number"
+                      scale="time"
+                      domain={["dataMin", "dataMax"]}
                       tickFormatter={formatXAxis}
                       tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
                       tickLine={false}
@@ -422,7 +529,7 @@ export default function TokenDetail({ params }: { params: { symbol: string } }) 
                         );
                       }}
                     />
-                    {activeExchanges.map((ex) => (
+                    {activeExchangesFinal.map((ex) => (
                       <Line
                         key={ex}
                         type="monotone"
@@ -434,14 +541,31 @@ export default function TokenDetail({ params }: { params: { symbol: string } }) 
                         connectNulls
                       />
                     ))}
+                    {tradeMarkers.map((marker, i) => (
+                      <ReferenceLine
+                        key={i}
+                        x={marker.t}
+                        stroke={marker.color}
+                        strokeDasharray="4 2"
+                        strokeWidth={1.5}
+                        label={{
+                          value: marker.label,
+                          position: "insideTopLeft",
+                          fontSize: 9,
+                          fill: marker.color,
+                          fontFamily: "monospace",
+                          fontWeight: "bold",
+                        }}
+                      />
+                    ))}
                   </LineChart>
                 </ResponsiveContainer>
               </div>
             )}
             {/* Legend */}
-            {!klinesLoading && activeExchanges.length > 0 && (
+            {activeExchangesFinal.length > 0 && (chartDataFinal.length > 0 || !isLiveMode) && (
               <div className="flex flex-wrap gap-4 mt-2 pt-2 border-t border-border/40">
-                {activeExchanges.map((ex) => (
+                {activeExchangesFinal.map((ex) => (
                   <div key={ex} className="flex items-center gap-1.5 text-xs">
                     <span
                       className="w-5 h-0.5 rounded-full shrink-0"
@@ -452,12 +576,24 @@ export default function TokenDetail({ params }: { params: { symbol: string } }) 
                     </span>
                   </div>
                 ))}
+                {tradeMarkers.length > 0 && (
+                  <>
+                    <div className="flex items-center gap-1.5 text-xs">
+                      <span className="w-5 h-0.5 rounded-full shrink-0 bg-emerald-500" style={{ borderTop: "2px dashed #22c55e" }} />
+                      <span className="font-medium text-emerald-400">BUY</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-xs">
+                      <span className="w-5 h-0.5 rounded-full shrink-0 bg-red-500" style={{ borderTop: "2px dashed #ef4444" }} />
+                      <span className="font-medium text-red-400">SELL</span>
+                    </div>
+                  </>
+                )}
               </div>
             )}
           </div>
 
           {/* Spread history chart */}
-          {!klinesLoading && spreadData.length > 0 && (
+          {(isLiveMode || !klinesLoading) && spreadData.length > 0 && (
             <div className="bg-card border border-border rounded-md p-3" data-testid="spread-chart">
               <div className="text-xs text-muted-foreground mb-2 uppercase tracking-wider font-semibold">
                 Best Spread % — (max − min) / min across all exchanges
@@ -478,6 +614,9 @@ export default function TokenDetail({ params }: { params: { symbol: string } }) 
                     />
                     <XAxis
                       dataKey="t"
+                      type="number"
+                      scale="time"
+                      domain={["dataMin", "dataMax"]}
                       tickFormatter={formatXAxis}
                       tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
                       tickLine={false}
