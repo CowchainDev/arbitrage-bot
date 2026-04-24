@@ -596,6 +596,31 @@ paths:
               schema:
                 $ref: "#/components/schemas/ApiError"
 
+  /bots/{id}/stats:
+    get:
+      operationId: getBotStats
+      tags: [bots]
+      summary: Get aggregated closed-leg statistics for a bot
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Bot stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BotStats"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
   /credentials:
     post:
       operationId: storeCredential
@@ -1375,6 +1400,31 @@ components:
             $ref: "#/components/schemas/BotLeg"
       required:
         - legs
+
+    BotStats:
+      type: object
+      properties:
+        totalRealizedPnlUsd:
+          type: number
+          description: Sum of realizedPnlUsd across all closed legs
+        avgEntrySpread:
+          type: number
+          description: Average spreadAtEntry across all closed legs
+        avgExitSpread:
+          type: number
+          description: Average spreadAtExit across all closed legs
+        totalVolumeUsd:
+          type: number
+          description: Sum of notional value (qty * entry price) across all closed legs
+        closedLegCount:
+          type: number
+          description: Number of closed legs
+      required:
+        - totalRealizedPnlUsd
+        - avgEntrySpread
+        - avgExitSpread
+        - totalVolumeUsd
+        - closedLegCount
 
     DeleteBotResult:
       type: object

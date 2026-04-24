@@ -12,7 +12,9 @@ import {
   useStopAndCloseBot,
   useDeleteBot,
   useGetExchangePrices,
+  useGetBotStats,
   getGetExchangePricesQueryKey,
+  getGetBotStatsQueryKey,
   getListBotsQueryKey,
   getGetBotLegsQueryKey,
 } from "@workspace/api-client-react";
@@ -109,6 +111,10 @@ function PnlChart({ points, latestPnl }: { points: PnlPoint[]; latestPnl: number
   );
 }
 
+function capitalize(s: string) {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
 function BotCard({ bot, openLegs }: { bot: BotConfig; openLegs: BotLeg[] }) {
   const [busy, setBusy] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -121,6 +127,12 @@ function BotCard({ bot, openLegs }: { bot: BotConfig; openLegs: BotLeg[] }) {
   const stopMutation = useStopBot({ request: requestOptions });
   const stopAndCloseMutation = useStopAndCloseBot({ request: requestOptions });
   const deleteMutation = useDeleteBot({ request: requestOptions });
+
+  const statsQuery = useGetBotStats(bot.id, {
+    query: { refetchInterval: 30000, queryKey: getGetBotStatsQueryKey(bot.id) },
+    request: requestOptions,
+  });
+  const stats = statsQuery.data;
 
   const pricesQuery = useGetExchangePrices({
     query: { refetchInterval: 2000, queryKey: getGetExchangePricesQueryKey() },
@@ -168,6 +180,7 @@ function BotCard({ bot, openLegs }: { bot: BotConfig; openLegs: BotLeg[] }) {
   const invalidate = async () => {
     await queryClient.invalidateQueries({ queryKey: getListBotsQueryKey() });
     await queryClient.invalidateQueries({ queryKey: getGetBotLegsQueryKey(bot.id) });
+    await queryClient.invalidateQueries({ queryKey: getGetBotStatsQueryKey(bot.id) });
   };
 
   const handleStart = async () => {
@@ -270,6 +283,22 @@ function BotCard({ bot, openLegs }: { bot: BotConfig; openLegs: BotLeg[] }) {
       </div>
 
       <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+        <div className="flex items-center justify-between col-span-2">
+          <span className="text-muted-foreground">Exchanges</span>
+          <span className="font-mono">{capitalize(bot.exchangeA)} ↔ {capitalize(bot.exchangeB)}</span>
+        </div>
+        <div className="flex items-center justify-between">
+          <span className="text-muted-foreground">Leverage</span>
+          <span className="font-mono">
+            {bot.leverageA === bot.leverageB
+              ? `${bot.leverageA}x`
+              : `${capitalize(bot.exchangeA)} ${bot.leverageA}x / ${capitalize(bot.exchangeB)} ${bot.leverageB}x`}
+          </span>
+        </div>
+        <div className="flex items-center justify-between">
+          <span className="text-muted-foreground">Open legs</span>
+          <span className="font-mono">{openLegs.length}</span>
+        </div>
         <div className="flex items-center justify-between">
           <span className="text-muted-foreground">Enter spread</span>
           <span className="font-mono">{bot.enterSpreadPct}%</span>
@@ -296,9 +325,43 @@ function BotCard({ bot, openLegs }: { bot: BotConfig; openLegs: BotLeg[] }) {
           <span className="text-muted-foreground">Force stop</span>
           <span className="font-mono">${bot.forceStopUsd}</span>
         </div>
+      </div>
+
+      <div className="border-t border-border pt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+        <div className="flex items-center justify-between col-span-2">
+          <span className="text-muted-foreground">Realized P&L</span>
+          {stats ? (
+            <span
+              className="font-mono font-bold"
+              style={{ color: stats.totalRealizedPnlUsd >= 0 ? "#10b981" : "#ef4444" }}
+            >
+              {stats.totalRealizedPnlUsd >= 0 ? "+" : ""}${stats.totalRealizedPnlUsd.toFixed(2)}
+            </span>
+          ) : (
+            <span className="text-muted-foreground/40 font-mono">—</span>
+          )}
+        </div>
         <div className="flex items-center justify-between">
-          <span className="text-muted-foreground">Open legs</span>
-          <span className="font-mono">{openLegs.length}</span>
+          <span className="text-muted-foreground">Avg entry spread</span>
+          <span className="font-mono">
+            {stats ? `${stats.avgEntrySpread.toFixed(4)}%` : <span className="text-muted-foreground/40">—</span>}
+          </span>
+        </div>
+        <div className="flex items-center justify-between">
+          <span className="text-muted-foreground">Avg exit spread</span>
+          <span className="font-mono">
+            {stats ? `${stats.avgExitSpread.toFixed(4)}%` : <span className="text-muted-foreground/40">—</span>}
+          </span>
+        </div>
+        <div className="flex items-center justify-between col-span-2">
+          <span className="text-muted-foreground">Volume traded</span>
+          <span className="font-mono">
+            {stats
+              ? stats.totalVolumeUsd >= 1000
+                ? `$${(stats.totalVolumeUsd / 1000).toFixed(2)}k`
+                : `$${stats.totalVolumeUsd.toFixed(2)}`
+              : <span className="text-muted-foreground/40">—</span>}
+          </span>
         </div>
       </div>
 

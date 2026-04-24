@@ -440,6 +440,19 @@ export interface BotLegsResponse {
   legs: BotLeg[];
 }
 
+export interface BotStats {
+  /** Sum of realizedPnlUsd across all closed legs */
+  totalRealizedPnlUsd: number;
+  /** Average spreadAtEntry across all closed legs */
+  avgEntrySpread: number;
+  /** Average spreadAtExit across all closed legs */
+  avgExitSpread: number;
+  /** Sum of notional value (qty * entry price) across all closed legs */
+  totalVolumeUsd: number;
+  /** Number of closed legs */
+  closedLegCount: number;
+}
+
 export interface DeleteBotResult {
   deleted: boolean;
 }

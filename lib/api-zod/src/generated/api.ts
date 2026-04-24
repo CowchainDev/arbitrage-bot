@@ -773,6 +773,31 @@ export const GetBotLegsResponse = zod.object({
 });
 
 /**
+ * @summary Get aggregated closed-leg statistics for a bot
+ */
+export const GetBotStatsParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const GetBotStatsResponse = zod.object({
+  totalRealizedPnlUsd: zod
+    .number()
+    .describe("Sum of realizedPnlUsd across all closed legs"),
+  avgEntrySpread: zod
+    .number()
+    .describe("Average spreadAtEntry across all closed legs"),
+  avgExitSpread: zod
+    .number()
+    .describe("Average spreadAtExit across all closed legs"),
+  totalVolumeUsd: zod
+    .number()
+    .describe(
+      "Sum of notional value (qty \* entry price) across all closed legs",
+    ),
+  closedLegCount: zod.number().describe("Number of closed legs"),
+});
+
+/**
  * @summary Store or update API credentials for an exchange server-side
  */
 export const StoreCredentialBody = zod.object({

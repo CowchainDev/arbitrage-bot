@@ -240,6 +240,60 @@ router.post("/bots/:id/stop-and-close", requireBotSecret, async (req: Request, r
   }
 });
 
+router.get("/bots/:id/stats", async (req: Request, res: Response) => {
+  const id = Number(req.params.id);
+  if (!id) {
+    res.status(400).json({ error: "bad_request", message: "Invalid bot id" });
+    return;
+  }
+
+  try {
+    const [bot] = await db.select({ id: botConfigsTable.id }).from(botConfigsTable).where(eq(botConfigsTable.id, id));
+    if (!bot) {
+      res.status(404).json({ error: "not_found", message: "Bot not found" });
+      return;
+    }
+
+    const closedLegs = await db
+      .select()
+      .from(botLegsTable)
+      .where(and(eq(botLegsTable.botConfigId, id), eq(botLegsTable.status, "closed")));
+
+    const count = closedLegs.length;
+
+    let totalRealizedPnlUsd = 0;
+    let sumEntrySpread = 0;
+    let sumExitSpread = 0;
+    let exitSpreadCount = 0;
+    let totalVolumeUsd = 0;
+
+    for (const leg of closedLegs) {
+      const bybitQty = Number(leg.bybitQty);
+      const binanceQty = Number(leg.binanceQty);
+      const bybitEntry = Number(leg.bybitEntry);
+      const binanceEntry = Number(leg.binanceEntry);
+
+      if (leg.realizedPnlUsd != null) totalRealizedPnlUsd += Number(leg.realizedPnlUsd);
+      sumEntrySpread += Number(leg.spreadAtEntry);
+      if (leg.spreadAtExit != null) {
+        sumExitSpread += Number(leg.spreadAtExit);
+        exitSpreadCount++;
+      }
+      totalVolumeUsd += bybitQty * bybitEntry + binanceQty * binanceEntry;
+    }
+
+    res.json({
+      totalRealizedPnlUsd,
+      avgEntrySpread: count > 0 ? sumEntrySpread / count : 0,
+      avgExitSpread: exitSpreadCount > 0 ? sumExitSpread / exitSpreadCount : 0,
+      totalVolumeUsd,
+      closedLegCount: count,
+    });
+  } catch (err) {
+    res.status(500).json({ error: "internal_error", message: "Failed to fetch bot stats" });
+  }
+});
+
 router.get("/bots/:id/legs", async (req: Request, res: Response) => {
   const id = Number(req.params.id);
   if (!id) {

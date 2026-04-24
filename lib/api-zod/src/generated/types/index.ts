@@ -15,6 +15,7 @@ export * from "./botLegsResponse";
 export * from "./botLegStatus";
 export * from "./botListResponse";
 export * from "./botResponse";
+export * from "./botStats";
 export * from "./closedTrade";
 export * from "./closePositionRequest";
 export * from "./closePositionRequestBinanceSide";
