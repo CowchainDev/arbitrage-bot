@@ -522,17 +522,17 @@ export function TokenDetailPanel({
               const isBest = Math.abs(spread) === bestAbs;
               const color = Math.abs(spread) >= 1 ? "text-primary" : Math.abs(spread) >= 0.3 ? "text-amber-400" : "text-muted-foreground";
               return (
-                <div key={`${exA}-${exB}`} className={`grid grid-cols-3 text-xs px-2 py-1.5 items-center ${i % 2 === 0 ? "bg-card" : "bg-background"} ${isBest ? "ring-1 ring-inset ring-primary/30" : ""}`}>
-                  <span className="font-semibold flex items-center gap-1">
-                    <span className={colorA}>{labelA}</span>
-                    <span className="text-muted-foreground/50">/</span>
-                    <span className={colorB}>{labelB}</span>
+                <div key={`${exA}-${exB}`} className={`grid text-xs px-2 py-1.5 items-center ${i % 2 === 0 ? "bg-card" : "bg-background"} ${isBest ? "ring-1 ring-inset ring-primary/30" : ""}`} style={{ gridTemplateColumns: "minmax(0,1fr) auto auto" }}>
+                  <span className="font-semibold flex items-center gap-1 min-w-0 overflow-hidden">
+                    <span className={`${colorA} shrink-0`}>{labelA}</span>
+                    <span className="text-muted-foreground/50 shrink-0">/</span>
+                    <span className={`${colorB} shrink-0`}>{labelB}</span>
                     {isBest && (
-                      <span className="ml-1 px-1 py-px rounded text-[9px] font-bold bg-primary/20 text-primary leading-none">BEST</span>
+                      <span className="ml-1 px-1 py-px rounded text-[9px] font-bold bg-primary/20 text-primary leading-none shrink-0">BEST</span>
                     )}
                   </span>
-                  <span className={`font-mono font-semibold ${color}`}>{formatPct(spread)}</span>
-                  <span className="text-muted-foreground font-mono text-[10px]">
+                  <span className={`font-mono font-semibold pl-2 ${color}`}>{formatPct(spread)}</span>
+                  <span className="text-muted-foreground font-mono text-[10px] pl-2">
                     {Math.abs(spread) >= 1 ? "HIGH" : Math.abs(spread) >= 0.3 ? "MED" : "LOW"}
                   </span>
                 </div>
