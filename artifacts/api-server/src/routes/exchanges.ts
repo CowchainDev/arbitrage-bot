@@ -368,7 +368,7 @@ async function fetchAndCachePrices(): Promise<unknown[]> {
   const [
     bybitTickers, binanceTickers, gateTickers, okxTickers, mexcTickers,
     bybitFunding, binanceFunding, gateFunding, okxFunding, mexcFunding,
-    bybitOIResult, binanceOIResult,
+    bybitOIResult, binanceOIResult, gateOIResult, okxOIResult,
   ] = await Promise.allSettled([
     bybit.fetchTickers(undefined, { type: "linear" }),
     binance.fetchTickers(undefined, { type: "future" }),
@@ -382,6 +382,8 @@ async function fetchAndCachePrices(): Promise<unknown[]> {
     mexc.fetchFundingRates(),
     bybit.fetchOpenInterests(undefined, { type: "linear" }),
     binance.fetchOpenInterests(undefined, { type: "future" }),
+    gate.fetchOpenInterests(undefined, { type: "swap" }),
+    okx.fetchOpenInterests(undefined, { type: "swap" }),
   ]);
 
   const bybitMap   = buildTickerMap(bybitTickers.status   === "fulfilled" ? bybitTickers.value   : {});
@@ -415,13 +417,34 @@ async function fetchAndCachePrices(): Promise<unknown[]> {
   }
   const bybitOIMap   = bybitOIResult.status   === "fulfilled" ? buildOIMap(bybitOIResult.value   ?? {}) : new Map<string, number>();
   const binanceOIMap = binanceOIResult.status === "fulfilled" ? buildOIMap(binanceOIResult.value ?? {}) : new Map<string, number>();
+  const gateOIMap    = gateOIResult.status    === "fulfilled" ? buildOIMap(gateOIResult.value    ?? {}) : new Map<string, number>();
+  const okxOIMap     = okxOIResult.status     === "fulfilled" ? buildOIMap(okxOIResult.value     ?? {}) : new Map<string, number>();
 
   const allBases = new Set([
     ...bybitMap.keys(), ...binanceMap.keys(), ...gateMap.keys(),
     ...okxMap.keys(), ...mexcMap.keys(),
   ]);
 
-  const spreads = [];
+  // ── Pass 1: compute all spread info except depth ─────────────────────────
+  // We need best-spread legs before we know which MEXC symbols need orderbooks.
+  interface PassOneEntry {
+    base: string;
+    key: string;
+    bybitT:   ReturnType<typeof bybitMap.get>;
+    binanceT: ReturnType<typeof binanceMap.get>;
+    gateT:    ReturnType<typeof gateMap.get>;
+    okxT:     ReturnType<typeof okxMap.get>;
+    mexcT:    ReturnType<typeof mexcMap.get>;
+    bybitPriceC: number; binancePriceC: number; gatePriceC: number;
+    okxPriceC: number;   mexcPriceC: number;
+    spreadPct: number;
+    bestSpreadPct: number;
+    bestSpreadLeg: string | null;
+    openInterestUsd: number | null;
+    totalVolume: number;
+    needsMexcOb: boolean;
+  }
+  const passOne: PassOneEntry[] = [];
 
   for (const base of allBases) {
     const key = `${base}/USDT:USDT`;
@@ -481,40 +504,102 @@ async function fetchAndCachePrices(): Promise<unknown[]> {
 
     const { bestSpreadPct, bestSpreadLeg } = computeBestSpread(allPrices);
 
-    // Open interest: sum from explicit OI fetches for Bybit + Binance.
-    const oiBB = bybitOIMap.get(base) ?? 0;
-    const oiBN = binanceOIMap.get(base) ?? 0;
-    const openInterestUsd = (oiBB + oiBN) > 0 ? (oiBB + oiBN) : null;
+    // Open interest: sum from explicit OI fetches for Bybit, Binance, Gate, and OKX.
+    const oiBB   = bybitOIMap.get(base)   ?? 0;
+    const oiBN   = binanceOIMap.get(base) ?? 0;
+    const oiGate = gateOIMap.get(base)    ?? 0;
+    const oiOKX  = okxOIMap.get(base)     ?? 0;
+    const oiTotal = oiBB + oiBN + oiGate + oiOKX;
+    const openInterestUsd = oiTotal > 0 ? oiTotal : null;
+
+    // Does this symbol need a MEXC orderbook fetch?
+    // MEXC tickers don't include bidVolume/askVolume, so when MEXC is a leg
+    // of the best spread we must fall back to a shallow orderbook.
+    let needsMexcOb = false;
+    if (bestSpreadLeg && mexcT) {
+      const [cheapEx, expEx] = bestSpreadLeg.split("/");
+      if (cheapEx === "mexc" || expEx === "mexc") {
+        const mexcHasVol =
+          (typeof mexcT.bidVolume === "number" && mexcT.bidVolume > 0) ||
+          (typeof mexcT.askVolume === "number" && mexcT.askVolume > 0);
+        if (!mexcHasVol) needsMexcOb = true;
+      }
+    }
+
+    passOne.push({
+      base, key,
+      bybitT, binanceT, gateT, okxT, mexcT,
+      bybitPriceC, binancePriceC, gatePriceC, okxPriceC, mexcPriceC,
+      spreadPct, bestSpreadPct, bestSpreadLeg,
+      openInterestUsd, totalVolume, needsMexcOb,
+    });
+  }
+
+  // ── MEXC orderbook batch fetch ─────────────────────────────────────────────
+  // For symbols where MEXC is a spread leg but its ticker lacks bidVolume/askVolume,
+  // fetch a shallow (depth-5) orderbook so we can estimate depth.
+  const mexcObSymbols = passOne.filter(d => d.needsMexcOb).map(d => d.base);
+  const mexcObResults = await Promise.allSettled(
+    mexcObSymbols.map(base => mexc.fetchOrderBook(`${base}/USDT:USDT`, 5))
+  );
+  const mexcObMap = new Map<string, { bidVolume: number; askVolume: number }>();
+  mexcObSymbols.forEach((base, i) => {
+    const res = mexcObResults[i];
+    if (res.status === "fulfilled") {
+      const ob = res.value;
+      const topBid = ob.bids?.[0];
+      const topAsk = ob.asks?.[0];
+      mexcObMap.set(base, {
+        bidVolume: topBid?.[1] ?? 0,
+        askVolume: topAsk?.[1] ?? 0,
+      });
+    }
+  });
+
+  // ── Pass 2: compute depth with OB fallback and build final spread list ─────
+  const spreads = [];
+
+  for (const d of passOne) {
+    const {
+      base, key,
+      bybitT, binanceT, gateT, okxT, mexcT,
+      bybitPriceC, binancePriceC, gatePriceC, okxPriceC, mexcPriceC,
+      spreadPct, bestSpreadPct, bestSpreadLeg,
+      openInterestUsd, totalVolume,
+    } = d;
 
     // Spread depth: min(ask depth on cheaper leg, bid depth on expensive leg) in USD,
     // using the same exchange pair that forms the best spread.
-    // Only set when BOTH sides provide usable bid/ask volume — null otherwise (graceful degradation).
+    // For exchanges whose ticker lacks bidVolume/askVolume (e.g. MEXC) we fall
+    // back to the shallow orderbook fetched above.
     let spreadDepthUsd: number | null = null;
     if (bestSpreadLeg) {
       const [cheapExchange, expensiveExchange] = bestSpreadLeg.split("/");
+      const mexcOb = mexcObMap.get(base);
       const tickerMap: Record<string, ReturnType<typeof bybitMap.get>> = {
         bybit: bybitT, binance: binanceT, gate: gateT, okx: okxT, mexc: mexcT,
       };
       const priceMap: Record<string, number> = {
         bybit: bybitPriceC, binance: binancePriceC, gate: gatePriceC, okx: okxPriceC, mexc: mexcPriceC,
       };
-      const cheapT    = tickerMap[cheapExchange];
-      const expensiveT = tickerMap[expensiveExchange];
-      const cheapPx    = priceMap[cheapExchange];
-      const expensivePx = priceMap[expensiveExchange];
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const sideDepthUsd = (t: any, price: number, side: "bid" | "ask"): number => {
-        if (t == null || !price) return 0;
-        const vol = side === "bid" ? (t.bidVolume ?? 0) : (t.askVolume ?? 0);
-        const px  = side === "bid" ? (t.bid  ?? price)  : (t.ask ?? price);
+      const sideDepthUsd = (exName: string, side: "bid" | "ask"): number => {
+        const t: any = tickerMap[exName];
+        const price  = priceMap[exName];
+        if (!t || !price) return 0;
+        let vol: number = side === "bid" ? (t.bidVolume ?? 0) : (t.askVolume ?? 0);
+        // Fallback: use orderbook top-of-book volume when ticker doesn't supply it.
+        if ((!vol || vol <= 0) && exName === "mexc" && mexcOb) {
+          vol = side === "bid" ? mexcOb.bidVolume : mexcOb.askVolume;
+        }
+        const px = side === "bid" ? (t.bid ?? price) : (t.ask ?? price);
         return typeof vol === "number" && vol > 0 ? vol * px : 0;
       };
-      const cheapAsk    = sideDepthUsd(cheapT,    cheapPx,    "ask");
-      const expensiveBid = sideDepthUsd(expensiveT, expensivePx, "bid");
+      const cheapAsk    = sideDepthUsd(cheapExchange,    "ask");
+      const expensiveBid = sideDepthUsd(expensiveExchange, "bid");
       if (cheapAsk > 0 && expensiveBid > 0) {
         spreadDepthUsd = Math.min(cheapAsk, expensiveBid);
       }
-      // If one or both sides have no volume data, spreadDepthUsd stays null
     }
 
     spreads.push({
