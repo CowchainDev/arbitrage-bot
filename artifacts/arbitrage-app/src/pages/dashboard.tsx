@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import { Link } from "wouter";
-import { Star, Search, TrendingUp, Zap, AlertCircle, ChevronDown, ChevronUp, X, Bell, BellOff, Bot, LayoutList, LayoutGrid, ChevronsUpDown, Clock } from "lucide-react";
+import { Star, Search, TrendingUp, AlertCircle, ChevronDown, ChevronUp, X, Bell, BellOff, Bot, LayoutList, LayoutGrid, ChevronsUpDown, Clock } from "lucide-react";
 import { useGetExchangePrices, getGetExchangePricesQueryKey, useGetPositions, getGetPositionsQueryKey } from "@workspace/api-client-react";
 import type { TokenSpread, Position, BotConfig } from "@workspace/api-client-react";
 import { TokenDetailPanel } from "@/components/token-detail-panel";
@@ -605,7 +605,7 @@ export default function Dashboard() {
       return next;
     });
 
-  const { tokens: streamTokens, isDemoData: streamIsDemo, streamStatus, isFetching: streamFetching } = usePriceStream();
+  const { tokens: streamTokens, streamStatus, isFetching: streamFetching } = usePriceStream();
   const { isVisible: isPageVisible, absenceSeconds } = usePageVisibility();
 
   const STALE_THRESHOLD_SECONDS = 5 * 60;
@@ -659,15 +659,16 @@ export default function Dashboard() {
   const tokens: TokenSpread[] = wsActive && streamTokens.length > 0
     ? streamTokens
     : (pricesQuery.data ?? []);
-  const isDemoData = wsActive ? streamIsDemo : (tokens.length > 0 && tokens[0].demo === true);
   const isFetching = wsActive ? streamFetching : pricesQuery.isFetching;
   const isLoading = wsActive ? (streamTokens.length === 0 && streamStatus === "connecting") : pricesQuery.isLoading;
   const isError = !wsActive && pricesQuery.isError;
+  // Backend returned [] (cold start — real data not ready yet)
+  const isAwaitingPrices = !isLoading && !isError && tokens.length === 0;
 
   useEffect(() => {
     if (tokens.length === 0) return;
-    setDataSource(isDemoData ? "demo" : "live");
-  }, [isDemoData, tokens.length, setDataSource]);
+    setDataSource("live");
+  }, [tokens.length, setDataSource]);
 
   useSpreadAlerts(tokens, watched, settings);
 
@@ -875,13 +876,10 @@ export default function Dashboard() {
           </span>
         </div>
       )}
-      {isDemoData && (
-        <div className="flex items-center gap-3 bg-card border border-amber-500/20 rounded px-3 py-2 text-xs shrink-0">
-          <Zap className="w-3 h-3 text-amber-400 shrink-0 animate-pulse" />
-          <span className="text-muted-foreground">
-            <span className="text-amber-400 font-semibold">LOADING</span>
-            {" — "}fetching live prices from exchanges, refreshes automatically in a few seconds…
-          </span>
+      {isAwaitingPrices && (
+        <div className="flex items-center gap-3 bg-card border border-border rounded px-3 py-2 text-xs shrink-0">
+          <span className="inline-block w-3 h-3 border border-primary border-t-transparent rounded-full animate-spin shrink-0" />
+          <span className="text-muted-foreground">Fetching live prices from exchanges…</span>
         </div>
       )}
 
@@ -1152,7 +1150,7 @@ export default function Dashboard() {
                     />
                   );
                 })}
-                {filteredTokens.length === 0 && (
+                {filteredTokens.length === 0 && tokens.length > 0 && (
                   <div className="text-center text-muted-foreground/40 py-12 text-xs font-mono">NO TOKENS MATCH FILTERS</div>
                 )}
               </div>
@@ -1175,7 +1173,7 @@ export default function Dashboard() {
                     />
                   );
                 })}
-                {filteredTokens.length === 0 && (
+                {filteredTokens.length === 0 && tokens.length > 0 && (
                   <div className="col-span-full text-center text-muted-foreground/40 py-12 text-xs font-mono">NO TOKENS MATCH FILTERS</div>
                 )}
               </div>

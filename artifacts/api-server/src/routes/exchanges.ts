@@ -984,26 +984,11 @@ export async function fetchPriceSpreads(): Promise<ReturnType<typeof generateDem
       return priceCache!.data as ReturnType<typeof generateDemoSpreads>;
     }
 
-    // No valid cache yet — kick off a fetch (or join the in-flight one).
+    // No valid cache — kick off a fetch and return empty until real data arrives.
     ensurePriceFetch();
-
-    // If the fetch is going to take a while (cold start), don't block the caller —
-    // return demo data immediately so the dashboard renders, then live data will
-    // arrive on the next poll cycle (every ~9 s).
-    if (!priceCache) {
-      return generateDemoSpreads();
-    }
-
-    const spreads = await priceFetchInFlight!;
-    if (!spreads || (spreads as unknown[]).length === 0) {
-      const demo = generateDemoSpreads();
-      priceCache = { data: demo, ts: Date.now() - PRICE_CACHE_TTL_MS + 15_000 };
-      return demo;
-    }
-
-    return spreads as ReturnType<typeof generateDemoSpreads>;
+    return [] as unknown as ReturnType<typeof generateDemoSpreads>;
   } catch {
-    return generateDemoSpreads();
+    return [] as unknown as ReturnType<typeof generateDemoSpreads>;
   }
 }
 
@@ -1112,15 +1097,10 @@ router.get("/exchanges/klines", async (req: Request, res: Response) => {
 router.get("/exchanges/prices", async (req: Request, res: Response) => {
   try {
     const spreads = await fetchPriceSpreads();
-    if (spreads.length > 0 && (spreads[0] as { demo?: boolean }).demo) {
-      req.log.warn("Live exchange data unavailable, returning demo data");
-    }
     res.json(spreads);
   } catch (err) {
-    req.log.error({ err }, "Error fetching exchange prices, returning demo data");
-    const demo = generateDemoSpreads();
-    priceCache = { data: demo, ts: Date.now() - PRICE_CACHE_TTL_MS + 15_000 };
-    res.json(demo);
+    req.log.error({ err }, "Error fetching exchange prices");
+    res.json([]);
   }
 });
 
