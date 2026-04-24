@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import { Link } from "wouter";
-import { Star, Search, TrendingUp, TrendingDown, Zap, AlertCircle, ChevronDown, ChevronUp, X, Bell, BellOff, Bot } from "lucide-react";
+import { Star, Search, TrendingUp, Zap, AlertCircle, ChevronDown, ChevronUp, X, Bell, BellOff, Bot } from "lucide-react";
 import { useGetExchangePrices, getGetExchangePricesQueryKey, useGetPositions, getGetPositionsQueryKey } from "@workspace/api-client-react";
 import type { TokenSpread, Position, BotConfig } from "@workspace/api-client-react";
 import { TokenDetailPanel } from "@/components/token-detail-panel";
@@ -12,8 +12,6 @@ import { useFavourites } from "@/hooks/use-favourites";
 import { useWatchedTokens } from "@/hooks/use-watched-tokens";
 import { useAlertSettings } from "@/hooks/use-alert-settings";
 import { useSpreadAlerts } from "@/hooks/use-spread-alerts";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
 import { usePriceStream } from "@/hooks/use-price-stream";
 import { useConnectionStatus } from "@/contexts/connection-status";
 import { usePageVisibility } from "@/hooks/use-page-visibility";
@@ -22,8 +20,6 @@ import {
   PositionRow,
   botLegToPosition,
   formatPrice,
-  formatPct,
-  formatPnlWithPct,
 } from "@/components/position-rows";
 
 type SortOption = "spread_desc" | "spread_asc" | "volume_desc" | "alpha";
@@ -77,10 +73,10 @@ function parseVolume(v: string): number {
 
 function formatUsd(v: number | null | undefined): string {
   if (v == null) return "-";
-  if (v >= 1e9) return `$${(v / 1e9).toFixed(1)}B`;
-  if (v >= 1e6) return `$${(v / 1e6).toFixed(0)}M`;
-  if (v >= 1e3) return `$${(v / 1e3).toFixed(0)}K`;
-  return `$${v.toFixed(0)}`;
+  if (v >= 1e9) return `${(v / 1e9).toFixed(1)}B`;
+  if (v >= 1e6) return `${(v / 1e6).toFixed(0)}M`;
+  if (v >= 1e3) return `${(v / 1e3).toFixed(0)}K`;
+  return `${v.toFixed(0)}`;
 }
 
 function getExchangeFields(token: TokenSpread, ex: string) {
@@ -101,8 +97,29 @@ const EXCHANGE_COLORS: Record<string, string> = {
   bybit: "text-amber-400", binance: "text-violet-400", gate: "text-sky-400", okx: "text-emerald-400", mexc: "text-rose-400",
 };
 
-function TokenCard({
+const ROW_COLS = "grid grid-cols-[130px_82px_82px_68px_100px_100px_66px_72px_72px_66px_60px] items-center gap-0";
+
+function TableHeader() {
+  return (
+    <div className={`${ROW_COLS} px-2 py-1.5 text-[10px] uppercase tracking-widest font-semibold text-muted-foreground/60 border-b border-border/60 bg-muted/20 sticky top-0 z-10 select-none`}>
+      <span>Symbol</span>
+      <span className="text-right">Spread</span>
+      <span className="text-right">Eff</span>
+      <span className="text-right">Pair</span>
+      <span className="text-right">Ask</span>
+      <span className="text-right">Bid</span>
+      <span className="text-right">FR Δ</span>
+      <span className="text-right">Vol 24h</span>
+      <span className="text-right">OI</span>
+      <span className="text-right">Depth</span>
+      <span />
+    </div>
+  );
+}
+
+function TokenRow({
   token,
+  rowIndex,
   isSelected,
   isFavourite,
   isWatched,
@@ -113,6 +130,7 @@ function TokenCard({
   botOpenLegsCount,
 }: {
   token: TokenSpread;
+  rowIndex: number;
   isSelected: boolean;
   isFavourite: boolean;
   isWatched: boolean;
@@ -124,7 +142,7 @@ function TokenCard({
 }) {
   const legsCount = botOpenLegsCount ?? 0;
   const showDot = bot != null;
-  const dotColor = legsCount > 0 ? "bg-amber-400" : bot?.enabled ? "bg-emerald-500" : "bg-muted-foreground";
+  const dotColor = legsCount > 0 ? "bg-amber-400" : bot?.enabled ? "bg-emerald-500" : "bg-muted-foreground/50";
   const dotTitle = legsCount > 0
     ? `Bot: ${legsCount} leg${legsCount !== 1 ? "s" : ""} open`
     : bot?.enabled ? "Bot: running" : "Bot: stopped";
@@ -136,116 +154,131 @@ function TokenCard({
   const effSpread  = cheapData.ask != null && expData.bid != null && cheapData.ask > 0
     ? (expData.bid - cheapData.ask) / cheapData.ask * 100
     : null;
-  const spreadColor = rawSpread >= 1 ? "text-primary" : rawSpread >= 0.3 ? "text-amber-400" : "text-muted-foreground";
+  const spreadColor = rawSpread >= 1
+    ? "text-primary font-bold"
+    : rawSpread >= 0.3
+    ? "text-amber-400 font-semibold"
+    : "text-muted-foreground";
+  const effColor = effSpread != null && effSpread >= 0.3 ? "text-primary/80" : "text-muted-foreground/50";
+
+  // Funding rate delta between legs
+  const frDelta = cheapData.funding != null && expData.funding != null
+    ? (expData.funding - cheapData.funding) * 100
+    : null;
+  const frColor = frDelta != null
+    ? frDelta > 0 ? "text-primary/70" : frDelta < 0 ? "text-destructive/70" : "text-muted-foreground/50"
+    : "text-muted-foreground/50";
+
+  const rowBg = isSelected
+    ? "bg-primary/8 border-l-2 border-l-primary"
+    : rowIndex % 2 === 0
+    ? "bg-transparent hover:bg-muted/30"
+    : "bg-muted/10 hover:bg-muted/30";
 
   return (
     <div
       onClick={onSelect}
       data-testid={`card-token-${token.symbol}`}
-      className={`bg-card border rounded p-3 cursor-pointer transition-all hover:border-primary/40 select-none ${
-        isSelected ? "border-primary/60 bg-primary/5" : "border-border"
-      } ${isWatched ? "border-primary/30" : ""}`}
+      className={`${ROW_COLS} px-2 cursor-pointer transition-colors border-b border-border/30 group select-none ${rowBg}`}
+      style={{ minHeight: "34px" }}
     >
-      {/* Header */}
-      <div className="flex items-start justify-between mb-1.5">
-        <div className="flex items-center gap-1.5">
-          <span className="font-semibold text-sm">{token.symbol}</span>
-          <button
-            onClick={onToggleFavourite}
-            className="text-muted-foreground hover:text-amber-400 transition-colors"
-            data-testid={`btn-favourite-${token.symbol}`}
-          >
-            <Star className={`w-3.5 h-3.5 ${isFavourite ? "fill-amber-400 text-amber-400" : ""}`} />
-          </button>
-          <button
-            onClick={onToggleWatch}
-            className={`transition-colors ${isWatched ? "text-primary" : "text-muted-foreground hover:text-primary"}`}
-            data-testid={`btn-watch-${token.symbol}`}
-            title={isWatched ? "Stop watching" : "Watch spread"}
-          >
-            {isWatched ? <Bell className="w-3.5 h-3.5 fill-primary/20" /> : <BellOff className="w-3.5 h-3.5" />}
-          </button>
-          {showDot && (
-            <div
-              className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotColor}`}
-              title={dotTitle}
-              data-testid={`bot-dot-${token.symbol}`}
-            />
-          )}
-        </div>
-        <div className="text-right leading-tight">
-          <div className={`font-mono font-semibold text-sm ${spreadColor}`}>
-            {isFinite(rawSpread) ? `+${rawSpread.toFixed(4)}%` : "-"}
-          </div>
-          {effSpread != null && isFinite(effSpread) && (
-            <div className={`font-mono text-[10px] ${effSpread >= 0.3 ? "text-primary/70" : "text-muted-foreground"}`}>
-              eff +{effSpread.toFixed(4)}%
-            </div>
-          )}
-          {token.bestSpreadLeg && (
-            <div className="text-[10px] font-mono text-muted-foreground leading-tight">
-              {token.bestSpreadLeg.split("/").map((ex, i) => (
-                <span key={ex}>
-                  {i > 0 && <span className="text-muted-foreground/40">/</span>}
-                  <span className={EXCHANGE_COLORS[ex] ?? ""}>{EXCHANGE_LABELS[ex] ?? ex.toUpperCase()}</span>
-                </span>
-              ))}
-            </div>
-          )}
-        </div>
+      {/* Symbol + controls */}
+      <div className="flex items-center gap-1 min-w-0 py-1">
+        <span className="font-mono font-semibold text-xs text-foreground truncate">{token.symbol}</span>
+        <button
+          onClick={onToggleFavourite}
+          className="text-muted-foreground/30 hover:text-amber-400 transition-colors shrink-0 opacity-0 group-hover:opacity-100"
+          data-testid={`btn-favourite-${token.symbol}`}
+        >
+          <Star className={`w-3 h-3 ${isFavourite ? "fill-amber-400 text-amber-400 opacity-100" : ""}`} />
+        </button>
+        <button
+          onClick={onToggleWatch}
+          className={`shrink-0 transition-colors opacity-0 group-hover:opacity-100 ${isWatched ? "text-primary opacity-100" : "text-muted-foreground/30 hover:text-primary"}`}
+          data-testid={`btn-watch-${token.symbol}`}
+          title={isWatched ? "Stop watching" : "Watch spread"}
+        >
+          {isWatched ? <Bell className="w-3 h-3 fill-primary/20" /> : <BellOff className="w-3 h-3" />}
+        </button>
+        {showDot && (
+          <div
+            className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotColor}`}
+            title={dotTitle}
+            data-testid={`bot-dot-${token.symbol}`}
+          />
+        )}
+        {isFavourite && !showDot && (
+          <Star className="w-2.5 h-2.5 fill-amber-400 text-amber-400 shrink-0" />
+        )}
       </div>
 
-      {/* Two-exchange ask / bid boxes */}
-      {cheapEx && expensiveEx && (
-        <div className="grid grid-cols-2 gap-1 mb-1.5">
-          <div className="bg-primary/5 border border-primary/10 rounded px-1.5 py-1">
-            <div className={`font-semibold text-[10px] mb-0.5 ${EXCHANGE_COLORS[cheapEx] ?? ""}`}>
-              {EXCHANGE_LABELS[cheapEx] ?? cheapEx.toUpperCase()} ↑ Ask
-            </div>
-            <div className="font-mono text-xs text-foreground">{formatPrice(cheapData.ask)}</div>
-            {cheapData.funding != null && (
-              <div className={`text-[10px] font-mono mt-0.5 ${cheapData.funding > 0 ? "text-primary/60" : "text-destructive/60"}`}>
-                FR {formatFunding(cheapData.funding)}
-              </div>
-            )}
-          </div>
-          <div className="bg-destructive/5 border border-destructive/10 rounded px-1.5 py-1">
-            <div className={`font-semibold text-[10px] mb-0.5 ${EXCHANGE_COLORS[expensiveEx] ?? ""}`}>
-              {EXCHANGE_LABELS[expensiveEx] ?? expensiveEx.toUpperCase()} ↓ Bid
-            </div>
-            <div className="font-mono text-xs text-foreground">{formatPrice(expData.bid)}</div>
-            {expData.funding != null && (
-              <div className={`text-[10px] font-mono mt-0.5 ${expData.funding > 0 ? "text-primary/60" : "text-destructive/60"}`}>
-                FR {formatFunding(expData.funding)}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+      {/* Raw spread */}
+      <div className={`font-mono text-xs text-right pr-3 tabular-nums ${spreadColor}`}>
+        {isFinite(rawSpread) ? `+${rawSpread.toFixed(4)}%` : "-"}
+      </div>
 
-      {/* Footer: depth · volume · Open button */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-          {token.spreadDepthUsd != null && (
-            <span title="Fillable depth at this spread">⬡ {formatUsd(token.spreadDepthUsd)}</span>
-          )}
-          {token.volume24h != null && (
-            <span className="text-muted-foreground/50">{formatUsd(token.volume24h)}</span>
-          )}
-        </div>
+      {/* Eff spread */}
+      <div className={`font-mono text-[10px] text-right pr-3 tabular-nums ${effColor}`}>
+        {effSpread != null && isFinite(effSpread) ? `${effSpread >= 0 ? "+" : ""}${effSpread.toFixed(4)}%` : "-"}
+      </div>
+
+      {/* Exchange pair labels */}
+      <div className="text-right pr-2">
+        {cheapEx && expensiveEx ? (
+          <span className="text-[10px] font-mono leading-none">
+            <span className={EXCHANGE_COLORS[cheapEx] ?? "text-muted-foreground"}>{EXCHANGE_LABELS[cheapEx] ?? cheapEx.toUpperCase()}</span>
+            <span className="text-muted-foreground/30">/</span>
+            <span className={EXCHANGE_COLORS[expensiveEx] ?? "text-muted-foreground"}>{EXCHANGE_LABELS[expensiveEx] ?? expensiveEx.toUpperCase()}</span>
+          </span>
+        ) : (
+          <span className="text-muted-foreground/30 text-[10px]">-/-</span>
+        )}
+      </div>
+
+      {/* Ask price (cheap exchange) */}
+      <div className="font-mono text-xs text-right pr-3 tabular-nums text-foreground/80">
+        {cheapData.ask != null ? formatPrice(cheapData.ask) : <span className="text-muted-foreground/30">-</span>}
+      </div>
+
+      {/* Bid price (expensive exchange) */}
+      <div className="font-mono text-xs text-right pr-3 tabular-nums text-foreground/80">
+        {expData.bid != null ? formatPrice(expData.bid) : <span className="text-muted-foreground/30">-</span>}
+      </div>
+
+      {/* Funding rate delta */}
+      <div className={`font-mono text-[10px] text-right pr-3 tabular-nums ${frColor}`}>
+        {frDelta != null ? `${frDelta >= 0 ? "+" : ""}${frDelta.toFixed(4)}%` : "-"}
+      </div>
+
+      {/* Volume 24h */}
+      <div className="font-mono text-[10px] text-right pr-3 tabular-nums text-muted-foreground">
+        {formatUsd(token.volume24h)}
+      </div>
+
+      {/* Open Interest */}
+      <div className="font-mono text-[10px] text-right pr-3 tabular-nums text-muted-foreground">
+        {formatUsd(token.openInterestUsd)}
+      </div>
+
+      {/* Depth */}
+      <div className="font-mono text-[10px] text-right pr-3 tabular-nums text-muted-foreground">
+        {formatUsd(token.spreadDepthUsd)}
+      </div>
+
+      {/* Open ↗ */}
+      <div className="text-right">
         <Link
           href={`/token/${token.symbol}`}
           onClick={(e: React.MouseEvent) => e.stopPropagation()}
-          className="text-[10px] text-muted-foreground hover:text-foreground border border-border/60 hover:border-border rounded px-1.5 py-0.5 transition-colors font-medium shrink-0"
+          className="text-[10px] text-muted-foreground/40 hover:text-primary border border-transparent hover:border-primary/30 rounded px-1.5 py-0.5 transition-colors font-mono shrink-0 opacity-0 group-hover:opacity-100"
           data-testid={`btn-open-${token.symbol}`}
         >
-          Open ↗
+          ↗
         </Link>
       </div>
     </div>
   );
 }
-
 
 export default function Dashboard() {
   const { getRequestHeaders, hasCredentials } = useApiCredentials();
@@ -253,7 +286,7 @@ export default function Dashboard() {
   const { watched, isWatched, getThreshold, toggleWatch } = useWatchedTokens();
   const { settings } = useAlertSettings();
   const requestHeaders = getRequestHeaders();
-  const { localPositions, savePosition, removePosition } = useLocalPositions();
+  const { localPositions, removePosition } = useLocalPositions();
   const { setDataSource } = useConnectionStatus();
   const { getBotStatusForSymbol, allOpenLegs } = useBots();
   const { getBotRequestOptions } = useBotSecret();
@@ -382,7 +415,6 @@ export default function Dashboard() {
         removePosition(lp.symbol);
       }
     }
-  // localPositions intentionally omitted — including it would cause a remove→update→effect loop
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [polledPositions, hasCredentials, positionsQuery.isLoading, positionsQuery.isError, positionsQuery.dataUpdatedAt, removePosition]);
 
@@ -392,19 +424,12 @@ export default function Dashboard() {
   );
 
   const positions = useMemo(() => {
-    // Symbols with at least one bot leg — the exchange-polled row for these is
-    // the exchange's aggregated total (inflated), so we hide it in favour of the
-    // individual bot leg rows which already track each trade accurately.
     const botLegSymbols = new Set(botLegPositions.map((p) => p.symbol));
     const filteredPolled = polledPositions.filter((p) => !botLegSymbols.has(p.symbol));
-    // Use original polledPositions (pre-filter) so local cached positions for
-    // polled symbols are still suppressed, AND additionally exclude any local
-    // position whose symbol is covered by bot legs.
     const polledSymbols = new Set(polledPositions.map((p) => p.symbol));
     const localOnly = localPositions.filter(
       (p) => !polledSymbols.has(p.symbol) && !botLegSymbols.has(p.symbol)
     );
-    // Bot legs have distinct IDs (bot-leg-{id}); include them alongside other positions
     const existingIds = new Set([...filteredPolled.map((p) => p.id), ...localOnly.map((p) => p.id)]);
     const uniqueBotLegs = botLegPositions.filter((p) => !existingIds.has(p.id));
     return [...filteredPolled, ...localOnly, ...uniqueBotLegs];
@@ -427,7 +452,6 @@ export default function Dashboard() {
     return groups;
   }, [positions]);
 
-  // Number of visible rows in the positions table (grouped multi-leg symbols count as 1)
   const visiblePositionCount = useMemo(() => {
     const multiLegSymbols = new Set(
       [...botLegGroupsBySymbol.entries()]
@@ -497,74 +521,68 @@ export default function Dashboard() {
   const selectedToken = tokens.find((t) => t.symbol === selectedSymbol) ?? null;
 
   return (
-    <div className="space-y-3">
-      {/* No credentials banner */}
+    <div className="flex flex-col gap-2" style={{ height: "calc(100vh - 88px)" }}>
+      {/* Banners */}
       {!hasCredentials && (
-        <div className="flex items-center gap-3 bg-card border border-amber-500/20 rounded px-4 py-3 text-sm">
-          <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+        <div className="flex items-center gap-3 bg-card border border-amber-500/20 rounded px-3 py-2 text-xs shrink-0">
+          <AlertCircle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
           <span className="text-muted-foreground">
-            Add your API keys in{" "}
+            Add API keys in{" "}
             <Link href="/settings" className="text-foreground underline hover:text-primary">Settings</Link>
             {" "}to see live balances and open positions. Price spreads load without keys.
           </span>
         </div>
       )}
-
-      {/* Demo data banner */}
       {isDemoData && (
-        <div className="flex items-center gap-3 bg-card border border-violet-500/20 rounded px-4 py-2 text-xs">
-          <Zap className="w-3.5 h-3.5 text-violet-400 shrink-0" />
+        <div className="flex items-center gap-3 bg-card border border-violet-500/20 rounded px-3 py-2 text-xs shrink-0">
+          <Zap className="w-3 h-3 text-violet-400 shrink-0" />
           <span className="text-muted-foreground">
-            <span className="text-violet-400 font-semibold">DEMO MODE</span>
-            {" — "}Live exchange data unavailable from this server region. Deploy the backend to a supported region for real-time spreads. Prices shown are simulated.
+            <span className="text-violet-400 font-semibold">DEMO</span>
+            {" — "}live exchange data unavailable from this server region. Deploy to a supported region for real-time spreads.
           </span>
         </div>
       )}
 
       {/* Open Positions */}
       {positions.length > 0 && (
-        <div className="bg-card border border-border rounded-md overflow-hidden">
+        <div className="bg-card border border-border rounded overflow-hidden shrink-0">
           <button
             onClick={() => setShowPositions(!showPositions)}
-            className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-muted/30 transition-colors"
+            className="w-full flex items-center justify-between px-3 py-2 hover:bg-muted/30 transition-colors"
             data-testid="btn-toggle-positions"
           >
-            <div className="flex items-center gap-2 text-sm font-semibold">
-              <TrendingUp className="w-4 h-4 text-primary" />
-              Open Positions
-              <span className="bg-primary/20 text-primary text-xs px-1.5 py-0.5 rounded">{visiblePositionCount}</span>
+            <div className="flex items-center gap-2 text-xs font-semibold">
+              <TrendingUp className="w-3.5 h-3.5 text-primary" />
+              <span className="uppercase tracking-wider">Open Positions</span>
+              <span className="bg-primary/20 text-primary text-[10px] px-1.5 py-0 rounded font-mono">{visiblePositionCount}</span>
               {streamStatus === "open" ? (
-                <span className="flex items-center gap-1 text-xs font-medium px-1.5 py-0.5 rounded bg-green-500/15 text-green-500">
-                  <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-                  Live
+                <span className="flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded bg-green-500/15 text-green-500">
+                  <span className="w-1 h-1 rounded-full bg-green-500 animate-pulse" />Live
                 </span>
               ) : streamStatus === "connecting" ? (
-                <span className="flex items-center gap-1 text-xs font-medium px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-400">
-                  <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
-                  Connecting
+                <span className="flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-400">
+                  <span className="w-1 h-1 rounded-full bg-blue-400 animate-pulse" />Connecting
                 </span>
               ) : (
-                <span className="flex items-center gap-1 text-xs font-medium px-1.5 py-0.5 rounded bg-yellow-500/15 text-yellow-500">
-                  <span className="w-1.5 h-1.5 rounded-full bg-yellow-500" />
-                  Polling
+                <span className="flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded bg-yellow-500/15 text-yellow-500">
+                  <span className="w-1 h-1 rounded-full bg-yellow-500" />Polling
                 </span>
               )}
             </div>
-            {showPositions ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
+            {showPositions ? <ChevronUp className="w-3.5 h-3.5 text-muted-foreground" /> : <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />}
           </button>
-
           {showPositions && (
             <div>
-              <div className="grid grid-cols-9 gap-2 px-3 py-2 text-xs text-muted-foreground uppercase tracking-wider bg-muted/30 font-semibold">
+              <div className="grid grid-cols-9 gap-2 px-3 py-1.5 text-[10px] text-muted-foreground uppercase tracking-wider bg-muted/30 font-semibold border-t border-border/40">
                 <span>Symbol</span>
                 <span>Side</span>
                 <span>Size</span>
-                <span>Entry Price (BB/BN)</span>
-                <span>Price (BB/BN)</span>
+                <span>Entry Price</span>
+                <span>Price</span>
                 <span>Spread</span>
                 <span>P/L</span>
                 <span>Opened</span>
-                <span></span>
+                <span />
               </div>
               {(() => {
                 const rendered = new Set<string>();
@@ -614,181 +632,190 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Filters */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <div className="relative flex-1 min-w-40 max-w-72">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-          <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search tokens..."
-            className="pl-8 bg-card border-border text-sm h-8"
-            data-testid="input-search"
-          />
-        </div>
+      {/* Main layout: table + terminal */}
+      <div className="flex gap-3 min-h-0 flex-1">
+        {/* Token table */}
+        <div className="flex flex-col min-h-0 flex-1 bg-card border border-border rounded overflow-hidden">
+          {/* Toolbar */}
+          <div className="flex items-center gap-1.5 px-2 py-2 border-b border-border/60 bg-muted/10 shrink-0 flex-wrap">
+            {/* Search */}
+            <div className="relative">
+              <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground/50" />
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search..."
+                className="pl-6 pr-2 bg-background border border-border/60 rounded text-xs h-7 w-32 text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-primary/50 font-mono"
+                data-testid="input-search"
+              />
+            </div>
 
-        <button
-          onClick={() => setFavsOnly(!favsOnly)}
-          data-testid="btn-favs-only"
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium border transition-all ${
-            favsOnly
-              ? "bg-amber-400/10 border-amber-400/30 text-amber-400"
-              : "bg-card border-border text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          <Star className={`w-3.5 h-3.5 ${favsOnly ? "fill-amber-400" : ""}`} />
-          Favourites
-        </button>
-
-        <select
-          value={sort}
-          onChange={(e) => setSort(e.target.value as SortOption)}
-          className="bg-card border border-border rounded text-xs px-2.5 py-1.5 text-foreground h-8 cursor-pointer"
-          data-testid="select-sort"
-        >
-          <option value="spread_desc">Highest Spread</option>
-          <option value="spread_asc">Lowest Spread</option>
-          <option value="volume_desc">Highest Volume</option>
-          <option value="alpha">Alphabetical</option>
-        </select>
-
-        <input
-          type="text"
-          value={minVolume}
-          onChange={(e) => setMinVolume(e.target.value)}
-          placeholder="Объем 24ч"
-          className="bg-card border border-border rounded text-xs px-2.5 py-1.5 text-foreground h-8 w-28 placeholder:text-muted-foreground"
-          data-testid="select-min-volume"
-          title="Мин. объем торгов за 24ч — поддерживает 1k, 5M, 1B"
-        />
-
-        <input
-          type="text"
-          value={minOpenInterest}
-          onChange={(e) => setMinOpenInterest(e.target.value)}
-          placeholder="Откр. интерес"
-          className="bg-card border border-border rounded text-xs px-2.5 py-1.5 text-foreground h-8 w-32 placeholder:text-muted-foreground"
-          data-testid="select-min-open-interest"
-          title="Мин. открытый интерес (суммарно Bybit + Binance) — 1k, 5M, 1B"
-        />
-
-        <input
-          type="text"
-          value={minSpreadDepth}
-          onChange={(e) => setMinSpreadDepth(e.target.value)}
-          placeholder="Объем спреда"
-          className="bg-card border border-border rounded text-xs px-2.5 py-1.5 text-foreground h-8 w-32 placeholder:text-muted-foreground"
-          data-testid="select-min-spread-depth"
-          title="Мин. глубина стакана на спреде — сколько USD можно исполнить по лучшей цене — 1k, 5M, 1B"
-        />
-
-        <div className="flex items-center gap-1" data-testid="exchange-toggles">
-          {([
-            { key: "bybit",   label: "BB",  on: "text-amber-400 border-amber-400/40 bg-amber-400/10" },
-            { key: "binance", label: "BN",  on: "text-violet-400 border-violet-400/40 bg-violet-400/10" },
-            { key: "gate",    label: "GT",  on: "text-sky-400 border-sky-400/40 bg-sky-400/10" },
-            { key: "okx",     label: "OKX", on: "text-emerald-400 border-emerald-400/40 bg-emerald-400/10" },
-            { key: "mexc",    label: "MX",  on: "text-rose-400 border-rose-400/40 bg-rose-400/10" },
-          ] as const).map(({ key, label, on }) => (
+            {/* Favourites */}
             <button
-              key={key}
-              onClick={() => toggleExchange(key)}
-              title={selectedExchanges.has(key) ? `Hide ${label}` : `Show ${label}`}
-              className={`px-2 py-1 rounded text-[11px] font-semibold font-mono border transition-all ${
-                selectedExchanges.has(key)
-                  ? on
-                  : "text-muted-foreground/40 border-border bg-card opacity-50"
+              onClick={() => setFavsOnly(!favsOnly)}
+              data-testid="btn-favs-only"
+              className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] font-semibold border transition-all h-7 ${
+                favsOnly
+                  ? "bg-amber-400/10 border-amber-400/30 text-amber-400"
+                  : "bg-transparent border-border/60 text-muted-foreground/60 hover:text-foreground hover:border-border"
               }`}
             >
-              {label}
+              <Star className={`w-3 h-3 ${favsOnly ? "fill-amber-400" : ""}`} />
+              FAV
             </button>
-          ))}
-        </div>
 
-        {filtersActive && (
-          <button
-            onClick={resetFilters}
-            data-testid="btn-reset-filters"
-            className="flex items-center gap-1 px-2.5 py-1.5 rounded text-xs font-medium border border-border bg-card text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-all"
-            title="Reset all filters to defaults"
-          >
-            <X className="w-3 h-3" />
-            Reset filters
-          </button>
-        )}
+            {/* Sort */}
+            <select
+              value={sort}
+              onChange={(e) => setSort(e.target.value as SortOption)}
+              className="bg-background border border-border/60 rounded text-[10px] px-2 py-0 text-foreground h-7 cursor-pointer font-mono focus:outline-none focus:border-primary/50"
+              data-testid="select-sort"
+            >
+              <option value="spread_desc">▼ SPREAD</option>
+              <option value="spread_asc">▲ SPREAD</option>
+              <option value="volume_desc">▼ VOL</option>
+              <option value="alpha">A–Z</option>
+            </select>
 
-        <div className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
-          {streamStatus === "open" ? (
-            <span className="flex items-center gap-1 font-medium px-1.5 py-0.5 rounded bg-green-500/15 text-green-500">
-              <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-              Live
-            </span>
-          ) : streamStatus === "connecting" ? (
-            <span className="flex items-center gap-1 font-medium px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-400">
-              <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
-              Connecting
-            </span>
-          ) : (
-            <span className="flex items-center gap-1 font-medium px-1.5 py-0.5 rounded bg-yellow-500/15 text-yellow-500">
-              <span className="w-1.5 h-1.5 rounded-full bg-yellow-500" />
-              Polling
-            </span>
-          )}
-          <div className={`w-1.5 h-1.5 rounded-full live-dot ${isFetching ? "bg-primary" : "bg-muted-foreground"}`} />
-          {isLoading ? "Loading..." : `${filteredTokens.length} pairs`}
-        </div>
-      </div>
+            {/* Filter inputs */}
+            <input
+              type="text"
+              value={minVolume}
+              onChange={(e) => setMinVolume(e.target.value)}
+              placeholder="MIN VOL"
+              className="bg-background border border-border/60 rounded text-[10px] px-2 h-7 text-foreground w-20 placeholder:text-muted-foreground/40 focus:outline-none focus:border-primary/50 font-mono"
+              data-testid="select-min-volume"
+              title="Min 24h volume — supports 1k, 5M, 1B"
+            />
+            <input
+              type="text"
+              value={minOpenInterest}
+              onChange={(e) => setMinOpenInterest(e.target.value)}
+              placeholder="MIN OI"
+              className="bg-background border border-border/60 rounded text-[10px] px-2 h-7 text-foreground w-20 placeholder:text-muted-foreground/40 focus:outline-none focus:border-primary/50 font-mono"
+              data-testid="select-min-open-interest"
+              title="Min open interest — 1k, 5M, 1B"
+            />
+            <input
+              type="text"
+              value={minSpreadDepth}
+              onChange={(e) => setMinSpreadDepth(e.target.value)}
+              placeholder="MIN DEPTH"
+              className="bg-background border border-border/60 rounded text-[10px] px-2 h-7 text-foreground w-24 placeholder:text-muted-foreground/40 focus:outline-none focus:border-primary/50 font-mono"
+              data-testid="select-min-spread-depth"
+              title="Min fillable depth at this spread"
+            />
 
-      {/* Main grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-        <div className="lg:col-span-2 xl:col-span-3">
-          {isLoading ? (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 gap-2">
-              {Array.from({ length: 12 }).map((_, i) => (
-                <div key={i} className="bg-card border border-border rounded p-3 h-28 animate-pulse" />
+            {/* Exchange toggles */}
+            <div className="flex items-center gap-0.5" data-testid="exchange-toggles">
+              {([
+                { key: "bybit",   label: "BB",  on: "text-amber-400 border-amber-400/40 bg-amber-400/10" },
+                { key: "binance", label: "BN",  on: "text-violet-400 border-violet-400/40 bg-violet-400/10" },
+                { key: "gate",    label: "GT",  on: "text-sky-400 border-sky-400/40 bg-sky-400/10" },
+                { key: "okx",     label: "OKX", on: "text-emerald-400 border-emerald-400/40 bg-emerald-400/10" },
+                { key: "mexc",    label: "MX",  on: "text-rose-400 border-rose-400/40 bg-rose-400/10" },
+              ] as const).map(({ key, label, on }) => (
+                <button
+                  key={key}
+                  onClick={() => toggleExchange(key)}
+                  title={selectedExchanges.has(key) ? `Hide ${label}` : `Show ${label}`}
+                  className={`px-1.5 py-0 h-7 rounded text-[10px] font-semibold font-mono border transition-all ${
+                    selectedExchanges.has(key)
+                      ? on
+                      : "text-muted-foreground/20 border-border/30 bg-transparent"
+                  }`}
+                >
+                  {label}
+                </button>
               ))}
             </div>
-          ) : isError ? (
-            <div className="flex items-center justify-center h-40 text-destructive gap-2">
-              <AlertCircle className="w-5 h-5" />
-              Failed to load prices. Check your connection.
+
+            {filtersActive && (
+              <button
+                onClick={resetFilters}
+                data-testid="btn-reset-filters"
+                className="flex items-center gap-1 px-2 h-7 rounded text-[10px] font-mono border border-border/40 text-muted-foreground/50 hover:text-foreground hover:border-foreground/30 transition-all"
+                title="Reset all filters"
+              >
+                <X className="w-2.5 h-2.5" />
+                RESET
+              </button>
+            )}
+
+            {/* Status indicator */}
+            <div className="ml-auto flex items-center gap-2 text-[10px] font-mono text-muted-foreground/60">
+              {streamStatus === "open" ? (
+                <span className="flex items-center gap-1 text-green-500">
+                  <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />LIVE
+                </span>
+              ) : streamStatus === "connecting" ? (
+                <span className="flex items-center gap-1 text-blue-400">
+                  <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />CONN
+                </span>
+              ) : (
+                <span className="flex items-center gap-1 text-yellow-500">
+                  <span className="w-1.5 h-1.5 rounded-full bg-yellow-500" />POLL
+                </span>
+              )}
+              <span className={isFetching ? "text-primary" : ""}>
+                {isLoading ? "…" : `${filteredTokens.length} PAIRS`}
+              </span>
             </div>
-          ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 gap-2">
-              {filteredTokens.map((token) => {
-                const botStatus = getBotStatusForSymbol(token.symbol);
-                return (
-                  <TokenCard
-                    key={token.symbol}
-                    token={token}
-                    isSelected={selectedSymbol === token.symbol}
-                    isFavourite={isFavourite(token.symbol)}
-                    isWatched={isWatched(token.symbol)}
-                    onSelect={() => setSelectedSymbol(selectedSymbol === token.symbol ? null : token.symbol)}
-                    onToggleFavourite={(e) => {
-                      e.stopPropagation();
-                      toggleFavourite(token.symbol);
-                    }}
-                    onToggleWatch={(e) => {
-                      e.stopPropagation();
-                      toggleWatch(token.symbol, getThreshold(token.symbol));
-                    }}
-                    bot={botStatus?.bot}
-                    botOpenLegsCount={botStatus?.openLegsCount ?? 0}
-                  />
-                );
-              })}
-              {filteredTokens.length === 0 && (
-                <div className="col-span-full text-center text-muted-foreground py-12 text-sm">
-                  No tokens match your filters.
+          </div>
+
+          {/* Table */}
+          <div className="overflow-auto flex-1 min-h-0">
+            <div style={{ minWidth: "900px" }}>
+              <TableHeader />
+              {isLoading ? (
+                <div className="py-8 text-center text-muted-foreground text-xs font-mono">
+                  <span className="inline-block w-4 h-4 border border-primary border-t-transparent rounded-full animate-spin mr-2 align-middle" />
+                  Loading...
                 </div>
+              ) : isError ? (
+                <div className="flex items-center justify-center h-32 text-destructive gap-2 text-xs font-mono">
+                  <AlertCircle className="w-4 h-4" />
+                  Failed to load prices — check connection
+                </div>
+              ) : (
+                <>
+                  {filteredTokens.map((token, idx) => {
+                    const botStatus = getBotStatusForSymbol(token.symbol);
+                    return (
+                      <TokenRow
+                        key={token.symbol}
+                        token={token}
+                        rowIndex={idx}
+                        isSelected={selectedSymbol === token.symbol}
+                        isFavourite={isFavourite(token.symbol)}
+                        isWatched={isWatched(token.symbol)}
+                        onSelect={() => setSelectedSymbol(selectedSymbol === token.symbol ? null : token.symbol)}
+                        onToggleFavourite={(e) => {
+                          e.stopPropagation();
+                          toggleFavourite(token.symbol);
+                        }}
+                        onToggleWatch={(e) => {
+                          e.stopPropagation();
+                          toggleWatch(token.symbol, getThreshold(token.symbol));
+                        }}
+                        bot={botStatus?.bot}
+                        botOpenLegsCount={botStatus?.openLegsCount ?? 0}
+                      />
+                    );
+                  })}
+                  {filteredTokens.length === 0 && (
+                    <div className="text-center text-muted-foreground/40 py-12 text-xs font-mono">
+                      NO TOKENS MATCH FILTERS
+                    </div>
+                  )}
+                </>
               )}
             </div>
-          )}
+          </div>
         </div>
 
-        {/* Trade terminal — always visible */}
-        <div className="lg:col-span-1">
+        {/* Trade terminal sidebar */}
+        <div className="w-72 shrink-0 hidden lg:block">
           {selectedToken ? (
             (() => {
               const botStatus = getBotStatusForSymbol(selectedToken.symbol);
@@ -803,11 +830,11 @@ export default function Dashboard() {
               );
             })()
           ) : (
-            <div className="bg-card border border-border rounded-md p-6 flex flex-col items-center justify-center text-center gap-3 sticky top-4 min-h-[200px]">
-              <Zap className="w-8 h-8 text-muted-foreground/20" />
+            <div className="bg-card border border-border rounded p-6 flex flex-col items-center justify-center text-center gap-3 h-full min-h-[200px]">
+              <Bot className="w-6 h-6 text-muted-foreground/20" />
               <div>
-                <p className="text-sm font-medium text-muted-foreground">Select a token to configure</p>
-                <p className="text-xs text-muted-foreground/50 mt-1">Click any card to trade and JUMP IN</p>
+                <p className="text-xs font-mono font-semibold text-muted-foreground/50 uppercase tracking-wider">Select a token</p>
+                <p className="text-[10px] font-mono text-muted-foreground/30 mt-1">Click any row to configure</p>
               </div>
             </div>
           )}
