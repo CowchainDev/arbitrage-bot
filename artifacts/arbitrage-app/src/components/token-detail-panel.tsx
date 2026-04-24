@@ -73,10 +73,19 @@ export function TokenDetailPanel({
   const allCreds: Record<SupportedExchange, { hasCreds: boolean }> = {
     bybit: credsBybit, binance: credsBinance, gate: credsGate, okx: credsOkx, mexc: credsMexc,
   };
-  const [botEnterSpread, setBotEnterSpread] = useState(() => bot ? String(bot.enterSpreadPct) : "0.5");
-  const [botCloseSpread, setBotCloseSpread] = useState(() => bot ? String(bot.closeSpreadPct) : "0.2");
+  const [botEnterSpread, setBotEnterSpread] = useState(() => {
+    if (bot) return String(bot.enterSpreadPct);
+    try { return localStorage.getItem("arbitrage-botEnterSpread") ?? "0.5"; } catch { return "0.5"; }
+  });
+  const [botCloseSpread, setBotCloseSpread] = useState(() => {
+    if (bot) return String(bot.closeSpreadPct);
+    try { return localStorage.getItem("arbitrage-botCloseSpread") ?? "0.2"; } catch { return "0.2"; }
+  });
   const [botStopLossSpread, setBotStopLossSpread] = useState(() => bot ? String(bot.stopLossSpreadPct ?? 0) : "0");
-  const [botOrderSize, setBotOrderSize] = useState(() => bot ? String(bot.orderSizeUsd) : "10");
+  const [botOrderSize, setBotOrderSize] = useState(() => {
+    if (bot) return String(bot.orderSizeUsd);
+    try { return localStorage.getItem("arbitrage-botOrderSize") ?? "10"; } catch { return "10"; }
+  });
   const [botMaxOrders, setBotMaxOrders] = useState(() => bot ? String(bot.maxOrders) : "3");
   const [botForceStop, setBotForceStop] = useState(() => bot ? String(bot.forceStopUsd) : "50");
   const [botExchangeA, setBotExchangeA] = useState<string>(() => {
@@ -110,9 +119,9 @@ export function TokenDetailPanel({
       if (bot.leverageA) setBotLeverageA(String(bot.leverageA));
       if (bot.leverageB) setBotLeverageB(String(bot.leverageB));
     } else {
-      setBotEnterSpread("0.5");
-      setBotCloseSpread("0.2");
-      setBotOrderSize("10");
+      try { setBotEnterSpread(localStorage.getItem("arbitrage-botEnterSpread") ?? "0.5"); } catch { setBotEnterSpread("0.5"); }
+      try { setBotCloseSpread(localStorage.getItem("arbitrage-botCloseSpread") ?? "0.2"); } catch { setBotCloseSpread("0.2"); }
+      try { setBotOrderSize(localStorage.getItem("arbitrage-botOrderSize") ?? "10"); } catch { setBotOrderSize("10"); }
       setBotMaxOrders("3");
       setBotForceStop("50");
       if (token.bestSpreadLeg) {
@@ -136,6 +145,9 @@ export function TokenDetailPanel({
   useEffect(() => { try { localStorage.setItem("arbitrage-botExchangeB", botExchangeB); } catch {} }, [botExchangeB]);
   useEffect(() => { try { localStorage.setItem("arbitrage-botLeverageA", botLeverageA); } catch {} }, [botLeverageA]);
   useEffect(() => { try { localStorage.setItem("arbitrage-botLeverageB", botLeverageB); } catch {} }, [botLeverageB]);
+  useEffect(() => { try { localStorage.setItem("arbitrage-botEnterSpread", botEnterSpread); } catch {} }, [botEnterSpread]);
+  useEffect(() => { try { localStorage.setItem("arbitrage-botCloseSpread", botCloseSpread); } catch {} }, [botCloseSpread]);
+  useEffect(() => { try { localStorage.setItem("arbitrage-botOrderSize", botOrderSize); } catch {} }, [botOrderSize]);
 
   const { toast } = useToast();
   const queryClient = useQueryClient();
