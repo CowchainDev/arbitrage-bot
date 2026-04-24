@@ -798,6 +798,9 @@ components:
         bestSpreadPct:
           type: number
           description: Highest absolute spread across all tracked exchange pairs
+        emaSpreadPct:
+          type: number
+          description: Exponential moving average of bestSpreadPct (α≈0.006, ~10-min half-life at 5s refresh)
         bestSpreadLeg:
           type: string
           description: Label of the exchange pair with the best spread e.g. "gate/binance"

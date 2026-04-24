@@ -48,6 +48,8 @@ export interface TokenSpread {
   mexcAsk?: number;
   /** Highest absolute spread across all tracked exchange pairs */
   bestSpreadPct?: number;
+  /** Exponential moving average of bestSpreadPct (α≈0.006, ~10-min half-life at 5s refresh) */
+  emaSpreadPct?: number;
   /** Label of the exchange pair with the best spread e.g. "gate/binance" */
   bestSpreadLeg?: string;
   /** Total open interest in USD across Bybit and Binance (null if unavailable) */

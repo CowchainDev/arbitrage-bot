@@ -100,7 +100,7 @@ function getExchangeFields(token: TokenSpread, ex: string) {
 }
 
 
-const ROW_COLS = "grid grid-cols-[120px_86px_78px_130px_98px_98px_68px_70px_70px_64px_28px] items-center gap-0";
+const ROW_COLS = "grid grid-cols-[120px_82px_72px_72px_130px_90px_90px_68px_70px_70px_64px_28px] items-center gap-0";
 
 type SortColKey = "alpha" | "spread" | "eff" | "volume" | "oi" | "depth";
 
@@ -170,6 +170,7 @@ function TableHeader({ sort, onSort }: { sort: SortOption; onSort: (col: SortCol
     <div className={`${ROW_COLS} px-2 py-1.5 border-b border-border/60 bg-muted/20 sticky top-0 z-10`}>
       {th("Symbol", "alpha", "left")}
       {th("Spread", "spread")}
+      <span className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground/60 text-right" title="Exponential moving average of spread (~10 min)">EMA</span>
       {th("Eff", "eff")}
       <span className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground/60 text-right">Pair</span>
       <span className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground/60 text-right">Ask</span>
@@ -282,6 +283,20 @@ function TokenRow({
       <div className={`font-mono text-xs text-right pr-3 tabular-nums ${spreadColor}`}>
         {isFinite(rawSpread) ? `+${rawSpread.toFixed(4)}%` : "-"}
       </div>
+
+      {/* EMA spread */}
+      {(() => {
+        const ema = token.emaSpreadPct;
+        const emaColor = ema == null ? "text-muted-foreground/30"
+          : ema >= 1   ? "text-primary/70 font-semibold"
+          : ema >= 0.3 ? "text-amber-400/70"
+          : "text-muted-foreground/40";
+        return (
+          <div className={`font-mono text-[10px] text-right pr-3 tabular-nums ${emaColor}`} title="10-min EMA of spread">
+            {ema != null && isFinite(ema) ? `+${ema.toFixed(4)}%` : "-"}
+          </div>
+        );
+      })()}
 
       {/* Eff spread */}
       <div className={`font-mono text-[10px] text-right pr-3 tabular-nums ${effColor}`}>

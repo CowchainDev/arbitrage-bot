@@ -341,6 +341,10 @@ type SymbolPriceEntry = {
 };
 const priceCacheBySymbol = new Map<string, SymbolPriceEntry>();
 
+// EMA of bestSpreadPct per symbol. α ≈ 0.006 → ~10-minute half-life at 5s refresh.
+const SPREAD_EMA_ALPHA = 0.006;
+const spreadEmaMap = new Map<string, number>();
+
 export function getPriceCacheEntry(symbol: string): SymbolPriceEntry | null {
   return priceCacheBySymbol.get(symbol) ?? null;
 }
@@ -446,6 +450,7 @@ async function fetchAndCachePrices(): Promise<unknown[]> {
     spreadPct: number;
     bestSpreadPct: number;
     bestSpreadLeg: string | null;
+    emaSpreadPct: number;
     openInterestUsd: number | null;
     totalVolume: number;
     needsMexcOb: boolean;
@@ -510,6 +515,13 @@ async function fetchAndCachePrices(): Promise<unknown[]> {
 
     const { bestSpreadPct, bestSpreadLeg } = computeBestSpread(allPrices);
 
+    // EMA: blend current bestSpreadPct into running average (or seed on first tick)
+    const prevEma = spreadEmaMap.get(base);
+    const emaSpreadPct = prevEma != null
+      ? SPREAD_EMA_ALPHA * bestSpreadPct + (1 - SPREAD_EMA_ALPHA) * prevEma
+      : bestSpreadPct;
+    spreadEmaMap.set(base, emaSpreadPct);
+
     // Open interest: sum from explicit OI fetches for Bybit, Binance, Gate, and OKX.
     const oiBB   = bybitOIMap.get(base)   ?? 0;
     const oiBN   = binanceOIMap.get(base) ?? 0;
@@ -536,7 +548,7 @@ async function fetchAndCachePrices(): Promise<unknown[]> {
       base, key,
       bybitT, binanceT, gateT, okxT, mexcT,
       bybitPriceC, binancePriceC, gatePriceC, okxPriceC, mexcPriceC,
-      spreadPct, bestSpreadPct, bestSpreadLeg,
+      spreadPct, bestSpreadPct, bestSpreadLeg, emaSpreadPct,
       openInterestUsd, totalVolume, needsMexcOb,
     });
   }
@@ -638,6 +650,7 @@ async function fetchAndCachePrices(): Promise<unknown[]> {
       mexcAsk:  mexcPriceC ? (mexcT?.ask  ?? null) : null,
       bestSpreadPct,
       bestSpreadLeg,
+      emaSpreadPct: d.emaSpreadPct,
       volume24h: totalVolume,
       openInterestUsd,
       spreadDepthUsd,
@@ -902,6 +915,8 @@ function generateDemoSpreads() {
       mexcAsk: mexcPrice + spread,
       bestSpreadPct,
       bestSpreadLeg,
+      // Demo EMA: simulate a slightly smoothed value so the column is non-empty
+      emaSpreadPct: bestSpreadPct * (0.85 + Math.random() * 0.15),
       volume24h: basePrice * Math.random() * 50000000,
       openInterestUsd: basePrice * (Math.random() * 20000000 + 5000000),
       spreadDepthUsd: basePrice * (Math.random() * 200000 + 10000),

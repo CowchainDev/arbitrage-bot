@@ -124,6 +124,12 @@ export const GetExchangePricesResponseItem = zod.object({
     .number()
     .optional()
     .describe("Highest absolute spread across all tracked exchange pairs"),
+  emaSpreadPct: zod
+    .number()
+    .optional()
+    .describe(
+      "Exponential moving average of bestSpreadPct (α≈0.006, ~10-min half-life at 5s refresh)",
+    ),
   bestSpreadLeg: zod
     .string()
     .optional()
