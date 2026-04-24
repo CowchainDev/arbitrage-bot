@@ -25,10 +25,11 @@ function getKlinesCacheTtl(interval: string): number {
 
 export const PREWARM_SYMBOLS = ["BTC", "ETH", "SOL"];
 export const PREWARM_INTERVALS = ["15m", "1h", "4h", "1d"];
-const PREWARM_LIMIT = 168;
+const PREWARM_LIMIT = 96;
+const PREWARM_CONCURRENCY = 4;
+const PREWARM_TOP_N = 5;
 const KLINES_TIMEOUT_MS = 4000;
 const MEXC_KLINES_TIMEOUT_MS = 8000;
-const PREWARM_TOP_N = 10;
 
 const MEXC_INTERVAL_MAP: Record<string, string> = {
   "15m": "Min15",
@@ -93,17 +94,11 @@ async function fetchKlinesForSymbol(
 
   type OhlcvRow = [number, number, number, number, number, number?];
 
-  const ccxtExchanges = [
-    { name: "bybit",   create: () => createBybitExchange() },
-    { name: "binance", create: () => createBinanceExchange() },
-    { name: "gate",    create: () => createGateExchange() },
-    { name: "okx",     create: () => createOkxExchange() },
-  ];
-
+  // Only fetch from exchanges accessible from this server region (OKX + MEXC).
+  // Bybit, Binance, and Gate are geo-blocked here and would waste memory for 4 s each.
   const results = await Promise.allSettled([
-    // CCXT-based exchanges (Bybit, Binance, Gate, OKX)
-    ...ccxtExchanges.map(async ({ name, create }) => {
-      const ex = create();
+    (async () => {
+      const ex = createOkxExchange();
       const raw = await Promise.race([
         ex.fetchOHLCV(ccxtSymbol, timeframe, undefined, limit) as Promise<OhlcvRow[]>,
         new Promise<never>((_, reject) =>
@@ -111,9 +106,8 @@ async function fetchKlinesForSymbol(
         ),
       ]);
       const data = raw.map((row) => ({ t: row[0], c: row[4] })).filter((p) => p.t > 0 && p.c > 0);
-      return { name, data };
-    }),
-    // MEXC via direct REST (accessible from this server region)
+      return { name: "okx", data };
+    })(),
     (async () => {
       const data = await fetchMexcKlinesDirect(symbol, interval, limit);
       return { name: "mexc", data };
@@ -135,14 +129,16 @@ async function fetchKlinesForSymbol(
 export const KLINES_PREWARM_INTERVAL_MS = KLINES_TTL_SHORT_MS;
 
 function getTopSymbolsByVolume(n: number): string[] {
+  // Always anchor with BTC/ETH/SOL, then fill the rest from live volume data
+  const anchors = new Set(PREWARM_SYMBOLS);
   if (!priceCache || priceCache.data.length === 0) return PREWARM_SYMBOLS;
   type PriceRow = { symbol: string; volume24h?: number };
   const rows = priceCache.data as PriceRow[];
   const sorted = [...rows]
-    .filter((r) => typeof r.volume24h === "number")
+    .filter((r) => typeof r.volume24h === "number" && !anchors.has(r.symbol))
     .sort((a, b) => (b.volume24h ?? 0) - (a.volume24h ?? 0));
-  const top = sorted.slice(0, n).map((r) => r.symbol);
-  return top.length > 0 ? top : PREWARM_SYMBOLS;
+  const extras = sorted.slice(0, Math.max(0, n - anchors.size)).map((r) => r.symbol);
+  return [...PREWARM_SYMBOLS, ...extras];
 }
 
 export async function prewarmKlinesCache(): Promise<{ succeeded: number; failed: number; symbols: string[] }> {
@@ -152,9 +148,15 @@ export async function prewarmKlinesCache(): Promise<{ succeeded: number; failed:
     PREWARM_INTERVALS.map((interval) => ({ symbol, interval }))
   );
 
-  const results = await Promise.allSettled(
-    pairs.map(({ symbol, interval }) => fetchKlinesForSymbol(symbol, interval, PREWARM_LIMIT))
-  );
+  // Process in small batches to limit concurrent CCXT object creation and avoid OOM
+  const results: PromiseSettledResult<void>[] = [];
+  for (let i = 0; i < pairs.length; i += PREWARM_CONCURRENCY) {
+    const batch = pairs.slice(i, i + PREWARM_CONCURRENCY);
+    const batchResults = await Promise.allSettled(
+      batch.map(({ symbol, interval }) => fetchKlinesForSymbol(symbol, interval, PREWARM_LIMIT))
+    );
+    results.push(...batchResults);
+  }
 
   const succeeded = results.filter((r) => r.status === "fulfilled").length;
   const failed = results.length - succeeded;
@@ -675,16 +677,9 @@ router.get("/exchanges/klines", async (req: Request, res: Response) => {
 
   type OhlcvRow = [number, number, number, number, number, number?];
 
-  const ccxtExchanges = [
-    { name: "bybit",   create: () => createBybitExchange() },
-    { name: "binance", create: () => createBinanceExchange() },
-    { name: "gate",    create: () => createGateExchange() },
-    { name: "okx",     create: () => createOkxExchange() },
-  ];
-
   const results = await Promise.allSettled([
-    ...ccxtExchanges.map(async ({ name, create }) => {
-      const ex = create();
+    (async () => {
+      const ex = createOkxExchange();
       const raw = await Promise.race([
         ex.fetchOHLCV(ccxtSymbol, timeframe, undefined, limit) as Promise<OhlcvRow[]>,
         new Promise<never>((_, reject) =>
@@ -692,8 +687,8 @@ router.get("/exchanges/klines", async (req: Request, res: Response) => {
         ),
       ]);
       const data = raw.map((row) => ({ t: row[0], c: row[4] })).filter((p) => p.t > 0 && p.c > 0);
-      return { name, data };
-    }),
+      return { name: "okx", data };
+    })(),
     (async () => {
       const data = await fetchMexcKlinesDirect(symbol, interval, limit);
       return { name: "mexc", data };
