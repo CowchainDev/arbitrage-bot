@@ -10,6 +10,7 @@ export interface TradeStats {
   totalTrades: number;
   winningTrades: number;
   totalPnl: number;
+  totalFees: number;
   bestTrade: number;
   worstTrade: number;
 }

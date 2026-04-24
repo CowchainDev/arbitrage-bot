@@ -16,6 +16,42 @@ export const HealthCheckResponse = zod.object({
 });
 
 /**
+ * Returns close-price candle data (t, c) per exchange. Only exchanges with successful data are included; exchanges that fail or do not list the token are omitted. Returns an empty object when no exchanges respond successfully.
+ * @summary Get OHLCV candlestick data for a token across all exchanges
+ */
+export const getExchangeKlinesQueryIntervalDefault = `1h`;
+export const getExchangeKlinesQueryLimitDefault = 168;
+export const getExchangeKlinesQueryLimitMax = 500;
+
+export const GetExchangeKlinesQueryParams = zod.object({
+  symbol: zod.coerce.string().describe("Token symbol e.g. BTC"),
+  interval: zod
+    .enum(["15m", "1h", "4h", "1d"])
+    .default(getExchangeKlinesQueryIntervalDefault)
+    .describe("Candle interval"),
+  limit: zod.coerce
+    .number()
+    .min(1)
+    .max(getExchangeKlinesQueryLimitMax)
+    .default(getExchangeKlinesQueryLimitDefault)
+    .describe("Number of candles to return"),
+});
+
+export const GetExchangeKlinesResponse = zod
+  .record(
+    zod.string(),
+    zod.array(
+      zod.object({
+        t: zod.number().describe("Unix timestamp in milliseconds"),
+        c: zod.number().describe("Close price"),
+      }),
+    ),
+  )
+  .describe(
+    "Candle data per exchange, keyed by exchange name (bybit, binance, gate, okx, mexc)",
+  );
+
+/**
  * Returns live price data from both Bybit and Binance futures markets with calculated spread
  * @summary Get price spread data for all tracked tokens
  */
@@ -323,7 +359,12 @@ export const ListBotsResponse = zod.object({
         .describe("Minimum spread % to open a new leg"),
       closeSpreadPct: zod
         .number()
-        .describe("Spread % at which open legs are closed"),
+        .describe("Spread % at which open legs are closed (take profit)"),
+      stopLossSpreadPct: zod
+        .number()
+        .describe(
+          "Spread % at which a widening position is closed (stop loss, 0 = disabled)",
+        ),
       orderSizeUsd: zod
         .number()
         .describe("Total USD size per leg (split 50\/50 between exchanges)"),
@@ -370,7 +411,9 @@ export const CreateBotBody = zod.object({
   stopLossSpreadPct: zod
     .number()
     .optional()
-    .describe("Spread % at which open legs are closed on widening (stop loss, 0 = disabled)"),
+    .describe(
+      "Spread % at which a widening position is closed (stop loss, 0 = disabled)",
+    ),
   orderSizeUsd: zod.number().describe("Total USD size per leg"),
   maxOrders: zod.number().optional().describe("Maximum concurrent open legs"),
   forceStopUsd: zod
@@ -396,7 +439,12 @@ export const CreateBotResponse = zod.object({
     enterSpreadPct: zod.number().describe("Minimum spread % to open a new leg"),
     closeSpreadPct: zod
       .number()
-      .describe("Spread % at which open legs are closed"),
+      .describe("Spread % at which open legs are closed (take profit)"),
+    stopLossSpreadPct: zod
+      .number()
+      .describe(
+        "Spread % at which a widening position is closed (stop loss, 0 = disabled)",
+      ),
     orderSizeUsd: zod
       .number()
       .describe("Total USD size per leg (split 50\/50 between exchanges)"),
@@ -440,7 +488,12 @@ export const UpdateBotHeader = zod.object({
 export const UpdateBotBody = zod.object({
   enterSpreadPct: zod.number().optional(),
   closeSpreadPct: zod.number().optional(),
-  stopLossSpreadPct: zod.number().optional(),
+  stopLossSpreadPct: zod
+    .number()
+    .optional()
+    .describe(
+      "Spread % at which a widening position is closed (stop loss, 0 = disabled)",
+    ),
   orderSizeUsd: zod.number().optional(),
   maxOrders: zod.number().optional(),
   forceStopUsd: zod.number().optional(),
@@ -460,7 +513,12 @@ export const UpdateBotResponse = zod.object({
     enterSpreadPct: zod.number().describe("Minimum spread % to open a new leg"),
     closeSpreadPct: zod
       .number()
-      .describe("Spread % at which open legs are closed"),
+      .describe("Spread % at which open legs are closed (take profit)"),
+    stopLossSpreadPct: zod
+      .number()
+      .describe(
+        "Spread % at which a widening position is closed (stop loss, 0 = disabled)",
+      ),
     orderSizeUsd: zod
       .number()
       .describe("Total USD size per leg (split 50\/50 between exchanges)"),
@@ -527,7 +585,12 @@ export const StartBotResponse = zod.object({
     enterSpreadPct: zod.number().describe("Minimum spread % to open a new leg"),
     closeSpreadPct: zod
       .number()
-      .describe("Spread % at which open legs are closed"),
+      .describe("Spread % at which open legs are closed (take profit)"),
+    stopLossSpreadPct: zod
+      .number()
+      .describe(
+        "Spread % at which a widening position is closed (stop loss, 0 = disabled)",
+      ),
     orderSizeUsd: zod
       .number()
       .describe("Total USD size per leg (split 50\/50 between exchanges)"),
@@ -576,7 +639,12 @@ export const StopBotResponse = zod.object({
     enterSpreadPct: zod.number().describe("Minimum spread % to open a new leg"),
     closeSpreadPct: zod
       .number()
-      .describe("Spread % at which open legs are closed"),
+      .describe("Spread % at which open legs are closed (take profit)"),
+    stopLossSpreadPct: zod
+      .number()
+      .describe(
+        "Spread % at which a widening position is closed (stop loss, 0 = disabled)",
+      ),
     orderSizeUsd: zod
       .number()
       .describe("Total USD size per leg (split 50\/50 between exchanges)"),
@@ -625,7 +693,12 @@ export const StopAndCloseBotResponse = zod.object({
     enterSpreadPct: zod.number().describe("Minimum spread % to open a new leg"),
     closeSpreadPct: zod
       .number()
-      .describe("Spread % at which open legs are closed"),
+      .describe("Spread % at which open legs are closed (take profit)"),
+    stopLossSpreadPct: zod
+      .number()
+      .describe(
+        "Spread % at which a widening position is closed (stop loss, 0 = disabled)",
+      ),
     orderSizeUsd: zod
       .number()
       .describe("Total USD size per leg (split 50\/50 between exchanges)"),
@@ -676,8 +749,16 @@ export const GetBotLegsResponse = zod.object({
       bybitSide: zod.enum(["long", "short"]),
       binanceSide: zod.enum(["long", "short"]),
       spreadAtEntry: zod.number().optional(),
-      spreadAtExit: zod.number().optional(),
-      realizedPnlUsd: zod.number().optional(),
+      spreadAtExit: zod
+        .number()
+        .optional()
+        .describe("Spread percentage when the leg was closed"),
+      realizedPnlUsd: zod
+        .number()
+        .optional()
+        .describe(
+          "Realized profit or loss in USD (populated when leg is closed)",
+        ),
       status: zod.enum(["open", "closed"]),
       openedAt: zod.string(),
       closedAt: zod.string().optional(),
@@ -741,6 +822,7 @@ export const GetTradesResponse = zod.object({
       shortExchange: zod.string(),
       spreadAtEntry: zod.number(),
       realizedPnl: zod.number(),
+      totalFees: zod.number(),
       quantity: zod.number(),
       entryTime: zod.string(),
       closeTime: zod.string(),
@@ -750,6 +832,7 @@ export const GetTradesResponse = zod.object({
     totalTrades: zod.number(),
     winningTrades: zod.number(),
     totalPnl: zod.number(),
+    totalFees: zod.number(),
     bestTrade: zod.number(),
     worstTrade: zod.number(),
   }),

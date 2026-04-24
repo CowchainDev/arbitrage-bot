@@ -130,6 +130,104 @@ export function useHealthCheck<
 }
 
 /**
+ * Returns close-price candle data (t, c) per exchange. Only exchanges with successful data are included; exchanges that fail or do not list the token are omitted. Returns an empty object when no exchanges respond successfully.
+ * @summary Get OHLCV candlestick data for a token across all exchanges
+ */
+export const getGetExchangeKlinesUrl = (params: GetExchangeKlinesParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/exchanges/klines?${stringifiedParams}`
+    : `/api/exchanges/klines`;
+};
+
+export const getExchangeKlines = async (
+  params: GetExchangeKlinesParams,
+  options?: RequestInit,
+): Promise<ExchangeKlinesResponse> => {
+  return customFetch<ExchangeKlinesResponse>(getGetExchangeKlinesUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetExchangeKlinesQueryKey = (
+  params?: GetExchangeKlinesParams,
+) => {
+  return [`/api/exchanges/klines`, ...(params ? [params] : [])] as const;
+};
+
+export const getGetExchangeKlinesQueryOptions = <
+  TData = Awaited<ReturnType<typeof getExchangeKlines>>,
+  TError = ErrorType<ApiError>,
+>(
+  params: GetExchangeKlinesParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getExchangeKlines>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetExchangeKlinesQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getExchangeKlines>>
+  > = ({ signal }) => getExchangeKlines(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getExchangeKlines>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetExchangeKlinesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getExchangeKlines>>
+>;
+export type GetExchangeKlinesQueryError = ErrorType<ApiError>;
+
+/**
+ * @summary Get OHLCV candlestick data for a token across all exchanges
+ */
+
+export function useGetExchangeKlines<
+  TData = Awaited<ReturnType<typeof getExchangeKlines>>,
+  TError = ErrorType<ApiError>,
+>(
+  params: GetExchangeKlinesParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getExchangeKlines>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetExchangeKlinesQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
  * Returns live price data from both Bybit and Binance futures markets with calculated spread
  * @summary Get price spread data for all tracked tokens
  */
@@ -1583,95 +1681,6 @@ export function useGetTrades<
   request?: SecondParameter<typeof customFetch>;
 }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getGetTradesQueryOptions(options);
-
-  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
-    queryKey: QueryKey;
-  };
-
-  return { ...query, queryKey: queryOptions.queryKey };
-}
-
-/**
- * Returns OHLCV close-price candle data for a token across all available exchanges.
- * Only exchanges with successful data are included; exchanges that fail or do not list the token are omitted.
- * @summary Get OHLCV candlestick data for a token across all exchanges
- */
-export const getGetExchangeKlinesUrl = (params: GetExchangeKlinesParams) => {
-  const searchParams = new URLSearchParams();
-  searchParams.set("symbol", params.symbol);
-  if (params.interval != null) searchParams.set("interval", params.interval);
-  if (params.limit != null) searchParams.set("limit", String(params.limit));
-  return `/api/exchanges/klines?${searchParams.toString()}`;
-};
-
-export const getExchangeKlines = async (
-  params: GetExchangeKlinesParams,
-  options?: RequestInit,
-): Promise<ExchangeKlinesResponse> => {
-  return customFetch<ExchangeKlinesResponse>(getGetExchangeKlinesUrl(params), {
-    ...options,
-    method: "GET",
-  });
-};
-
-export const getGetExchangeKlinesQueryKey = (params: GetExchangeKlinesParams) => {
-  return [`/api/exchanges/klines`, params] as const;
-};
-
-export const getGetExchangeKlinesQueryOptions = <
-  TData = Awaited<ReturnType<typeof getExchangeKlines>>,
-  TError = ErrorType<ApiError>,
->(
-  params: GetExchangeKlinesParams,
-  options?: {
-    query?: UseQueryOptions<
-      Awaited<ReturnType<typeof getExchangeKlines>>,
-      TError,
-      TData
-    >;
-    request?: SecondParameter<typeof customFetch>;
-  },
-) => {
-  const { query: queryOptions, request: requestOptions } = options ?? {};
-
-  const queryKey =
-    queryOptions?.queryKey ?? getGetExchangeKlinesQueryKey(params);
-
-  const queryFn: QueryFunction<
-    Awaited<ReturnType<typeof getExchangeKlines>>
-  > = ({ signal }) =>
-    getExchangeKlines(params, { signal, ...requestOptions });
-
-  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
-    Awaited<ReturnType<typeof getExchangeKlines>>,
-    TError,
-    TData
-  > & { queryKey: QueryKey };
-};
-
-export type GetExchangeKlinesQueryResult = NonNullable<
-  Awaited<ReturnType<typeof getExchangeKlines>>
->;
-export type GetExchangeKlinesQueryError = ErrorType<ApiError>;
-
-/**
- * @summary Get OHLCV candlestick data for a token across all exchanges
- */
-export function useGetExchangeKlines<
-  TData = Awaited<ReturnType<typeof getExchangeKlines>>,
-  TError = ErrorType<ApiError>,
->(
-  params: GetExchangeKlinesParams,
-  options?: {
-    query?: UseQueryOptions<
-      Awaited<ReturnType<typeof getExchangeKlines>>,
-      TError,
-      TData
-    >;
-    request?: SecondParameter<typeof customFetch>;
-  },
-): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-  const queryOptions = getGetExchangeKlinesQueryOptions(params, options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

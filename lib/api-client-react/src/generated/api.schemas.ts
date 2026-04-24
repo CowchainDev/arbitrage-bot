@@ -374,7 +374,9 @@ export interface BotLeg {
   bybitSide: BotLegBybitSide;
   binanceSide: BotLegBinanceSide;
   spreadAtEntry?: number;
+  /** Spread percentage when the leg was closed */
   spreadAtExit?: number;
+  /** Realized profit or loss in USD (populated when leg is closed) */
   realizedPnlUsd?: number;
   status: BotLegStatus;
   openedAt: string;
@@ -411,6 +413,7 @@ export interface CreateBotRequest {
 export interface UpdateBotRequest {
   enterSpreadPct?: number;
   closeSpreadPct?: number;
+  /** Spread % at which a widening position is closed (stop loss, 0 = disabled) */
   stopLossSpreadPct?: number;
   orderSizeUsd?: number;
   maxOrders?: number;
@@ -439,6 +442,47 @@ export interface DeleteBotResult {
   deleted: boolean;
 }
 
+export interface ExchangeKlinePoint {
+  /** Unix timestamp in milliseconds */
+  t: number;
+  /** Close price */
+  c: number;
+}
+
+/**
+ * Candle data per exchange, keyed by exchange name (bybit, binance, gate, okx, mexc)
+ */
+export interface ExchangeKlinesResponse {
+  [key: string]: ExchangeKlinePoint[];
+}
+
+export type GetExchangeKlinesParams = {
+  /**
+   * Token symbol e.g. BTC
+   */
+  symbol: string;
+  /**
+   * Candle interval
+   */
+  interval?: GetExchangeKlinesInterval;
+  /**
+   * Number of candles to return
+   * @minimum 1
+   * @maximum 500
+   */
+  limit?: number;
+};
+
+export type GetExchangeKlinesInterval =
+  (typeof GetExchangeKlinesInterval)[keyof typeof GetExchangeKlinesInterval];
+
+export const GetExchangeKlinesInterval = {
+  "15m": "15m",
+  "1h": "1h",
+  "4h": "4h",
+  "1d": "1d",
+} as const;
+
 export type StopAndCloseBot200 = {
   bot: BotConfig;
   /** Number of legs successfully closed */
@@ -451,21 +495,3 @@ export type DeleteCredential200 = {
   exchange: string;
   deleted: boolean;
 };
-
-export interface ExchangeKlinePoint {
-  /** Unix timestamp in milliseconds */
-  t: number;
-  /** Close price */
-  c: number;
-}
-
-export type ExchangeKlinesResponse = Partial<Record<string, ExchangeKlinePoint[]>>;
-
-export interface GetExchangeKlinesParams {
-  /** Token symbol, e.g. BTC */
-  symbol: string;
-  /** Candle interval: 15m | 1h | 4h | 1d */
-  interval?: string;
-  /** Number of candles to return (max 500) */
-  limit?: number;
-}

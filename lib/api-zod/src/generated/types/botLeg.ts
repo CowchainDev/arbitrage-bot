@@ -22,6 +22,10 @@ export interface BotLeg {
   bybitSide: BotLegBybitSide;
   binanceSide: BotLegBinanceSide;
   spreadAtEntry?: number;
+  /** Spread percentage when the leg was closed */
+  spreadAtExit?: number;
+  /** Realized profit or loss in USD (populated when leg is closed) */
+  realizedPnlUsd?: number;
   status: BotLegStatus;
   openedAt: string;
   closedAt?: string;

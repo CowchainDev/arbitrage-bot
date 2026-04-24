@@ -9,6 +9,7 @@
 export interface UpdateBotRequest {
   enterSpreadPct?: number;
   closeSpreadPct?: number;
+  /** Spread % at which a widening position is closed (stop loss, 0 = disabled) */
   stopLossSpreadPct?: number;
   orderSizeUsd?: number;
   maxOrders?: number;
