@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { Link } from "wouter";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, TrendingUp, XCircle, ChevronDown, ChevronUp } from "lucide-react";
 import {
   LineChart,
   Line,
@@ -17,11 +17,23 @@ import {
   getGetExchangePricesQueryKey,
   useGetExchangeKlines,
   getGetExchangeKlinesQueryKey,
+  useStopAndCloseBot,
+  getGetBotLegsQueryKey,
+  getListBotsQueryKey,
 } from "@workspace/api-client-react";
-import type { ExchangeKlinePoint } from "@workspace/api-client-react";
+import type { ExchangeKlinePoint, BotConfig, BotLeg, TokenSpread } from "@workspace/api-client-react";
 import { TokenDetailPanel } from "@/components/token-detail-panel";
 import { useBots } from "@/hooks/use-bots";
 import { useBotSecret } from "@/hooks/use-bot-secret";
+import { useApiCredentials } from "@/hooks/use-api-credentials";
+import { useToast } from "@/hooks/use-toast";
+import { Button } from "@/components/ui/button";
+import { useQueryClient } from "@tanstack/react-query";
+import {
+  BotSummaryRow,
+  PositionRow,
+  botLegToPosition,
+} from "@/components/position-rows";
 
 type TimeRange = { label: string; interval: string; limit: number };
 const TIME_RANGES: TimeRange[] = [
@@ -63,6 +75,169 @@ function formatPriceFull(price: number): string {
 
 type ChartRow = { t: number } & Partial<Record<ExchangeName, number>>;
 
+function OpenPositionsSection({
+  bot,
+  openLegs,
+  tokens,
+  botRequestOptions,
+  requestHeaders,
+}: {
+  bot: BotConfig;
+  openLegs: BotLeg[];
+  tokens: TokenSpread[];
+  botRequestOptions?: RequestInit;
+  requestHeaders: RequestInit | undefined;
+}) {
+  const [expanded, setExpanded] = useState(true);
+  const [expandedBotSymbols, setExpandedBotSymbols] = useState<Set<string>>(new Set([bot.symbol]));
+  const [busy, setBusy] = useState(false);
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const stopAndClose = useStopAndCloseBot({ request: botRequestOptions });
+
+  const positions = useMemo(
+    () => openLegs.map((leg) => botLegToPosition(leg, tokens)),
+    [openLegs, tokens]
+  );
+
+  const symbol = bot.symbol;
+
+  const toggleBotSymbol = (sym: string) =>
+    setExpandedBotSymbols((prev) => {
+      const next = new Set(prev);
+      if (next.has(sym)) next.delete(sym); else next.add(sym);
+      return next;
+    });
+
+  const handleStopAndClose = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const result = await stopAndClose.mutateAsync({ id: bot.id });
+      await queryClient.invalidateQueries({ queryKey: getListBotsQueryKey() });
+      await queryClient.invalidateQueries({ queryKey: getGetBotLegsQueryKey(bot.id) });
+      const desc =
+        result.failed > 0
+          ? `${result.closed} leg(s) closed, ${result.failed} failed — check exchange manually`
+          : `${result.closed} leg(s) closed on both exchanges`;
+      toast({
+        title: `${symbol} stopped & closed`,
+        description: desc,
+        variant: result.failed > 0 ? "destructive" : "default",
+      });
+    } catch (err) {
+      toast({
+        title: "Failed to stop & close",
+        description: err instanceof Error ? err.message : "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const isExpanded = expandedBotSymbols.has(symbol);
+
+  return (
+    <div
+      className="bg-card border border-border rounded-md overflow-hidden"
+      data-testid="open-positions-section"
+    >
+      <button
+        onClick={() => setExpanded((v) => !v)}
+        className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-muted/30 transition-colors"
+        data-testid="btn-toggle-open-positions"
+      >
+        <div className="flex items-center gap-2 text-sm font-semibold">
+          <TrendingUp className="w-4 h-4 text-primary" />
+          Open Positions
+          <span className="bg-primary/20 text-primary text-xs px-1.5 py-0.5 rounded">
+            {positions.length}
+          </span>
+        </div>
+        {expanded ? (
+          <ChevronUp className="w-4 h-4 text-muted-foreground" />
+        ) : (
+          <ChevronDown className="w-4 h-4 text-muted-foreground" />
+        )}
+      </button>
+
+      {expanded && (
+        <div>
+          {/* Table header — matches the 9-column grid used by BotSummaryRow / PositionRow */}
+          <div className="grid grid-cols-9 gap-2 px-3 py-2 text-xs text-muted-foreground uppercase tracking-wider bg-muted/30 font-semibold">
+            <span>Symbol</span>
+            <span>Side</span>
+            <span>Size</span>
+            <span>Entry Price (BB/BN)</span>
+            <span>Price (BB/BN)</span>
+            <span>Spread</span>
+            <span>P/L</span>
+            <span>Opened</span>
+            <span></span>
+          </div>
+
+          {positions.length > 1 ? (
+            <div>
+              <BotSummaryRow
+                positions={positions}
+                isExpanded={isExpanded}
+                onToggle={() => toggleBotSymbol(symbol)}
+              />
+              {isExpanded && positions.map((pos) => (
+                <div key={pos.id} className="pl-4 border-l-2 border-primary/20">
+                  <PositionRow
+                    position={pos}
+                    onCloseSuccess={() => {}}
+                    isLocalOnly={false}
+                    requestHeaders={requestHeaders}
+                  />
+                </div>
+              ))}
+            </div>
+          ) : (
+            positions.map((pos) => (
+              <PositionRow
+                key={pos.id}
+                position={pos}
+                onCloseSuccess={() => {}}
+                isLocalOnly={false}
+                requestHeaders={requestHeaders}
+              />
+            ))
+          )}
+
+          {/* STOP & CLOSE ALL footer */}
+          {bot.enabled && (
+            <div className="px-4 py-3 border-t border-border/40">
+              <Button
+                onClick={handleStopAndClose}
+                disabled={busy}
+                variant="destructive"
+                size="sm"
+                className="w-full"
+                data-testid="btn-stop-close-all"
+              >
+                {busy ? (
+                  <span className="flex items-center gap-2">
+                    <span className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
+                    Processing…
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-2">
+                    <XCircle className="w-3.5 h-3.5" />
+                    STOP & CLOSE ALL
+                  </span>
+                )}
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function TokenDetail({ params }: { params: { symbol: string } }) {
   const symbol = params.symbol.toUpperCase();
   const [timeRange, setTimeRange] = useState<TimeRange>(TIME_RANGES[1]);
@@ -81,6 +256,9 @@ export default function TokenDetail({ params }: { params: { symbol: string } }) 
 
   const { getBotRequestOptions } = useBotSecret();
   const botRequestOptions = getBotRequestOptions();
+
+  const { getRequestHeaders } = useApiCredentials();
+  const requestHeaders = getRequestHeaders();
 
   const { getBotStatusForSymbol } = useBots();
   const botStatus = getBotStatusForSymbol(symbol);
@@ -129,6 +307,8 @@ export default function TokenDetail({ params }: { params: { symbol: string } }) 
     }
     return d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
   };
+
+  const hasOpenLegs = (botStatus?.openLegs.length ?? 0) > 0;
 
   return (
     <div className="p-4 space-y-4 max-w-full">
@@ -341,6 +521,17 @@ export default function TokenDetail({ params }: { params: { symbol: string } }) 
                 </ResponsiveContainer>
               </div>
             </div>
+          )}
+
+          {/* Open Positions — shown when there are bot legs for this token */}
+          {hasOpenLegs && botStatus && (
+            <OpenPositionsSection
+              bot={botStatus.bot}
+              openLegs={botStatus.openLegs}
+              tokens={allTokens ?? []}
+              botRequestOptions={botRequestOptions}
+              requestHeaders={requestHeaders}
+            />
           )}
         </div>
 
