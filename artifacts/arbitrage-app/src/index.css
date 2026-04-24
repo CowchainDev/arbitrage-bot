@@ -161,7 +161,69 @@
   --destructive-border: hsl(from hsl(var(--destructive)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
 }
 
-/* Always dark */
+/* LIGHT TRADING TERMINAL THEME */
+:root:not(.dark) {
+  --button-outline: rgba(0,0,0, .10);
+  --badge-outline: rgba(0,0,0, .06);
+  --opaque-button-border-intensity: -9;
+  --elevate-1: rgba(0,0,0, .04);
+  --elevate-2: rgba(0,0,0, .08);
+
+  --background: 210 20% 96%;
+  --foreground: 220 15% 12%;
+  --border: 215 15% 82%;
+  --input: 215 15% 88%;
+  --ring: 152 65% 38%;
+
+  --card: 0 0% 100%;
+  --card-foreground: 220 15% 12%;
+  --card-border: 215 15% 82%;
+
+  --sidebar: 210 20% 93%;
+  --sidebar-foreground: 220 15% 20%;
+  --sidebar-border: 215 15% 80%;
+  --sidebar-primary: 152 65% 38%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 210 20% 88%;
+  --sidebar-accent-foreground: 220 15% 20%;
+  --sidebar-ring: 152 65% 38%;
+
+  --popover: 0 0% 100%;
+  --popover-foreground: 220 15% 12%;
+  --popover-border: 215 15% 82%;
+
+  --primary: 152 65% 38%;
+  --primary-foreground: 0 0% 100%;
+
+  --secondary: 215 15% 88%;
+  --secondary-foreground: 220 15% 20%;
+
+  --muted: 210 20% 92%;
+  --muted-foreground: 215 15% 45%;
+
+  --accent: 240 55% 50%;
+  --accent-foreground: 0 0% 100%;
+
+  --destructive: 354 75% 48%;
+  --destructive-foreground: 0 0% 100%;
+
+  --chart-1: 152 65% 38%;
+  --chart-2: 354 75% 48%;
+  --chart-3: 43 90% 48%;
+  --chart-4: 240 55% 50%;
+  --chart-5: 199 75% 45%;
+
+  --shadow-2xs: 0px 1px 3px 0px rgba(0,0,0,0.08);
+  --shadow-xs: 0px 1px 3px 0px rgba(0,0,0,0.10);
+  --shadow-sm: 0px 2px 6px 0px rgba(0,0,0,0.12), 0px 1px 2px -1px rgba(0,0,0,0.08);
+  --shadow: 0px 2px 8px 0px rgba(0,0,0,0.12), 0px 1px 2px -1px rgba(0,0,0,0.08);
+  --shadow-md: 0px 4px 12px 0px rgba(0,0,0,0.12), 0px 2px 4px -1px rgba(0,0,0,0.08);
+  --shadow-lg: 0px 8px 20px 0px rgba(0,0,0,0.14), 0px 4px 6px -1px rgba(0,0,0,0.08);
+  --shadow-xl: 0px 12px 30px 0px rgba(0,0,0,0.14), 0px 8px 10px -1px rgba(0,0,0,0.08);
+  --shadow-2xl: 0px 20px 40px 0px rgba(0,0,0,0.16);
+}
+
+/* Dark theme overrides */
 .dark {
   --button-outline: rgba(255,255,255, .10);
   --badge-outline: rgba(255,255,255, .05);

@@ -10,6 +10,7 @@ import History from "@/pages/history";
 import Settings from "@/pages/settings";
 import NotFound from "@/pages/not-found";
 import { ConnectionStatusProvider } from "@/contexts/connection-status";
+import { ThemeProvider } from "@/contexts/theme";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -37,16 +38,18 @@ function Router() {
 
 function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <ConnectionStatusProvider>
+    <ThemeProvider>
+      <QueryClientProvider client={queryClient}>
+        <TooltipProvider>
+          <ConnectionStatusProvider>
           <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
             <Router />
           </WouterRouter>
-          <Toaster />
-        </ConnectionStatusProvider>
-      </TooltipProvider>
-    </QueryClientProvider>
+            <Toaster />
+          </ConnectionStatusProvider>
+        </TooltipProvider>
+      </QueryClientProvider>
+    </ThemeProvider>
   );
 }
 

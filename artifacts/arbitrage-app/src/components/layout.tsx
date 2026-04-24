@@ -1,9 +1,10 @@
 import { Link, useLocation } from "wouter";
-import { Settings, LayoutDashboard, Activity, History, Bot } from "lucide-react";
+import { Settings, LayoutDashboard, Activity, History, Bot, Sun, Moon } from "lucide-react";
 import { useApiCredentials } from "@/hooks/use-api-credentials";
 import { useGetExchangeBalances, getGetExchangeBalancesQueryKey } from "@workspace/api-client-react";
 import { useConnectionStatus } from "@/contexts/connection-status";
 import { useBots } from "@/hooks/use-bots";
+import { useTheme } from "@/contexts/theme";
 
 function HeaderBalances() {
   const { getRequestHeaders, hasCredentials } = useApiCredentials();
@@ -100,6 +101,19 @@ function BotsNavItem() {
   );
 }
 
+function ThemeToggle() {
+  const { theme, toggleTheme } = useTheme();
+  return (
+    <button
+      onClick={toggleTheme}
+      className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+      aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+    >
+      {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+    </button>
+  );
+}
+
 export function Layout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col font-mono text-sm">
@@ -126,7 +140,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
           </nav>
           <ConnectionBadge />
         </div>
-        <HeaderBalances />
+        <div className="flex items-center gap-2">
+          <ThemeToggle />
+          <HeaderBalances />
+        </div>
       </header>
       <main className="flex-1 overflow-auto p-4">
         {children}
