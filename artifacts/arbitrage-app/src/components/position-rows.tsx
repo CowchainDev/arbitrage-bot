@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { ChevronDown, ChevronUp } from "lucide-react";
+import { ChevronDown, ChevronUp, LineChart } from "lucide-react";
+import { Link } from "wouter";
 import {
   useClosePosition,
   getGetPositionsQueryKey,
@@ -212,7 +213,14 @@ export function BotSummaryRow({
       <span className="font-mono text-muted-foreground">
         {earliestOpenedAt ? new Date(earliestOpenedAt).toLocaleTimeString() : "-"}
       </span>
-      <span className="text-xs text-muted-foreground italic">Bot managed</span>
+      <Link
+        href={`/token/${symbol}`}
+        onClick={(e) => e.stopPropagation()}
+        className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+      >
+        <LineChart className="w-3 h-3" />
+        View Chart
+      </Link>
     </div>
   );
 }
@@ -333,9 +341,14 @@ export function PositionRow({
             Dismiss
           </button>
         ) : position.id.startsWith("bot-leg-") ? (
-          <span className="text-xs text-muted-foreground italic" data-testid={`bot-leg-managed-${position.symbol}`}>
-            Bot managed
-          </span>
+          <Link
+            href={`/token/${position.symbol}`}
+            data-testid={`bot-leg-managed-${position.symbol}`}
+            className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <LineChart className="w-3 h-3" />
+            View Chart
+          </Link>
         ) : (
           <button
             onClick={handleClose}
