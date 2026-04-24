@@ -187,6 +187,10 @@ export function TokenDetailPanel({
             orderSizeUsd: orderSizeVal,
             maxOrders: maxOrdersVal,
             forceStopUsd: forceStopVal,
+            exchangeA: botExchangeA,
+            exchangeB: botExchangeB,
+            leverageA: Number(botLeverageA) || 1,
+            leverageB: Number(botLeverageB) || 1,
           },
         });
       }
