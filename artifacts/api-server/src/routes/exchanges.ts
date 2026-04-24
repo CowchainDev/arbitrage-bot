@@ -586,6 +586,21 @@ function getBinanceCredentials(req: Request) {
   };
 }
 
+function getOkxCredentials(req: Request) {
+  return {
+    apiKey: (req.headers["x-okx-api-key"] as string) || "",
+    secret: (req.headers["x-okx-api-secret"] as string) || "",
+    password: (req.headers["x-okx-passphrase"] as string) || "",
+  };
+}
+
+function getMexcCredentials(req: Request) {
+  return {
+    apiKey: (req.headers["x-mexc-api-key"] as string) || "",
+    secret: (req.headers["x-mexc-api-secret"] as string) || "",
+  };
+}
+
 export function createBybitExchange(apiKey = "", secret = "") {
   return new ccxt.bybit({
     apiKey,
@@ -937,40 +952,62 @@ router.get("/exchanges/prices", async (req: Request, res: Response) => {
 router.get("/exchanges/balances", async (req: Request, res: Response) => {
   const bybitCreds = getBybitCredentials(req);
   const binanceCreds = getBinanceCredentials(req);
+  const okxCreds = getOkxCredentials(req);
+  const mexcCreds = getMexcCredentials(req);
 
-  if (!bybitCreds.apiKey || !bybitCreds.secret || !binanceCreds.apiKey || !binanceCreds.secret) {
+  const hasAnyCredentials =
+    (bybitCreds.apiKey && bybitCreds.secret) ||
+    (binanceCreds.apiKey && binanceCreds.secret) ||
+    (okxCreds.apiKey && okxCreds.secret) ||
+    (mexcCreds.apiKey && mexcCreds.secret);
+
+  if (!hasAnyCredentials) {
     res.status(401).json({ error: "unauthorized", message: "API credentials required" });
     return;
   }
 
   try {
-    const bybit = createBybitExchange(bybitCreds.apiKey, bybitCreds.secret);
-    const binance = createBinanceExchange(binanceCreds.apiKey, binanceCreds.secret);
+    const fetchers: Promise<{ exchange: string; balance: unknown }>[] = [];
 
-    const [bybitBalance, binanceBalance] = await Promise.allSettled([
-      bybit.fetchBalance({ type: "linear" }),
-      binance.fetchBalance({ type: "future" }),
-    ]);
-
-    let bybitUsdt = 0;
-    let bybitPnl = 0;
-    if (bybitBalance.status === "fulfilled") {
-      bybitUsdt = bybitBalance.value.USDT?.free ?? bybitBalance.value.USDT?.total ?? 0;
-      bybitPnl = (bybitBalance.value.info as Record<string, unknown>)?.totalUnrealisedPnl as number ?? 0;
+    if (bybitCreds.apiKey && bybitCreds.secret) {
+      const bybit = createBybitExchange(bybitCreds.apiKey, bybitCreds.secret);
+      fetchers.push(bybit.fetchBalance({ type: "linear" }).then((b) => ({ exchange: "bybit", balance: b })));
+    }
+    if (binanceCreds.apiKey && binanceCreds.secret) {
+      const binance = createBinanceExchange(binanceCreds.apiKey, binanceCreds.secret);
+      fetchers.push(binance.fetchBalance({ type: "future" }).then((b) => ({ exchange: "binance", balance: b })));
+    }
+    if (okxCreds.apiKey && okxCreds.secret) {
+      const okx = createOkxExchange(okxCreds.apiKey, okxCreds.secret, okxCreds.password);
+      fetchers.push(okx.fetchBalance({ type: "swap" }).then((b) => ({ exchange: "okx", balance: b })));
+    }
+    if (mexcCreds.apiKey && mexcCreds.secret) {
+      const mexc = createMexcExchange(mexcCreds.apiKey, mexcCreds.secret);
+      fetchers.push(mexc.fetchBalance({ type: "swap" }).then((b) => ({ exchange: "mexc", balance: b })));
     }
 
-    let binanceUsdt = 0;
-    let binancePnl = 0;
-    if (binanceBalance.status === "fulfilled") {
-      binanceUsdt = binanceBalance.value.USDT?.free ?? binanceBalance.value.USDT?.total ?? 0;
-      binancePnl = (binanceBalance.value.info as Record<string, unknown>)?.totalUnrealizedProfit as number ?? 0;
+    const results = await Promise.allSettled(fetchers);
+
+    const balanceMap: Record<string, { usdt: number; pnl: number }> = {};
+    for (const result of results) {
+      if (result.status !== "fulfilled") continue;
+      const { exchange, balance } = result.value as { exchange: string; balance: Record<string, unknown> };
+      const usdt = (balance.USDT as Record<string, number>)?.free ?? (balance.USDT as Record<string, number>)?.total ?? 0;
+      let pnl = 0;
+      if (exchange === "bybit") pnl = (balance.info as Record<string, unknown>)?.totalUnrealisedPnl as number ?? 0;
+      if (exchange === "binance") pnl = (balance.info as Record<string, unknown>)?.totalUnrealizedProfit as number ?? 0;
+      balanceMap[exchange] = { usdt: Number(usdt) || 0, pnl: Number(pnl) || 0 };
     }
 
     res.json({
-      bybit: Number(bybitUsdt) || 0,
-      binance: Number(binanceUsdt) || 0,
-      bybitPnl: Number(bybitPnl) || 0,
-      binancePnl: Number(binancePnl) || 0,
+      bybit: balanceMap["bybit"]?.usdt ?? 0,
+      binance: balanceMap["binance"]?.usdt ?? 0,
+      bybitPnl: balanceMap["bybit"]?.pnl ?? 0,
+      binancePnl: balanceMap["binance"]?.pnl ?? 0,
+      okx: balanceMap["okx"] != null ? balanceMap["okx"].usdt : undefined,
+      okxPnl: balanceMap["okx"] != null ? balanceMap["okx"].pnl : undefined,
+      mexc: balanceMap["mexc"] != null ? balanceMap["mexc"].usdt : undefined,
+      mexcPnl: balanceMap["mexc"] != null ? balanceMap["mexc"].pnl : undefined,
     });
   } catch (err) {
     req.log.error({ err }, "Error fetching balances");

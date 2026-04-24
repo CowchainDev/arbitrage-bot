@@ -6,48 +6,86 @@ import { useConnectionStatus } from "@/contexts/connection-status";
 import { useBots } from "@/hooks/use-bots";
 import { useTheme } from "@/contexts/theme";
 
+function loadExchangeCreds(exchange: string): { apiKey: string; apiSecret: string; passphrase?: string } | null {
+  try {
+    const raw = localStorage.getItem(`exchange_creds_${exchange}`);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function BalanceChip({ label, usdt, pnl }: { label: string; usdt: number; pnl?: number }) {
+  return (
+    <div className="flex items-center gap-1.5 bg-card border border-border rounded px-2.5 py-1 text-xs">
+      <span className="text-muted-foreground">{label}</span>
+      <span className="font-mono font-semibold">${usdt.toFixed(2)}</span>
+      {pnl !== undefined && (
+        <span className={`font-mono ${pnl >= 0 ? "text-primary" : "text-destructive"}`}>
+          {pnl >= 0 ? "+" : ""}${pnl.toFixed(2)}
+        </span>
+      )}
+    </div>
+  );
+}
+
 function HeaderBalances() {
   const { getRequestHeaders, hasCredentials } = useApiCredentials();
-  const requestHeaders = getRequestHeaders();
+  const oldHeaders = getRequestHeaders();
+
+  const okxCreds = loadExchangeCreds("okx");
+  const mexcCreds = loadExchangeCreds("mexc");
+
+  const extraHeaders: Record<string, string> = {};
+  if (okxCreds?.apiKey) {
+    extraHeaders["x-okx-api-key"] = okxCreds.apiKey;
+    extraHeaders["x-okx-api-secret"] = okxCreds.apiSecret;
+    if (okxCreds.passphrase) extraHeaders["x-okx-passphrase"] = okxCreds.passphrase;
+  }
+  if (mexcCreds?.apiKey) {
+    extraHeaders["x-mexc-api-key"] = mexcCreds.apiKey;
+    extraHeaders["x-mexc-api-secret"] = mexcCreds.apiSecret;
+  }
+
+  const hasAnyCredentials = hasCredentials || !!okxCreds?.apiKey || !!mexcCreds?.apiKey;
+
+  const requestOptions = {
+    headers: {
+      ...(oldHeaders?.headers ?? {}),
+      ...extraHeaders,
+    },
+  };
 
   const balancesQuery = useGetExchangeBalances({
     query: {
       refetchInterval: 5000,
       queryKey: getGetExchangeBalancesQueryKey(),
-      enabled: hasCredentials,
+      enabled: hasAnyCredentials,
     },
-    request: requestHeaders ?? undefined,
+    request: requestOptions,
   });
 
-  if (!hasCredentials || !balancesQuery.data) {
-    if (!hasCredentials) {
-      return (
-        <div className="text-destructive font-medium bg-destructive/10 px-3 py-1 rounded text-xs">
-          API Keys missing. Configuration required.
-        </div>
-      );
-    }
-    return null;
+  if (!hasAnyCredentials) {
+    return (
+      <div className="text-destructive font-medium bg-destructive/10 px-3 py-1 rounded text-xs">
+        API Keys missing. Configuration required.
+      </div>
+    );
   }
 
-  const { bybit, binance, bybitPnl, binancePnl } = balancesQuery.data;
+  if (!balancesQuery.data) return null;
+
+  const data = balancesQuery.data as typeof balancesQuery.data & {
+    okx?: number; okxPnl?: number; mexc?: number; mexcPnl?: number;
+  };
+  const { bybit, binance, bybitPnl, binancePnl } = data;
 
   return (
     <div className="flex items-center gap-2">
-      <div className="flex items-center gap-1.5 bg-card border border-border rounded px-2.5 py-1 text-xs">
-        <span className="text-muted-foreground">Bybit</span>
-        <span className="font-mono font-semibold">${bybit.toFixed(2)}</span>
-        <span className={`font-mono ${(bybitPnl ?? 0) >= 0 ? "text-primary" : "text-destructive"}`}>
-          {(bybitPnl ?? 0) >= 0 ? "+" : ""}${(bybitPnl ?? 0).toFixed(2)}
-        </span>
-      </div>
-      <div className="flex items-center gap-1.5 bg-card border border-border rounded px-2.5 py-1 text-xs">
-        <span className="text-muted-foreground">Binance</span>
-        <span className="font-mono font-semibold">${binance.toFixed(2)}</span>
-        <span className={`font-mono ${(binancePnl ?? 0) >= 0 ? "text-primary" : "text-destructive"}`}>
-          {(binancePnl ?? 0) >= 0 ? "+" : ""}${(binancePnl ?? 0).toFixed(2)}
-        </span>
-      </div>
+      {bybit > 0 && <BalanceChip label="Bybit" usdt={bybit} pnl={bybitPnl} />}
+      {binance > 0 && <BalanceChip label="Binance" usdt={binance} pnl={binancePnl} />}
+      {data.okx != null && <BalanceChip label="OKX" usdt={data.okx} pnl={data.okxPnl} />}
+      {data.mexc != null && <BalanceChip label="MEXC" usdt={data.mexc} pnl={data.mexcPnl} />}
     </div>
   );
 }
