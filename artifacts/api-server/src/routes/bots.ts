@@ -1,7 +1,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db } from "@workspace/db";
 import { botConfigsTable, botLegsTable, type BotConfig, type BotLeg } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, desc } from "drizzle-orm";
 import { CreateBotBody, UpdateBotBody } from "@workspace/api-zod";
 import { closeAllLegsForBot } from "../services/bot-watcher";
 import { requireBotSecret } from "../middleware/auth";
@@ -245,6 +245,8 @@ router.get("/bots/:id/legs", async (req: Request, res: Response) => {
     return;
   }
 
+  const status = req.query.status === "closed" ? "closed" : "open";
+
   try {
     const [bot] = await db.select({ id: botConfigsTable.id }).from(botConfigsTable).where(eq(botConfigsTable.id, id));
     if (!bot) {
@@ -255,8 +257,8 @@ router.get("/bots/:id/legs", async (req: Request, res: Response) => {
     const legs = await db
       .select()
       .from(botLegsTable)
-      .where(and(eq(botLegsTable.botConfigId, id), eq(botLegsTable.status, "open")))
-      .orderBy(botLegsTable.openedAt);
+      .where(and(eq(botLegsTable.botConfigId, id), eq(botLegsTable.status, status)))
+      .orderBy(status === "closed" ? desc(botLegsTable.closedAt) : botLegsTable.openedAt);
 
     res.json({ legs: legs.map(normalizeBotLeg) });
   } catch (err) {

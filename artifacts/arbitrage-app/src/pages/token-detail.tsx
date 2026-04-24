@@ -30,7 +30,7 @@ import { usePriceStream } from "@/hooks/use-price-stream";
 import { useApiCredentials } from "@/hooks/use-api-credentials";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useQuery } from "@tanstack/react-query";
 import {
   BotSummaryRow,
   PositionRow,
@@ -337,6 +337,20 @@ export default function TokenDetail({ params }: { params: { symbol: string } }) 
   const { getBotStatusForSymbol } = useBots();
   const botStatus = getBotStatusForSymbol(symbol);
 
+  const botId = botStatus?.bot.id;
+  const closedLegsQuery = useQuery<{ legs: BotLeg[] }>({
+    queryKey: [`/api/bots/${botId}/legs`, "closed"],
+    queryFn: async () => {
+      const res = await fetch(`/api/bots/${botId}/legs?status=closed`);
+      if (!res.ok) throw new Error("Failed to fetch closed legs");
+      return res.json();
+    },
+    enabled: botId != null,
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+  });
+  const closedLegs: BotLeg[] = closedLegsQuery.data?.legs ?? [];
+
   const activeExchanges = useMemo((): ExchangeName[] => {
     if (!klines) return [];
     return ALL_EXCHANGES.filter((ex) => (klines[ex]?.length ?? 0) > 0);
@@ -397,19 +411,28 @@ export default function TokenDetail({ params }: { params: { symbol: string } }) 
     return d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
   };
 
-  // BUY/SELL markers from open bot legs
+  // BUY markers from open legs + SELL markers from closed legs
   const tradeMarkers = useMemo(() => {
-    if (!botStatus?.openLegs.length) return [];
-    return botStatus.openLegs.map((leg) => {
+    const markers: { t: number; label: string; color: string }[] = [];
+
+    for (const leg of botStatus?.openLegs ?? []) {
       const ts = new Date(leg.openedAt).getTime();
       const isBuy = leg.bybitSide === "Buy";
-      return {
+      markers.push({
         t: ts,
         label: isBuy ? "BUY" : "SELL",
         color: isBuy ? "#22c55e" : "#ef4444",
-      };
-    });
-  }, [botStatus]);
+      });
+    }
+
+    for (const leg of closedLegs) {
+      if (!leg.closedAt) continue;
+      const ts = new Date(leg.closedAt).getTime();
+      markers.push({ t: ts, label: "SELL", color: "#ef4444" });
+    }
+
+    return markers;
+  }, [botStatus, closedLegs]);
 
   const hasOpenLegs = (botStatus?.openLegs.length ?? 0) > 0;
 
@@ -599,17 +622,17 @@ export default function TokenDetail({ params }: { params: { symbol: string } }) 
                     </span>
                   </div>
                 ))}
-                {tradeMarkers.length > 0 && (
-                  <>
-                    <div className="flex items-center gap-1.5 text-xs">
-                      <span className="w-5 h-0.5 rounded-full shrink-0 bg-emerald-500" style={{ borderTop: "2px dashed #22c55e" }} />
-                      <span className="font-medium text-emerald-400">BUY</span>
-                    </div>
-                    <div className="flex items-center gap-1.5 text-xs">
-                      <span className="w-5 h-0.5 rounded-full shrink-0 bg-red-500" style={{ borderTop: "2px dashed #ef4444" }} />
-                      <span className="font-medium text-red-400">SELL</span>
-                    </div>
-                  </>
+                {tradeMarkers.some((m) => m.label === "BUY") && (
+                  <div className="flex items-center gap-1.5 text-xs">
+                    <span className="w-5 h-0.5 rounded-full shrink-0" style={{ borderTop: "2px dashed #22c55e" }} />
+                    <span className="font-medium text-emerald-400">BUY</span>
+                  </div>
+                )}
+                {tradeMarkers.some((m) => m.label === "SELL") && (
+                  <div className="flex items-center gap-1.5 text-xs">
+                    <span className="w-5 h-0.5 rounded-full shrink-0" style={{ borderTop: "2px dashed #ef4444" }} />
+                    <span className="font-medium text-red-400">SELL</span>
+                  </div>
                 )}
               </div>
             )}
