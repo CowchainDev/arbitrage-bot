@@ -493,8 +493,6 @@ async function fetchAndCachePrices(): Promise<unknown[]> {
     const okxPrice     = okxT     ? (okxT.last      ?? okxT.bid     ?? 0) : 0;
     const mexcPrice    = mexcT    ? (mexcT.last      ?? mexcT.bid    ?? 0) : 0;
 
-    if (!bybitPrice && !binancePrice) continue;
-
     const rawPriceList = [bybitPrice, binancePrice, gatePrice, okxPrice, mexcPrice];
     const livePrices = rawPriceList.filter(p => p > 0);
     if (livePrices.length < 2) continue;
