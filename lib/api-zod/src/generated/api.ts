@@ -676,6 +676,8 @@ export const GetBotLegsResponse = zod.object({
       bybitSide: zod.enum(["long", "short"]),
       binanceSide: zod.enum(["long", "short"]),
       spreadAtEntry: zod.number().optional(),
+      spreadAtExit: zod.number().optional(),
+      realizedPnlUsd: zod.number().optional(),
       status: zod.enum(["open", "closed"]),
       openedAt: zod.string(),
       closedAt: zod.string().optional(),

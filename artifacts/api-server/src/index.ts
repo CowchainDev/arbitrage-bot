@@ -4,6 +4,8 @@ import app from "./app";
 import { logger } from "./lib/logger";
 import { fetchPriceSpreads, prewarmKlinesCache, KLINES_PREWARM_INTERVAL_MS, PREWARM_INTERVALS } from "./routes/exchanges";
 import { startBotWatcher } from "./services/bot-watcher";
+import { db } from "@workspace/db";
+import { sql } from "drizzle-orm";
 
 const rawPort = process.env["PORT"];
 
@@ -73,6 +75,19 @@ wss.on("connection", (ws) => {
   });
 });
 
+async function runMigrations() {
+  try {
+    await db.execute(sql`
+      ALTER TABLE bot_legs
+        ADD COLUMN IF NOT EXISTS spread_at_exit NUMERIC(20, 8),
+        ADD COLUMN IF NOT EXISTS realized_pnl_usd NUMERIC(20, 8)
+    `);
+    logger.info("DB migrations applied (bot_legs: spread_at_exit, realized_pnl_usd)");
+  } catch (err) {
+    logger.warn({ err }, "DB migration warning — columns may already exist");
+  }
+}
+
 server.listen(port, (err?: Error) => {
   if (err) {
     logger.error({ err }, "Error listening on port");
@@ -80,6 +95,11 @@ server.listen(port, (err?: Error) => {
   }
 
   logger.info({ port }, "Server listening");
+
+  (async () => {
+    await runMigrations();
+    startBotWatcher();
+  })().catch((e) => logger.error({ err: e }, "Startup failed during migration or bot watcher init"));
 
   fetchPriceSpreads()
     .then(() => {
@@ -105,6 +125,4 @@ server.listen(port, (err?: Error) => {
       })
       .catch((e) => logger.warn({ err: e }, "Scheduled klines cache pre-warm failed"));
   }, KLINES_PREWARM_INTERVAL_MS);
-
-  startBotWatcher();
 });

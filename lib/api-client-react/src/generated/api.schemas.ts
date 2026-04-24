@@ -374,6 +374,8 @@ export interface BotLeg {
   bybitSide: BotLegBybitSide;
   binanceSide: BotLegBinanceSide;
   spreadAtEntry?: number;
+  spreadAtExit?: number;
+  realizedPnlUsd?: number;
   status: BotLegStatus;
   openedAt: string;
   closedAt?: string;

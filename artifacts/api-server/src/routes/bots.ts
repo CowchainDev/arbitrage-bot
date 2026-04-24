@@ -29,6 +29,8 @@ function normalizeBotLeg(leg: BotLeg) {
     bybitEntry: Number(leg.bybitEntry),
     binanceEntry: Number(leg.binanceEntry),
     spreadAtEntry: Number(leg.spreadAtEntry),
+    spreadAtExit: leg.spreadAtExit != null ? Number(leg.spreadAtExit) : undefined,
+    realizedPnlUsd: leg.realizedPnlUsd != null ? Number(leg.realizedPnlUsd) : undefined,
     openedAt: leg.openedAt.toISOString(),
     closedAt: leg.closedAt ? leg.closedAt.toISOString() : undefined,
   };

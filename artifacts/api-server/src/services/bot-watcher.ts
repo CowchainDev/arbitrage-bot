@@ -204,10 +204,16 @@ async function closeLeg(
   const realizedPnl = computeLegPnl(leg, priceA, priceB, closeFees);
   const totalFees =
     Number(leg.openFeeA ?? 0) + Number(leg.openFeeB ?? 0) + closeFees;
+  const spreadAtExit = getSpreadPct(priceA, priceB);
 
   await db
     .update(botLegsTable)
-    .set({ status: "closed", closedAt: new Date() })
+    .set({
+      status: "closed",
+      closedAt: new Date(),
+      spreadAtExit: spreadAtExit != null ? String(spreadAtExit) : undefined,
+      realizedPnlUsd: String(realizedPnl),
+    })
     .where(eq(botLegsTable.id, leg.id));
 
   try {
@@ -338,7 +344,13 @@ export async function closeAllLegsForBot(botId: number): Promise<{ closed: numbe
       const closeFees = result.closeFeeA + result.closeFeeB;
       const realizedPnl = computeLegPnl(leg, priceA, priceB, closeFees);
       const totalFees = Number(leg.openFeeA ?? 0) + Number(leg.openFeeB ?? 0) + closeFees;
-      await db.update(botLegsTable).set({ status: "closed", closedAt: new Date() }).where(eq(botLegsTable.id, leg.id));
+      const spreadAtExit = getSpreadPct(priceA, priceB);
+      await db.update(botLegsTable).set({
+        status: "closed",
+        closedAt: new Date(),
+        spreadAtExit: spreadAtExit != null ? String(spreadAtExit) : undefined,
+        realizedPnlUsd: String(realizedPnl),
+      }).where(eq(botLegsTable.id, leg.id));
       try {
         await db.insert(closedTradesTable).values({
           symbol: leg.symbol,

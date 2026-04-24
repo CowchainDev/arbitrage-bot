@@ -84,6 +84,8 @@ export const botLegsTable = pgTable(
     bybitSide: text("bybit_side").notNull().default("long"),
     binanceSide: text("binance_side").notNull().default("short"),
     spreadAtEntry: numeric("spread_at_entry", { precision: 20, scale: 8 }).notNull().default("0"),
+    spreadAtExit: numeric("spread_at_exit", { precision: 20, scale: 8 }),
+    realizedPnlUsd: numeric("realized_pnl_usd", { precision: 20, scale: 8 }),
     openFeeA: numeric("open_fee_a", { precision: 20, scale: 8 }).notNull().default("0"),
     openFeeB: numeric("open_fee_b", { precision: 20, scale: 8 }).notNull().default("0"),
     status: text("status").notNull().default("open"),

@@ -12,6 +12,7 @@ import {
   AreaChart,
   Area,
   ReferenceLine,
+  ReferenceArea,
 } from "recharts";
 import {
   useGetExchangePrices,
@@ -66,6 +67,179 @@ const EXCHANGE_SHORT: Record<string, string> = {
 
 const ALL_EXCHANGES = ["bybit", "binance", "gate", "okx", "mexc"] as const;
 type ExchangeName = typeof ALL_EXCHANGES[number];
+
+type TradeMarker = {
+  t: number;
+  label: "BUY" | "SELL";
+  color: string;
+  isEntry: boolean;
+  legId: number;
+  spreadAtEntry?: number;
+  spreadAtExit?: number;
+  realizedPnlUsd?: number;
+  openedAtMs: number;
+  closedAtMs?: number;
+};
+
+type TradePair = {
+  legId: number;
+  openedAtMs: number;
+  closedAtMs: number;
+};
+
+function formatDuration(ms: number): string {
+  const s = Math.floor(ms / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ${s % 60}s`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ${m % 60}m`;
+  const d = Math.floor(h / 24);
+  return `${d}d ${h % 24}h`;
+}
+
+function TradeMarkerLabel({
+  viewBox,
+  marker,
+}: {
+  viewBox?: { x: number; y: number; width: number; height: number };
+  marker: TradeMarker;
+}) {
+  const [hovered, setHovered] = useState(false);
+  if (!viewBox) return null;
+  const { x, y, height } = viewBox;
+
+  const isClosed = marker.closedAtMs != null;
+  const duration = isClosed
+    ? formatDuration(marker.closedAtMs! - marker.openedAtMs)
+    : null;
+
+  const tooltipWidth = 188;
+  const tooltipLineCount = isClosed ? 5 : 3;
+  const tooltipHeight = 24 + tooltipLineCount * 18;
+  const tooltipX = x + 6;
+  const tooltipY = y + 18;
+
+  const fmtSpread = (v?: number) =>
+    v != null ? `${v.toFixed(4)}%` : "N/A";
+  const fmtPnl = (v?: number) =>
+    v != null
+      ? `${v >= 0 ? "+" : ""}$${v.toFixed(2)}`
+      : "N/A";
+
+  return (
+    <g>
+      <rect
+        x={x - 8}
+        y={y}
+        width={16}
+        height={height}
+        fill="transparent"
+        style={{ cursor: "pointer" }}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+      />
+      <text
+        x={x + 3}
+        y={y + 12}
+        fill={marker.color}
+        fontSize={9}
+        fontFamily="monospace"
+        fontWeight="bold"
+        style={{ pointerEvents: "none", userSelect: "none" }}
+      >
+        {marker.label}
+      </text>
+      {hovered && (
+        <foreignObject
+          x={tooltipX}
+          y={tooltipY}
+          width={tooltipWidth}
+          height={tooltipHeight}
+          style={{ overflow: "visible" }}
+          onMouseEnter={() => setHovered(true)}
+          onMouseLeave={() => setHovered(false)}
+        >
+          <div
+            style={{
+              background: "hsl(var(--background))",
+              border: "1px solid hsl(var(--border))",
+              borderRadius: 6,
+              padding: "6px 10px",
+              fontSize: 11,
+              lineHeight: "18px",
+              boxShadow: "0 4px 16px rgba(0,0,0,0.3)",
+              whiteSpace: "nowrap",
+              color: "hsl(var(--foreground))",
+            }}
+          >
+            <div
+              style={{
+                fontWeight: 700,
+                fontFamily: "monospace",
+                color: marker.color,
+                marginBottom: 4,
+              }}
+            >
+              {marker.isEntry
+                ? `▲ ${marker.label} (Entry)`
+                : `▼ ${marker.label} (Exit)`}
+            </div>
+            <div style={{ color: "hsl(var(--muted-foreground))" }}>
+              Entry spread:{" "}
+              <span style={{ color: "hsl(var(--foreground))", fontFamily: "monospace" }}>
+                {fmtSpread(marker.spreadAtEntry)}
+              </span>
+            </div>
+            {isClosed && (
+              <div style={{ color: "hsl(var(--muted-foreground))" }}>
+                Exit spread:{" "}
+                <span style={{ color: "hsl(var(--foreground))", fontFamily: "monospace" }}>
+                  {fmtSpread(marker.spreadAtExit)}
+                </span>
+              </div>
+            )}
+            {isClosed && (
+              <div style={{ color: "hsl(var(--muted-foreground))" }}>
+                Realized P&amp;L:{" "}
+                <span
+                  style={{
+                    color:
+                      marker.realizedPnlUsd != null
+                        ? marker.realizedPnlUsd >= 0
+                          ? "#22c55e"
+                          : "#ef4444"
+                        : "hsl(var(--foreground))",
+                    fontFamily: "monospace",
+                    fontWeight: 600,
+                  }}
+                >
+                  {fmtPnl(marker.realizedPnlUsd)}
+                </span>
+              </div>
+            )}
+            {duration != null && (
+              <div style={{ color: "hsl(var(--muted-foreground))" }}>
+                Hold duration:{" "}
+                <span style={{ color: "hsl(var(--foreground))", fontFamily: "monospace" }}>
+                  {duration}
+                </span>
+              </div>
+            )}
+            {!isClosed && (
+              <div style={{ color: "hsl(var(--muted-foreground))" }}>
+                Status:{" "}
+                <span style={{ color: "#22c55e", fontFamily: "monospace" }}>
+                  Open
+                </span>
+              </div>
+            )}
+          </div>
+        </foreignObject>
+      )}
+    </g>
+  );
+}
 
 function formatPriceAxis(price: number): string {
   if (price >= 100000) return `${(price / 1000).toFixed(0)}K`;
@@ -411,28 +585,66 @@ export default function TokenDetail({ params }: { params: { symbol: string } }) 
     return d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
   };
 
-  // BUY markers from open legs + SELL markers from closed legs
-  const tradeMarkers = useMemo(() => {
-    const markers: { t: number; label: string; color: string }[] = [];
+  // BUY markers from open legs + BUY+SELL markers from closed legs
+  const tradeMarkers = useMemo((): TradeMarker[] => {
+    const markers: TradeMarker[] = [];
 
     for (const leg of botStatus?.openLegs ?? []) {
-      const ts = new Date(leg.openedAt).getTime();
-      const isBuy = leg.bybitSide === "Buy";
+      const openedAtMs = new Date(leg.openedAt).getTime();
+      const isLong = leg.bybitSide === "long";
       markers.push({
-        t: ts,
-        label: isBuy ? "BUY" : "SELL",
-        color: isBuy ? "#22c55e" : "#ef4444",
+        t: openedAtMs,
+        label: isLong ? "BUY" : "SELL",
+        color: isLong ? "#22c55e" : "#ef4444",
+        isEntry: true,
+        legId: leg.id,
+        spreadAtEntry: leg.spreadAtEntry,
+        openedAtMs,
       });
     }
 
     for (const leg of closedLegs) {
       if (!leg.closedAt) continue;
-      const ts = new Date(leg.closedAt).getTime();
-      markers.push({ t: ts, label: "SELL", color: "#ef4444" });
+      const openedAtMs = new Date(leg.openedAt).getTime();
+      const closedAtMs = new Date(leg.closedAt).getTime();
+      const isLong = leg.bybitSide === "long";
+      const shared = {
+        legId: leg.id,
+        spreadAtEntry: leg.spreadAtEntry,
+        spreadAtExit: leg.spreadAtExit,
+        realizedPnlUsd: leg.realizedPnlUsd,
+        openedAtMs,
+        closedAtMs,
+      };
+      markers.push({
+        t: openedAtMs,
+        label: isLong ? "BUY" : "SELL",
+        color: isLong ? "#22c55e" : "#ef4444",
+        isEntry: true,
+        ...shared,
+      });
+      markers.push({
+        t: closedAtMs,
+        label: isLong ? "SELL" : "BUY",
+        color: isLong ? "#ef4444" : "#22c55e",
+        isEntry: false,
+        ...shared,
+      });
     }
 
     return markers;
   }, [botStatus, closedLegs]);
+
+  // Pairs for shaded bands between entry and exit
+  const tradePairs = useMemo((): TradePair[] => {
+    return closedLegs
+      .filter((leg) => leg.closedAt != null)
+      .map((leg) => ({
+        legId: leg.id,
+        openedAtMs: new Date(leg.openedAt).getTime(),
+        closedAtMs: new Date(leg.closedAt!).getTime(),
+      }));
+  }, [closedLegs]);
 
   const hasOpenLegs = (botStatus?.openLegs.length ?? 0) > 0;
 
@@ -587,21 +799,26 @@ export default function TokenDetail({ params }: { params: { symbol: string } }) 
                         connectNulls
                       />
                     ))}
+                    {tradePairs.map((pair) => (
+                      <ReferenceArea
+                        key={`band-${pair.legId}`}
+                        x1={pair.openedAtMs}
+                        x2={pair.closedAtMs}
+                        fill="#22c55e"
+                        fillOpacity={0.06}
+                        stroke="none"
+                      />
+                    ))}
                     {tradeMarkers.map((marker, i) => (
                       <ReferenceLine
-                        key={i}
+                        key={`${marker.legId}-${marker.label}-${i}`}
                         x={marker.t}
                         stroke={marker.color}
                         strokeDasharray="4 2"
                         strokeWidth={1.5}
-                        label={{
-                          value: marker.label,
-                          position: "insideTopLeft",
-                          fontSize: 9,
-                          fill: marker.color,
-                          fontFamily: "monospace",
-                          fontWeight: "bold",
-                        }}
+                        label={(props) => (
+                          <TradeMarkerLabel {...props} marker={marker} />
+                        )}
                       />
                     ))}
                   </LineChart>
