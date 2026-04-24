@@ -47,7 +47,7 @@ async function fetchBybit(symbol, interval, limit) {
 async function fetchGate(symbol, interval, limit) {
   const intervalMap = { "15m": "15m", "1h": "1h", "4h": "4h", "1d": "1d" };
   const tf = intervalMap[interval] ?? "1h";
-  const url = `https://fx.gate.io/api/v4/futures/usdt/candlesticks?contract=${symbol}_USDT&interval=${tf}&limit=${Math.min(limit, 2000)}`;
+  const url = `https://api.gateio.ws/api/v4/futures/usdt/candlesticks?contract=${symbol}_USDT&interval=${tf}&limit=${Math.min(limit, 2000)}`;
   const resp = await Promise.race([fetch(url), timeout(TIMEOUT_MS)]);
   if (!resp.ok) throw new Error(`Gate HTTP ${resp.status}`);
   const rows = await resp.json();

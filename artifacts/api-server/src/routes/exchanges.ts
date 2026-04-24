@@ -111,7 +111,7 @@ async function fetchGateOhlcvDirect(symbol: string, interval: string, limit: num
   const intervalMap: Record<string, string> = { "15m": "15m", "1h": "1h", "4h": "4h", "1d": "1d" };
   const tf = intervalMap[interval] ?? "1h";
   const contract = `${symbol}_USDT`;
-  const url = `https://fx.gate.io/api/v4/futures/usdt/candlesticks?contract=${contract}&interval=${tf}&limit=${Math.min(limit, 2000)}`;
+  const url = `https://api.gateio.ws/api/v4/futures/usdt/candlesticks?contract=${contract}&interval=${tf}&limit=${Math.min(limit, 2000)}`;
   const resp = await fetch(url, { signal: AbortSignal.timeout(RELAY_TIMEOUT_MS) });
   if (!resp.ok) throw new Error(`Gate HTTP ${resp.status}`);
   type GateCandle = { t: number; c: string };
@@ -224,7 +224,7 @@ async function fetchExchangeKlines(
   if (relayUrl) {
     const relayData = await fetchViaRelay(relayUrl, exchangeName, symbol, interval, limit);
     if (relayData && relayData.length > 0) return relayData;
-    return ccxtFallback();
+    // relay failed — try direct REST before ccxt
   }
 
   const directFetcher = DIRECT_FETCHERS[exchangeName];
