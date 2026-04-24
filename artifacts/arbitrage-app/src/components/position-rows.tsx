@@ -231,12 +231,16 @@ export function PositionRow({
   onDismiss,
   isLocalOnly,
   requestHeaders,
+  exchangeA,
+  exchangeB,
 }: {
   position: Position;
   onCloseSuccess: (symbol: string) => void;
   onDismiss?: (symbol: string) => void;
   isLocalOnly?: boolean;
   requestHeaders: RequestInit | undefined;
+  exchangeA?: string;
+  exchangeB?: string;
 }) {
   const [isClosing, setIsClosing] = useState(false);
   const [closeResult, setCloseResult] = useState<ClosePositionResult | null>(null);
@@ -244,8 +248,10 @@ export function PositionRow({
   const closePosition = useClosePosition({ request: requestHeaders });
   const queryClient = useQueryClient();
 
-  const longExchange = position.bybitSide === "long" ? "bybit" : "binance";
-  const shortExchange = position.bybitSide === "short" ? "bybit" : "binance";
+  const exA = exchangeA ?? "bybit";
+  const exB = exchangeB ?? "binance";
+  const longExchange = position.bybitSide === "long" ? exA : exB;
+  const shortExchange = position.bybitSide === "short" ? exA : exB;
 
   const handleClose = async () => {
     if (isClosing) return;
@@ -269,6 +275,9 @@ export function PositionRow({
               entryTime: position.openedAt ?? new Date().toISOString(),
               quantity: position.usdSize ?? 0,
               realizedPnl: position.totalPnl ?? 0,
+              // @ts-expect-error - extra fields for exchange routing not yet in generated schema
+              exchangeA: exA,
+              exchangeB: exB,
             },
           },
           { onSuccess: resolve, onError: reject }
@@ -376,7 +385,7 @@ export function PositionRow({
             <div className="space-y-3 py-1">
               {closeResult.bybitResult && (
                 <div className="rounded-md border border-border p-3 space-y-1.5">
-                  <p className="text-xs font-semibold text-amber-400 uppercase tracking-wider">Bybit</p>
+                  <p className="text-xs font-semibold text-amber-400 uppercase tracking-wider">{exA}</p>
                   <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
                     <span className="text-muted-foreground">Side</span>
                     <span className={closeResult.bybitResult.side === "Buy" ? "text-primary font-semibold" : "text-destructive font-semibold"}>{closeResult.bybitResult.side}</span>
@@ -391,7 +400,7 @@ export function PositionRow({
               )}
               {closeResult.binanceResult && (
                 <div className="rounded-md border border-border p-3 space-y-1.5">
-                  <p className="text-xs font-semibold text-violet-400 uppercase tracking-wider">Binance</p>
+                  <p className="text-xs font-semibold text-violet-400 uppercase tracking-wider">{exB}</p>
                   <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
                     <span className="text-muted-foreground">Side</span>
                     <span className={closeResult.binanceResult.side === "BUY" || closeResult.binanceResult.side === "Buy" ? "text-primary font-semibold" : "text-destructive font-semibold"}>{closeResult.binanceResult.side}</span>

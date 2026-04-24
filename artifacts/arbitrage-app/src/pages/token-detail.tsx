@@ -258,6 +258,27 @@ function formatPriceFull(price: number): string {
 
 type ChartRow = { t: number } & Partial<Record<ExchangeName, number>>;
 
+function loadAllExchangeHeaders(base: RequestInit | undefined): RequestInit {
+  const baseHeaders = (base?.headers ?? {}) as Record<string, string>;
+  const extra: Record<string, string> = {};
+  for (const exchange of ["gate", "okx", "mexc"] as const) {
+    try {
+      const raw = localStorage.getItem(`exchange_creds_${exchange}`);
+      if (raw) {
+        const creds = JSON.parse(raw) as { apiKey?: string; apiSecret?: string; passphrase?: string };
+        if (creds.apiKey) {
+          extra[`x-${exchange}-api-key`] = creds.apiKey;
+          extra[`x-${exchange}-api-secret`] = creds.apiSecret ?? "";
+          if (exchange === "okx" && creds.passphrase) {
+            extra["x-okx-passphrase"] = creds.passphrase;
+          }
+        }
+      }
+    } catch {}
+  }
+  return { headers: { ...baseHeaders, ...extra } };
+}
+
 function OpenPositionsSection({
   bot,
   openLegs,
@@ -274,6 +295,10 @@ function OpenPositionsSection({
   const [expanded, setExpanded] = useState(true);
   const [expandedBotSymbols, setExpandedBotSymbols] = useState<Set<string>>(new Set([bot.symbol]));
   const [busy, setBusy] = useState(false);
+  const allExchangeRequestHeaders = useMemo(
+    () => loadAllExchangeHeaders(requestHeaders),
+    [requestHeaders]
+  );
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const stopAndClose = useStopAndCloseBot({ request: botRequestOptions });
@@ -376,7 +401,9 @@ function OpenPositionsSection({
                     position={pos}
                     onCloseSuccess={() => {}}
                     isLocalOnly={false}
-                    requestHeaders={requestHeaders}
+                    requestHeaders={allExchangeRequestHeaders}
+                    exchangeA={bot.exchangeA}
+                    exchangeB={bot.exchangeB}
                   />
                 </div>
               ))}
@@ -388,7 +415,9 @@ function OpenPositionsSection({
                 position={pos}
                 onCloseSuccess={() => {}}
                 isLocalOnly={false}
-                requestHeaders={requestHeaders}
+                requestHeaders={allExchangeRequestHeaders}
+                exchangeA={bot.exchangeA}
+                exchangeB={bot.exchangeB}
               />
             ))
           )}

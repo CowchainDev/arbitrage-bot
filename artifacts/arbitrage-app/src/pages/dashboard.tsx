@@ -622,6 +622,35 @@ export default function Dashboard() {
     [allOpenLegsWithBot, tokens]
   );
 
+  const botExchangeByPositionId = useMemo(
+    () => new Map(allOpenLegsWithBot.map(({ leg, bot }) => [
+      `bot-leg-${leg.id}`,
+      { exchangeA: bot.exchangeA, exchangeB: bot.exchangeB },
+    ])),
+    [allOpenLegsWithBot]
+  );
+
+  const allExchangeRequestHeaders = useMemo(() => {
+    const base = requestHeaders?.headers ?? {};
+    const extra: Record<string, string> = {};
+    for (const exchange of ["gate", "okx", "mexc"] as const) {
+      try {
+        const raw = localStorage.getItem(`exchange_creds_${exchange}`);
+        if (raw) {
+          const creds = JSON.parse(raw) as { apiKey?: string; apiSecret?: string; passphrase?: string };
+          if (creds.apiKey) {
+            extra[`x-${exchange}-api-key`] = creds.apiKey;
+            extra[`x-${exchange}-api-secret`] = creds.apiSecret ?? "";
+            if (exchange === "okx" && creds.passphrase) {
+              extra["x-okx-passphrase"] = creds.passphrase;
+            }
+          }
+        }
+      } catch {}
+    }
+    return { headers: { ...base, ...extra } };
+  }, [requestHeaders]);
+
   const positions = useMemo(() => {
     const botLegSymbols = new Set(botLegPositions.map((p) => p.symbol));
     const filteredPolled = polledPositions.filter((p) => !botLegSymbols.has(p.symbol));
@@ -805,31 +834,41 @@ export default function Dashboard() {
                             isExpanded={isExpanded}
                             onToggle={() => toggleBotSymbol(pos.symbol)}
                           />
-                          {isExpanded && group.map((legPos) => (
-                            <div key={legPos.id} className="pl-4 border-l-2 border-primary/20">
-                              <PositionRow
-                                position={legPos}
-                                onCloseSuccess={removePosition}
-                                onDismiss={removePosition}
-                                isLocalOnly={false}
-                                requestHeaders={requestHeaders}
-                              />
-                            </div>
-                          ))}
+                          {isExpanded && group.map((legPos) => {
+                            const exchInfo = botExchangeByPositionId.get(legPos.id);
+                            return (
+                              <div key={legPos.id} className="pl-4 border-l-2 border-primary/20">
+                                <PositionRow
+                                  position={legPos}
+                                  onCloseSuccess={removePosition}
+                                  onDismiss={removePosition}
+                                  isLocalOnly={false}
+                                  requestHeaders={allExchangeRequestHeaders}
+                                  exchangeA={exchInfo?.exchangeA}
+                                  exchangeB={exchInfo?.exchangeB}
+                                />
+                              </div>
+                            );
+                          })}
                         </div>
                       );
                     }
                   }
-                  return (
-                    <PositionRow
-                      key={pos.id}
-                      position={pos}
-                      onCloseSuccess={removePosition}
-                      onDismiss={removePosition}
-                      isLocalOnly={!hasCredentials && localOnlySymbols.has(pos.symbol)}
-                      requestHeaders={requestHeaders}
-                    />
-                  );
+                  {
+                    const exchInfo = botExchangeByPositionId.get(pos.id);
+                    return (
+                      <PositionRow
+                        key={pos.id}
+                        position={pos}
+                        onCloseSuccess={removePosition}
+                        onDismiss={removePosition}
+                        isLocalOnly={!hasCredentials && localOnlySymbols.has(pos.symbol)}
+                        requestHeaders={allExchangeRequestHeaders}
+                        exchangeA={exchInfo?.exchangeA}
+                        exchangeB={exchInfo?.exchangeB}
+                      />
+                    );
+                  }
                 });
               })()}
             </div>

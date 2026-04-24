@@ -695,6 +695,24 @@ function getMexcCredentials(req: Request) {
   };
 }
 
+function getGateCredentials(req: Request) {
+  return {
+    apiKey: (req.headers["x-gate-api-key"] as string) || "",
+    secret: (req.headers["x-gate-api-secret"] as string) || "",
+  };
+}
+
+function getCredentialsForExchange(req: Request, exchange: string): { apiKey: string; secret: string; passphrase?: string } {
+  switch (exchange) {
+    case "bybit":   return getBybitCredentials(req);
+    case "binance": return getBinanceCredentials(req);
+    case "okx":     { const c = getOkxCredentials(req); return { apiKey: c.apiKey, secret: c.secret, passphrase: c.password }; }
+    case "mexc":    return getMexcCredentials(req);
+    case "gate":    return getGateCredentials(req);
+    default:        return { apiKey: "", secret: "" };
+  }
+}
+
 export function createBybitExchange(apiKey = "", secret = "") {
   return new ccxt.bybit({
     apiKey,
@@ -1206,23 +1224,25 @@ router.post("/exchanges/close-position", async (req: Request, res: Response) => 
 
   const { symbol, bybitSide, binanceSide, bybitQty, binanceQty } = parsed.data;
   const body = req.body as Record<string, unknown>;
-  const longExchange = typeof body["longExchange"] === "string" ? body["longExchange"] : "bybit";
-  const shortExchange = typeof body["shortExchange"] === "string" ? body["shortExchange"] : "binance";
+  const exchangeA = typeof body["exchangeA"] === "string" ? body["exchangeA"] : "bybit";
+  const exchangeB = typeof body["exchangeB"] === "string" ? body["exchangeB"] : "binance";
+  const longExchange = typeof body["longExchange"] === "string" ? body["longExchange"] : exchangeA;
+  const shortExchange = typeof body["shortExchange"] === "string" ? body["shortExchange"] : exchangeB;
   const spreadAtEntry = typeof body["spreadAtEntry"] === "number" ? body["spreadAtEntry"] : 0;
   const entryTime = typeof body["entryTime"] === "string" ? body["entryTime"] : undefined;
   const quantity = typeof body["quantity"] === "number" ? body["quantity"] : 0;
   const clientRealizedPnl = typeof body["realizedPnl"] === "number" ? body["realizedPnl"] : null;
 
-  const bybitCreds = getBybitCredentials(req);
-  const binanceCreds = getBinanceCredentials(req);
+  const credsA = getCredentialsForExchange(req, exchangeA);
+  const credsB = getCredentialsForExchange(req, exchangeB);
 
   try {
-    const bybit = createBybitExchange(bybitCreds.apiKey, bybitCreds.secret);
-    const binance = createBinanceExchange(binanceCreds.apiKey, binanceCreds.secret);
+    const exA = createExchangeForName(exchangeA, credsA.apiKey, credsA.secret, credsA.passphrase);
+    const exB = createExchangeForName(exchangeB, credsB.apiKey, credsB.secret, credsB.passphrase);
 
     const result = await closePositionInternal({
-      exA: bybit,
-      exB: binance,
+      exA,
+      exB,
       symbol,
       sideA: bybitSide as "long" | "short",
       sideB: binanceSide as "long" | "short",
