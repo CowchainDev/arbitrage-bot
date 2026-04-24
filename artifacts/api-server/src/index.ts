@@ -2,7 +2,7 @@ import http from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import app from "./app";
 import { logger } from "./lib/logger";
-import { fetchPriceSpreads } from "./routes/exchanges";
+import { fetchPriceSpreads, prewarmKlinesCache, KLINES_PREWARM_INTERVAL_MS } from "./routes/exchanges";
 import { startBotWatcher } from "./services/bot-watcher";
 
 const rawPort = process.env["PORT"];
@@ -84,6 +84,26 @@ server.listen(port, (err?: Error) => {
   fetchPriceSpreads()
     .then(() => logger.info("Startup price cache warm-up complete"))
     .catch((e) => logger.warn({ err: e }, "Startup price cache warm-up failed"));
+
+  prewarmKlinesCache()
+    .then(({ succeeded, failed }) => {
+      if (failed > 0) {
+        logger.warn({ succeeded, failed }, "Startup klines cache pre-warm completed with failures");
+      } else {
+        logger.info({ succeeded }, "Startup klines cache pre-warm complete");
+      }
+    })
+    .catch((e) => logger.warn({ err: e }, "Startup klines cache pre-warm failed"));
+
+  setInterval(() => {
+    prewarmKlinesCache()
+      .then(({ succeeded, failed }) => {
+        if (failed > 0) {
+          logger.warn({ succeeded, failed }, "Scheduled klines cache pre-warm completed with failures");
+        }
+      })
+      .catch((e) => logger.warn({ err: e }, "Scheduled klines cache pre-warm failed"));
+  }, KLINES_PREWARM_INTERVAL_MS);
 
   startBotWatcher();
 });

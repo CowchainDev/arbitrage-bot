@@ -23,6 +23,79 @@ function getKlinesCacheTtl(interval: string): number {
   return interval === "4h" || interval === "1d" ? KLINES_TTL_LONG_MS : KLINES_TTL_SHORT_MS;
 }
 
+const PREWARM_SYMBOLS = ["BTC", "ETH", "SOL"];
+const PREWARM_INTERVALS = ["1h"];
+const PREWARM_LIMIT = 168;
+const KLINES_TIMEOUT_MS = 4000;
+
+async function fetchKlinesForSymbol(
+  symbol: string,
+  interval: string,
+  limit: number
+): Promise<void> {
+  const cacheKey = `${symbol}:${interval}:${limit}`;
+  const cached = klinesCache.get(cacheKey);
+  const ttl = getKlinesCacheTtl(interval);
+  if (cached && Date.now() - cached.ts < ttl) return;
+
+  const ccxtSymbol = `${symbol}/USDT:USDT`;
+  const timeframeMap: Record<string, string> = {
+    "15m": "15m", "1h": "1h", "4h": "4h", "1d": "1d",
+  };
+  const timeframe = timeframeMap[interval] ?? "1h";
+
+  const exchangeDefs = [
+    { name: "bybit",   create: () => createBybitExchange() },
+    { name: "binance", create: () => createBinanceExchange() },
+    { name: "gate",    create: () => createGateExchange() },
+    { name: "okx",     create: () => createOkxExchange() },
+    { name: "mexc",    create: () => createMexcExchange() },
+  ];
+
+  type OhlcvRow = [number, number, number, number, number, number?];
+  const results = await Promise.allSettled(
+    exchangeDefs.map(async ({ name, create }) => {
+      const ex = create();
+      const raw = await Promise.race([
+        ex.fetchOHLCV(ccxtSymbol, timeframe, undefined, limit) as Promise<OhlcvRow[]>,
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("klines timeout")), KLINES_TIMEOUT_MS)
+        ),
+      ]);
+      const data = raw.map((row) => ({ t: row[0], c: row[4] })).filter((p) => p.t > 0 && p.c > 0);
+      return { name, data };
+    })
+  );
+
+  const out: Record<string, { t: number; c: number }[]> = {};
+  for (const result of results) {
+    if (result.status === "fulfilled" && result.value.data.length > 0) {
+      out[result.value.name] = result.value.data;
+    }
+  }
+
+  if (Object.keys(out).length > 0) {
+    klinesCache.set(cacheKey, { data: out, ts: Date.now() });
+  }
+}
+
+export const KLINES_PREWARM_INTERVAL_MS = KLINES_TTL_SHORT_MS;
+
+export async function prewarmKlinesCache(): Promise<{ succeeded: number; failed: number }> {
+  const pairs = PREWARM_SYMBOLS.flatMap((symbol) =>
+    PREWARM_INTERVALS.map((interval) => ({ symbol, interval }))
+  );
+
+  const results = await Promise.allSettled(
+    pairs.map(({ symbol, interval }) => fetchKlinesForSymbol(symbol, interval, PREWARM_LIMIT))
+  );
+
+  const succeeded = results.filter((r) => r.status === "fulfilled").length;
+  const failed = results.length - succeeded;
+
+  return { succeeded, failed };
+}
+
 type SymbolPriceEntry = { bybitPrice: number | null; binancePrice: number | null };
 const priceCacheBySymbol = new Map<string, SymbolPriceEntry>();
 
@@ -542,7 +615,6 @@ router.get("/exchanges/klines", async (req: Request, res: Response) => {
     { name: "mexc",    create: () => createMexcExchange() },
   ];
 
-  const KLINES_TIMEOUT_MS = 4000;
   const results = await Promise.allSettled(
     exchangeDefs.map(async ({ name, create }) => {
       const ex = create();
