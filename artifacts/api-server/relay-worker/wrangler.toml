@@ -1,0 +1,6 @@
+name = "klines-relay"
+main = "worker.js"
+compatibility_date = "2024-01-01"
+
+[vars]
+# No vars needed — this worker only proxies public exchange APIs
