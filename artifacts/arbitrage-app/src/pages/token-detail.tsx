@@ -549,7 +549,6 @@ export default function TokenDetail({ params }: { params: { symbol: string } }) 
               token={token}
               bot={botStatus?.bot}
               botOpenLegsCount={botStatus?.openLegsCount ?? 0}
-              botRequestOptions={botRequestOptions}
             />
           ) : tokenNotFound ? (
             <div className="bg-card border border-border rounded-md p-6 flex flex-col items-center justify-center text-center gap-2 min-h-[200px]">

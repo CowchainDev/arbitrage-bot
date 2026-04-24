@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
+import { useBotSecret } from "@/hooks/use-bot-secret";
 
 const EXCHANGE_LABELS: Record<string, string> = {
   bybit: "BYBIT", binance: "BINANCE", gate: "GATE", okx: "OKX", mexc: "MEXC",
@@ -57,14 +58,14 @@ export function TokenDetailPanel({
   onClose,
   bot,
   botOpenLegsCount,
-  botRequestOptions,
 }: {
   token: TokenSpread;
   onClose?: () => void;
   bot?: BotConfig;
   botOpenLegsCount: number;
-  botRequestOptions?: RequestInit;
 }) {
+  const { getBotRequestOptions } = useBotSecret();
+  const botRequestOptions = getBotRequestOptions();
   const [botEnterSpread, setBotEnterSpread] = useState(() => bot ? String(bot.enterSpreadPct) : "0.5");
   const [botCloseSpread, setBotCloseSpread] = useState(() => bot ? String(bot.closeSpreadPct) : "0.2");
   const [botStopLossSpread, setBotStopLossSpread] = useState(() => bot ? String(bot.stopLossSpreadPct ?? 0) : "0");

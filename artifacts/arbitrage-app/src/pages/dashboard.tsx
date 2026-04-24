@@ -5,7 +5,6 @@ import { useGetExchangePrices, getGetExchangePricesQueryKey, useGetPositions, ge
 import type { TokenSpread, Position, BotConfig } from "@workspace/api-client-react";
 import { TokenDetailPanel } from "@/components/token-detail-panel";
 import { useBots } from "@/hooks/use-bots";
-import { useBotSecret } from "@/hooks/use-bot-secret";
 import { useLocalPositions } from "@/hooks/use-local-positions";
 import { useApiCredentials } from "@/hooks/use-api-credentials";
 import { useFavourites } from "@/hooks/use-favourites";
@@ -487,7 +486,6 @@ export default function Dashboard() {
   const { localPositions, removePosition } = useLocalPositions();
   const { setDataSource } = useConnectionStatus();
   const { getBotStatusForSymbol, allOpenLegsWithBot } = useBots();
-  const { getBotRequestOptions } = useBotSecret();
 
   const ALL_EXCHANGES = ALL_EXCHANGES_LIST;
 
@@ -1057,7 +1055,6 @@ export default function Dashboard() {
                   onClose={() => setSelectedSymbol(null)}
                   bot={botStatus?.bot}
                   botOpenLegsCount={botStatus?.openLegsCount ?? 0}
-                  botRequestOptions={getBotRequestOptions()}
                 />
               );
             })()
