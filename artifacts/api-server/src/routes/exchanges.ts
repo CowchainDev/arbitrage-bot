@@ -4,6 +4,7 @@ import {
   PlaceOrderBody,
   ClosePositionBody,
   JumpInBody,
+  CANDLE_LIMIT_BY_INTERVAL,
 } from "@workspace/api-zod";
 import { db } from "@workspace/db";
 import { closedTradesTable } from "@workspace/db";
@@ -62,12 +63,6 @@ function getKlinesCacheTtl(interval: string): number {
 
 export const PREWARM_SYMBOLS = ["BTC", "ETH", "SOL", "BNB", "XRP", "DOGE"];
 export const PREWARM_INTERVALS = ["15m", "1h", "4h", "1d"];
-const PREWARM_LIMIT_BY_INTERVAL: Record<string, number> = {
-  "15m": 96,
-  "1h":  168,
-  "4h":  90,
-  "1d":  60,
-};
 const PREWARM_CONCURRENCY = 4;
 const PREWARM_TOP_N = 10;
 const KLINES_TIMEOUT_MS = 4000;
@@ -347,7 +342,7 @@ export async function prewarmKlinesCache(): Promise<{ succeeded: number; failed:
   for (let i = 0; i < pairs.length; i += PREWARM_CONCURRENCY) {
     const batch = pairs.slice(i, i + PREWARM_CONCURRENCY);
     const batchResults = await Promise.allSettled(
-      batch.map(({ symbol, interval }) => fetchKlinesForSymbol(symbol, interval, PREWARM_LIMIT_BY_INTERVAL[interval] ?? 96))
+      batch.map(({ symbol, interval }) => fetchKlinesForSymbol(symbol, interval, CANDLE_LIMIT_BY_INTERVAL[interval] ?? 96))
     );
     results.push(...batchResults);
   }

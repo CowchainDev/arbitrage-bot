@@ -23,6 +23,7 @@ import {
   getGetBotLegsQueryKey,
   getListBotsQueryKey,
 } from "@workspace/api-client-react";
+import { CANDLE_LIMIT_BY_INTERVAL } from "@workspace/api-zod";
 import type { ExchangeKlinePoint, BotConfig, BotLeg, TokenSpread } from "@workspace/api-client-react";
 import { TokenDetailPanel } from "@/components/token-detail-panel";
 import { useBots } from "@/hooks/use-bots";
@@ -40,13 +41,13 @@ import {
 
 type TimeRange = { label: string; interval: string; limit: number; liveSeconds?: number };
 const TIME_RANGES: TimeRange[] = [
-  { label: "30s", interval: "live", limit: 120, liveSeconds: 30  },
-  { label: "1m",  interval: "live", limit: 240, liveSeconds: 60  },
-  { label: "5m",  interval: "live", limit: 300, liveSeconds: 300 },
-  { label: "15m", interval: "15m",  limit: 96  },
-  { label: "1h",  interval: "1h",   limit: 168 },
-  { label: "4h",  interval: "4h",   limit: 90  },
-  { label: "1d",  interval: "1d",   limit: 60  },
+  { label: "30s", interval: "live", limit: 120,                              liveSeconds: 30  },
+  { label: "1m",  interval: "live", limit: 240,                              liveSeconds: 60  },
+  { label: "5m",  interval: "live", limit: 300,                              liveSeconds: 300 },
+  { label: "15m", interval: "15m",  limit: CANDLE_LIMIT_BY_INTERVAL["15m"] },
+  { label: "1h",  interval: "1h",   limit: CANDLE_LIMIT_BY_INTERVAL["1h"]  },
+  { label: "4h",  interval: "4h",   limit: CANDLE_LIMIT_BY_INTERVAL["4h"]  },
+  { label: "1d",  interval: "1d",   limit: CANDLE_LIMIT_BY_INTERVAL["1d"]  },
 ];
 
 const EXCHANGE_LINE_COLORS: Record<string, string> = {
