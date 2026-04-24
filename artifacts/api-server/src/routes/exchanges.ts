@@ -18,6 +18,30 @@ type KlinesCacheEntry = { data: Record<string, { t: number; c: number }[]>; ts: 
 const klinesCache = new Map<string, KlinesCacheEntry>();
 const KLINES_TTL_SHORT_MS = 2 * 60 * 1000;
 const KLINES_TTL_LONG_MS  = 10 * 60 * 1000;
+const KLINES_CACHE_MAX_SIZE = 200;
+const KLINES_CACHE_SWEEP_MS = 5 * 60 * 1000;
+
+function evictKlinesCacheIfNeeded(): void {
+  if (klinesCache.size <= KLINES_CACHE_MAX_SIZE) return;
+  const toRemove = klinesCache.size - KLINES_CACHE_MAX_SIZE;
+  const entries = [...klinesCache.entries()].sort((a, b) => a[1].ts - b[1].ts);
+  for (let i = 0; i < toRemove; i++) {
+    klinesCache.delete(entries[i][0]);
+  }
+}
+
+function sweepExpiredKlinesCache(): void {
+  const now = Date.now();
+  for (const [key, entry] of klinesCache.entries()) {
+    const interval = key.split(":")[1] ?? "1h";
+    const ttl = getKlinesCacheTtl(interval);
+    if (now - entry.ts > ttl) {
+      klinesCache.delete(key);
+    }
+  }
+}
+
+setInterval(sweepExpiredKlinesCache, KLINES_CACHE_SWEEP_MS).unref();
 
 const symbolHitCounts = new Map<string, number>();
 const SYMBOL_HIT_COUNT_MAX = 500;
@@ -266,6 +290,7 @@ async function fetchKlinesForSymbol(
 
   if (Object.keys(out).length > 0) {
     klinesCache.set(cacheKey, { data: out, ts: Date.now() });
+    evictKlinesCacheIfNeeded();
   }
 }
 
@@ -1052,6 +1077,7 @@ router.get("/exchanges/klines", async (req: Request, res: Response) => {
 
   if (Object.keys(out).length > 0) {
     klinesCache.set(cacheKey, { data: out, ts: Date.now() });
+    evictKlinesCacheIfNeeded();
   }
 
   res.json(out);
