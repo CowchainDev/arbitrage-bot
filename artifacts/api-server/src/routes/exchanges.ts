@@ -19,6 +19,18 @@ const klinesCache = new Map<string, KlinesCacheEntry>();
 const KLINES_TTL_SHORT_MS = 2 * 60 * 1000;
 const KLINES_TTL_LONG_MS  = 10 * 60 * 1000;
 
+const symbolHitCounts = new Map<string, number>();
+const SYMBOL_HIT_COUNT_MAX = 500;
+
+export function recordKlinesHit(symbol: string): void {
+  symbolHitCounts.set(symbol, (symbolHitCounts.get(symbol) ?? 0) + 1);
+  if (symbolHitCounts.size > SYMBOL_HIT_COUNT_MAX) {
+    const entries = [...symbolHitCounts.entries()].sort((a, b) => a[1] - b[1]);
+    const toRemove = entries.slice(0, Math.floor(SYMBOL_HIT_COUNT_MAX * 0.1));
+    for (const [sym] of toRemove) symbolHitCounts.delete(sym);
+  }
+}
+
 function getKlinesCacheTtl(interval: string): number {
   return interval === "4h" || interval === "1d" ? KLINES_TTL_LONG_MS : KLINES_TTL_SHORT_MS;
 }
@@ -260,16 +272,41 @@ async function fetchKlinesForSymbol(
 export const KLINES_PREWARM_INTERVAL_MS = KLINES_TTL_SHORT_MS;
 
 function getTopSymbolsByVolume(n: number): string[] {
-  // Always anchor with BTC/ETH/SOL, then fill the rest from live volume data
-  const anchors = new Set(PREWARM_SYMBOLS);
-  if (!priceCache || priceCache.data.length === 0) return PREWARM_SYMBOLS;
+  if (!priceCache || priceCache.data.length === 0) return PREWARM_SYMBOLS.slice(0, n);
+
   type PriceRow = { symbol: string; volume24h?: number };
   const rows = priceCache.data as PriceRow[];
-  const sorted = [...rows]
-    .filter((r) => typeof r.volume24h === "number" && !anchors.has(r.symbol))
-    .sort((a, b) => (b.volume24h ?? 0) - (a.volume24h ?? 0));
-  const extras = sorted.slice(0, Math.max(0, n - anchors.size)).map((r) => r.symbol);
-  return [...PREWARM_SYMBOLS, ...extras];
+
+  const eligible = rows.filter((r) => typeof r.volume24h === "number" && r.volume24h > 0);
+
+  const byVolume = [...eligible].sort((a, b) => (b.volume24h ?? 0) - (a.volume24h ?? 0));
+  const volumeRank = new Map<string, number>(byVolume.map((r, i) => [r.symbol, i]));
+
+  const byHits = [...eligible].sort(
+    (a, b) => (symbolHitCounts.get(b.symbol) ?? 0) - (symbolHitCounts.get(a.symbol) ?? 0)
+  );
+  const hitRank = new Map<string, number>(byHits.map((r, i) => [r.symbol, i]));
+
+  const totalSymbols = eligible.length || 1;
+  const blended = eligible
+    .map((r) => {
+      const vr = (volumeRank.get(r.symbol) ?? totalSymbols) / totalSymbols;
+      const hr = (hitRank.get(r.symbol) ?? totalSymbols) / totalSymbols;
+      const hasHits = (symbolHitCounts.get(r.symbol) ?? 0) > 0;
+      const score = hasHits ? 0.4 * vr + 0.6 * hr : vr;
+      return { symbol: r.symbol, score };
+    })
+    .sort((a, b) => a.score - b.score);
+
+  const anchors = new Set(PREWARM_SYMBOLS);
+  const top = blended.map((r) => r.symbol);
+
+  const result: string[] = [...PREWARM_SYMBOLS];
+  for (const sym of top) {
+    if (result.length >= n) break;
+    if (!anchors.has(sym)) result.push(sym);
+  }
+  return result.slice(0, n);
 }
 
 export async function prewarmKlinesCache(): Promise<{ succeeded: number; failed: number; symbols: string[] }> {
@@ -825,6 +862,8 @@ router.get("/exchanges/klines", async (req: Request, res: Response) => {
     res.status(400).json({ error: "bad_request", message: "symbol is required" });
     return;
   }
+
+  recordKlinesHit(symbol);
 
   const cacheKey = `${symbol}:${interval}:${limit}`;
   const cached = klinesCache.get(cacheKey);
