@@ -55,6 +55,10 @@ const EXCHANGE_DISPLAY: Record<string, string> = {
   bybit: "Bybit", binance: "Binance", gate: "Gate", okx: "OKX", mexc: "MEXC",
 };
 
+const EXCHANGE_SHORT: Record<string, string> = {
+  bybit: "BB", binance: "BN", gate: "GT", okx: "OKX", mexc: "MX",
+};
+
 const ALL_EXCHANGES = ["bybit", "binance", "gate", "okx", "mexc"] as const;
 type ExchangeName = typeof ALL_EXCHANGES[number];
 
@@ -96,9 +100,12 @@ function OpenPositionsSection({
   const stopAndClose = useStopAndCloseBot({ request: botRequestOptions });
 
   const positions = useMemo(
-    () => openLegs.map((leg) => botLegToPosition(leg, tokens)),
-    [openLegs, tokens]
+    () => openLegs.map((leg) => botLegToPosition(leg, tokens, bot)),
+    [openLegs, tokens, bot]
   );
+
+  const exchALabel = EXCHANGE_SHORT[bot.exchangeA] ?? bot.exchangeA.toUpperCase();
+  const exchBLabel = EXCHANGE_SHORT[bot.exchangeB] ?? bot.exchangeB.toUpperCase();
 
   const symbol = bot.symbol;
 
@@ -169,8 +176,8 @@ function OpenPositionsSection({
             <span>Symbol</span>
             <span>Side</span>
             <span>Size</span>
-            <span>Entry Price (BB/BN)</span>
-            <span>Price (BB/BN)</span>
+            <span>Entry Price ({exchALabel}/{exchBLabel})</span>
+            <span>Price ({exchALabel}/{exchBLabel})</span>
             <span>Spread</span>
             <span>P/L</span>
             <span>Opened</span>

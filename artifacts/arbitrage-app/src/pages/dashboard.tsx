@@ -288,7 +288,7 @@ export default function Dashboard() {
   const requestHeaders = getRequestHeaders();
   const { localPositions, removePosition } = useLocalPositions();
   const { setDataSource } = useConnectionStatus();
-  const { getBotStatusForSymbol, allOpenLegs } = useBots();
+  const { getBotStatusForSymbol, allOpenLegsWithBot } = useBots();
   const { getBotRequestOptions } = useBotSecret();
 
   const ALL_EXCHANGES = ALL_EXCHANGES_LIST;
@@ -419,8 +419,8 @@ export default function Dashboard() {
   }, [polledPositions, hasCredentials, positionsQuery.isLoading, positionsQuery.isError, positionsQuery.dataUpdatedAt, removePosition]);
 
   const botLegPositions = useMemo(
-    () => allOpenLegs.map((leg) => botLegToPosition(leg, tokens)),
-    [allOpenLegs, tokens]
+    () => allOpenLegsWithBot.map(({ leg, bot }) => botLegToPosition(leg, tokens, bot)),
+    [allOpenLegsWithBot, tokens]
   );
 
   const positions = useMemo(() => {
@@ -577,8 +577,8 @@ export default function Dashboard() {
                 <span>Symbol</span>
                 <span>Side</span>
                 <span>Size</span>
-                <span>Entry Price</span>
-                <span>Price</span>
+                <span>Entry Price (A/B)</span>
+                <span>Price (A/B)</span>
                 <span>Spread</span>
                 <span>P/L</span>
                 <span>Opened</span>

@@ -4,7 +4,7 @@ import {
   useClosePosition,
   getGetPositionsQueryKey,
 } from "@workspace/api-client-react";
-import type { Position, ClosePositionResult, BotLeg, TokenSpread } from "@workspace/api-client-react";
+import type { Position, ClosePositionResult, BotLeg, BotConfig, TokenSpread } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -41,10 +41,25 @@ export function formatPnlWithPct(pnl: number | null | undefined, usdSize: number
   return `${dollar} (${formatPct(pct)})`;
 }
 
-export function botLegToPosition(leg: BotLeg, tokens: TokenSpread[]): Position {
+function getTokenPriceForExchange(token: TokenSpread | undefined, exchange: string, fallback?: number): number {
+  const fb = fallback ?? 0;
+  if (!token) return fb;
+  switch (exchange) {
+    case "bybit":   return token.bybitPrice   ?? fb;
+    case "binance": return token.binancePrice ?? fb;
+    case "gate":    return token.gatePrice    ?? fb;
+    case "okx":     return token.okxPrice     ?? fb;
+    case "mexc":    return token.mexcPrice    ?? fb;
+    default:        return fb;
+  }
+}
+
+export function botLegToPosition(leg: BotLeg, tokens: TokenSpread[], bot?: BotConfig): Position {
+  const exchangeA = bot?.exchangeA ?? "bybit";
+  const exchangeB = bot?.exchangeB ?? "binance";
   const token = tokens.find((t) => t.symbol === leg.symbol);
-  const bybitCurrentPrice = token?.bybitPrice ?? leg.bybitEntry ?? 0;
-  const binanceCurrentPrice = token?.binancePrice ?? leg.binanceEntry ?? 0;
+  const bybitCurrentPrice = getTokenPriceForExchange(token, exchangeA, leg.bybitEntry);
+  const binanceCurrentPrice = getTokenPriceForExchange(token, exchangeB, leg.binanceEntry);
   const currentSpread =
     bybitCurrentPrice && binanceCurrentPrice
       ? ((bybitCurrentPrice - binanceCurrentPrice) / binanceCurrentPrice) * 100

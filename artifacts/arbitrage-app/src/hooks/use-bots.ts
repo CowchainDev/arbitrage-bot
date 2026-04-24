@@ -45,8 +45,12 @@ export function useBots() {
   }
 
   const allOpenLegs: BotLeg[] = [];
-  for (const { openLegs } of botStatusMap.values()) {
+  const allOpenLegsWithBot: Array<{ leg: BotLeg; bot: BotConfig }> = [];
+  for (const { bot, openLegs } of botStatusMap.values()) {
     allOpenLegs.push(...openLegs);
+    for (const leg of openLegs) {
+      allOpenLegsWithBot.push({ leg, bot });
+    }
   }
 
   function getBotStatusForSymbol(symbol: string): BotStatusInfo | undefined {
@@ -57,6 +61,7 @@ export function useBots() {
     bots,
     getBotStatusForSymbol,
     allOpenLegs,
+    allOpenLegsWithBot,
     isLoading: botsQuery.isLoading,
   };
 }
