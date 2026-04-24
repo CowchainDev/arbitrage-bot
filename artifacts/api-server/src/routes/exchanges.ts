@@ -394,12 +394,15 @@ function buildTickerMap(raw: Record<string, any>): Map<string, any> {
   return m;
 }
 
+// Tight timeout for price-scan fetches — fail fast so the dashboard stays responsive.
+const PRICE_FETCH_TIMEOUT_MS = 8000;
+
 async function fetchAndCachePrices(): Promise<unknown[]> {
-  const bybit = createBybitExchange();
-  const binance = createBinanceExchange();
-  const gate = createGateExchange();
-  const okx = createOkxExchange();
-  const mexc = createMexcExchange();
+  const bybit   = createBybitExchange();   bybit.timeout   = PRICE_FETCH_TIMEOUT_MS;
+  const binance = createBinanceExchange(); binance.timeout = PRICE_FETCH_TIMEOUT_MS;
+  const gate    = createGateExchange();    gate.timeout    = PRICE_FETCH_TIMEOUT_MS;
+  const okx     = createOkxExchange();     okx.timeout     = PRICE_FETCH_TIMEOUT_MS;
+  const mexc    = createMexcExchange();    mexc.timeout    = PRICE_FETCH_TIMEOUT_MS;
 
   const [
     bybitTickers, binanceTickers, gateTickers, okxTickers, mexcTickers,
@@ -970,9 +973,18 @@ export async function fetchPriceSpreads(): Promise<ReturnType<typeof generateDem
       return priceCache!.data as ReturnType<typeof generateDemoSpreads>;
     }
 
-    let spreads = await ensurePriceFetch();
+    // No valid cache yet — kick off a fetch (or join the in-flight one).
+    ensurePriceFetch();
 
-    if (spreads.length === 0) {
+    // If the fetch is going to take a while (cold start), don't block the caller —
+    // return demo data immediately so the dashboard renders, then live data will
+    // arrive on the next poll cycle (every ~9 s).
+    if (!priceCache) {
+      return generateDemoSpreads();
+    }
+
+    const spreads = await priceFetchInFlight!;
+    if (!spreads || (spreads as unknown[]).length === 0) {
       const demo = generateDemoSpreads();
       priceCache = { data: demo, ts: Date.now() - PRICE_CACHE_TTL_MS + 15_000 };
       return demo;
