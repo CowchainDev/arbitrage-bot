@@ -28,6 +28,7 @@ type SortOption =
   | "volume_desc" | "volume_asc"
   | "oi_desc"     | "oi_asc"
   | "depth_desc"  | "depth_asc"
+  | "ema_desc"    | "ema_asc"
   | "alpha"       | "alpha_desc"
   | "fav"         | "fav_desc";
 
@@ -103,7 +104,7 @@ function getExchangeFields(token: TokenSpread, ex: string) {
 
 const ROW_COLS = "grid grid-cols-[24px_120px_82px_72px_72px_130px_90px_90px_68px_70px_70px_64px_28px] items-center gap-0";
 
-type SortColKey = "alpha" | "spread" | "eff" | "volume" | "oi" | "depth" | "fav";
+type SortColKey = "alpha" | "spread" | "eff" | "volume" | "oi" | "depth" | "ema" | "fav";
 
 function sortColFromOption(sort: SortOption): SortColKey | null {
   if (sort === "alpha" || sort === "alpha_desc") return "alpha";
@@ -112,6 +113,7 @@ function sortColFromOption(sort: SortOption): SortColKey | null {
   if (sort === "volume_desc" || sort === "volume_asc") return "volume";
   if (sort === "oi_desc" || sort === "oi_asc") return "oi";
   if (sort === "depth_desc" || sort === "depth_asc") return "depth";
+  if (sort === "ema_desc" || sort === "ema_asc") return "ema";
   if (sort === "fav" || sort === "fav_desc") return "fav";
   return null;
 }
@@ -132,6 +134,7 @@ function toggleSort(current: SortOption, col: SortColKey): SortOption {
     if (col === "volume") return currentDir === "desc" ? "volume_asc" : "volume_desc";
     if (col === "oi")     return currentDir === "desc" ? "oi_asc"     : "oi_desc";
     if (col === "depth")  return currentDir === "desc" ? "depth_asc"  : "depth_desc";
+    if (col === "ema")    return currentDir === "desc" ? "ema_asc"    : "ema_desc";
     if (col === "fav")    return currentDir === "asc"  ? "fav_desc"   : "fav";
   }
   // First click → default direction (desc for numbers, asc for alpha/fav)
@@ -141,6 +144,7 @@ function toggleSort(current: SortOption, col: SortColKey): SortOption {
   if (col === "volume") return "volume_desc";
   if (col === "oi")     return "oi_desc";
   if (col === "depth")  return "depth_desc";
+  if (col === "ema")    return "ema_desc";
   if (col === "fav")    return "fav";
   return current;
 }
@@ -183,7 +187,7 @@ function TableHeader({ sort, onSort }: { sort: SortOption; onSort: (col: SortCol
       </button>
       {th("Symbol", "alpha", "left")}
       {th("Spread", "spread")}
-      <span className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground/60 text-right" title="Exponential moving average of spread (~10 min)">EMA</span>
+      {th("EMA", "ema")}
       {th("Eff", "eff")}
       <span className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground/60 text-right">Pair</span>
       <span className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground/60 text-right">Ask</span>
@@ -787,6 +791,8 @@ export default function Dashboard() {
       case "oi_asc":       primaryCmp = (a, b) => (a.openInterestUsd ?? 0) - (b.openInterestUsd ?? 0); break;
       case "depth_desc":   primaryCmp = (a, b) => (b.spreadDepthUsd ?? 0) - (a.spreadDepthUsd ?? 0); break;
       case "depth_asc":    primaryCmp = (a, b) => (a.spreadDepthUsd ?? 0) - (b.spreadDepthUsd ?? 0); break;
+      case "ema_desc":     primaryCmp = (a, b) => (b.emaSpreadPct ?? -Infinity) - (a.emaSpreadPct ?? -Infinity); break;
+      case "ema_asc":      primaryCmp = (a, b) => (a.emaSpreadPct ?? Infinity) - (b.emaSpreadPct ?? Infinity); break;
       case "alpha":        primaryCmp = alphaCmp; break;
       case "alpha_desc":   primaryCmp = (a, b) => b.symbol.localeCompare(a.symbol); break;
       case "fav":          primaryCmp = alphaCmp; break;
