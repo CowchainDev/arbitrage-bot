@@ -254,7 +254,7 @@ export function TokenDetailPanel({
             data-testid="btn-view-chart"
           >
             <LineChart className="w-3 h-3" />
-            Chart
+            View Chart
           </Link>
           {onClose && (
             <button onClick={onClose} className="text-muted-foreground hover:text-foreground p-1 shrink-0" data-testid="btn-close-detail">
