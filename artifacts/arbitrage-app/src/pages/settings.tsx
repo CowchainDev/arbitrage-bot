@@ -1,6 +1,5 @@
 import { useState } from "react";
-import { KeyRound, Eye, EyeOff, CheckCircle, Trash2, ExternalLink, Bell, Volume2, VolumeX, Server, Bot, Save } from "lucide-react";
-import { useBotSecret } from "@/hooks/use-bot-secret";
+import { KeyRound, Eye, EyeOff, CheckCircle, Trash2, ExternalLink, Bell, Volume2, VolumeX, Server, Save } from "lucide-react";
 import { useAlertSettings } from "@/hooks/use-alert-settings";
 import { useWatchedTokens } from "@/hooks/use-watched-tokens";
 import { useToast } from "@/hooks/use-toast";
@@ -219,9 +218,6 @@ function ExchangeCard({ meta }: { meta: ExchangeMeta }) {
 }
 
 export default function Settings() {
-  const { botSecret, saveBotSecret } = useBotSecret();
-  const [botSecretInput, setBotSecretInput] = useState(botSecret ?? "");
-  const [showBotSecret, setShowBotSecret] = useState(false);
   const { settings, updateSettings, enableBrowserPush, browserPushSupported, browserPermission } = useAlertSettings();
   const { watched, updateThreshold } = useWatchedTokens();
   const { toast } = useToast();
@@ -248,66 +244,6 @@ export default function Settings() {
       {EXCHANGES.map((meta) => (
         <ExchangeCard key={meta.id} meta={meta} />
       ))}
-
-      {/* Bot Secret */}
-      <div className="bg-card border border-border rounded-md p-5 space-y-4">
-        <div className="flex items-center gap-2">
-          <Bot className="w-3.5 h-3.5 text-primary" />
-          <span className="font-semibold text-sm">Bot Secret</span>
-        </div>
-        <p className="text-xs text-muted-foreground">
-          Optional. If you set a <code className="font-mono bg-muted px-1 rounded">BOT_SECRET</code> environment variable on your server, enter the same value here. Without it, bot controls work for anyone who can reach the server.
-        </p>
-        <div className="flex items-center gap-2">
-          <div className="relative flex-1">
-            <Input
-              type={showBotSecret ? "text" : "password"}
-              value={botSecretInput}
-              onChange={(e) => setBotSecretInput(e.target.value)}
-              placeholder="Enter BOT_SECRET value"
-              className="font-mono pr-10 bg-background border-border text-sm"
-              data-testid="input-bot-secret"
-              autoComplete="off"
-            />
-            <button
-              type="button"
-              onClick={() => setShowBotSecret((v) => !v)}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-              tabIndex={-1}
-            >
-              {showBotSecret ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-            </button>
-          </div>
-          <Button
-            type="button"
-            onClick={() => {
-              saveBotSecret(botSecretInput.trim() || null);
-              toast({ title: botSecretInput.trim() ? "Bot secret saved" : "Bot secret cleared" });
-            }}
-            className="bg-primary text-primary-foreground hover:bg-primary/90 font-semibold shrink-0"
-            data-testid="button-save-bot-secret"
-          >
-            Save
-          </Button>
-          {botSecret && (
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => { saveBotSecret(null); setBotSecretInput(""); toast({ title: "Bot secret cleared" }); }}
-              className="text-destructive border-destructive/40 hover:bg-destructive/10 shrink-0"
-              data-testid="button-clear-bot-secret"
-            >
-              <Trash2 className="w-4 h-4" />
-            </Button>
-          )}
-        </div>
-        {botSecret && (
-          <p className="text-xs text-primary flex items-center gap-1.5" data-testid="bot-secret-saved-indicator">
-            <CheckCircle className="w-3.5 h-3.5" />
-            Bot secret is configured
-          </p>
-        )}
-      </div>
 
       {/* Notification Settings */}
       <div className="bg-card border border-border rounded-md p-5 space-y-4">
