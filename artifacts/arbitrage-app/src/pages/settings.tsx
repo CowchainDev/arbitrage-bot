@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { KeyRound, Eye, EyeOff, CheckCircle, Trash2, ExternalLink, Bell, Volume2, VolumeX, Server, Save } from "lucide-react";
+import { KeyRound, Eye, EyeOff, CheckCircle, Trash2, ExternalLink, Bell, Volume2, VolumeX, Server, Save, AlertTriangle } from "lucide-react";
 import { useAlertSettings } from "@/hooks/use-alert-settings";
 import { useWatchedTokens } from "@/hooks/use-watched-tokens";
 import { useToast } from "@/hooks/use-toast";
@@ -207,12 +207,17 @@ function ExchangeCard({ meta }: { meta: ExchangeMeta }) {
             <Server className="w-3.5 h-3.5" /> Synced
           </span>
         )}
-        {syncStatus === "error" && (
-          <span className="flex items-center gap-1 text-xs text-destructive ml-auto" data-testid={`sync-error-${meta.id}`}>
-            <Server className="w-3.5 h-3.5" /> Sync failed
-          </span>
-        )}
       </div>
+
+      {syncStatus === "error" && (
+        <div className="flex items-start gap-2 rounded-md border border-destructive/60 bg-destructive/10 px-3 py-2.5" data-testid={`sync-error-${meta.id}`}>
+          <AlertTriangle className="w-3.5 h-3.5 text-destructive mt-0.5 shrink-0" />
+          <p className="text-xs text-destructive leading-snug">
+            <span className="font-semibold">Server sync failed.</span>{" "}
+            Keys were saved locally but the server could not store them — the bot will not be able to trade. Check your connection and try saving again.
+          </p>
+        </div>
+      )}
     </div>
   );
 }

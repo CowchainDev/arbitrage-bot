@@ -321,6 +321,17 @@ async function processBotConfig(config: BotConfig, canOpen: boolean): Promise<vo
   const remainingOpen = openLegs.length - confirmedClosedCount;
   const shouldOpen = Math.abs(spreadPct) >= enterSpread && remainingOpen < config.maxOrders;
   if (shouldOpen) {
+    const [credsA, credsB] = await Promise.all([
+      getCachedCredentials(exchangeA as SupportedExchange),
+      getCachedCredentials(exchangeB as SupportedExchange),
+    ]);
+    if (!credsA || !credsB) {
+      logger.warn(
+        { symbol: config.symbol, exchangeA, exchangeB, missingA: !credsA, missingB: !credsB },
+        "Bot: skipping open — server credentials not synced for exchange pair",
+      );
+      return;
+    }
     await openLeg(config, spreadPct);
   }
 }

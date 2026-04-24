@@ -1,12 +1,13 @@
 import { useState, useEffect } from "react";
 import { Link } from "wouter";
-import { Zap, X, XCircle, Power, LineChart } from "lucide-react";
+import { Zap, X, XCircle, Power, LineChart, AlertTriangle } from "lucide-react";
 import {
   useCreateBot,
   useUpdateBot,
   useStartBot,
   useStopBot,
   useStopAndCloseBot,
+  useGetCredentialStatus,
   getListBotsQueryKey,
   getGetBotLegsQueryKey,
 } from "@workspace/api-client-react";
@@ -16,10 +17,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { useBotSecret } from "@/hooks/use-bot-secret";
-import { useExchangeCredentials, type SupportedExchange } from "@/hooks/use-exchange-credentials";
 import { getExchangeName } from "@/lib/exchange-config";
-
-const ALL_EXCHANGE_KEYS = ["bybit", "binance", "gate", "okx", "mexc"] as const;
 
 function getExchangeTokenData(token: TokenSpread, exchange: string) {
   switch (exchange) {
@@ -64,15 +62,9 @@ export function TokenDetailPanel({
   const { getBotRequestOptions } = useBotSecret();
   const botRequestOptions = getBotRequestOptions();
 
-  // Check API credentials for each exchange so we can warn when they're missing
-  const credsBybit   = useExchangeCredentials("bybit");
-  const credsBinance = useExchangeCredentials("binance");
-  const credsGate    = useExchangeCredentials("gate");
-  const credsOkx     = useExchangeCredentials("okx");
-  const credsMexc    = useExchangeCredentials("mexc");
-  const allCreds: Record<SupportedExchange, { hasCreds: boolean }> = {
-    bybit: credsBybit, binance: credsBinance, gate: credsGate, okx: credsOkx, mexc: credsMexc,
-  };
+  // Check which exchanges have credentials synced to the server
+  const { data: credentialStatus, isLoading: credStatusLoading } = useGetCredentialStatus({ request: botRequestOptions });
+  const serverSyncedExchanges = new Set(credentialStatus?.exchanges.map((e) => e.exchange) ?? []);
   const [botEnterSpread, setBotEnterSpread] = useState(() => {
     if (bot) return String(bot.enterSpreadPct);
     try { return localStorage.getItem("arbitrage-botEnterSpread") ?? "0.5"; } catch { return "0.5"; }
@@ -388,22 +380,41 @@ export function TokenDetailPanel({
         ) : (
           <>
             {(() => {
-              const missingCreds = [botExchangeA, botExchangeB].filter(
-                (ex) => !allCreds[ex as SupportedExchange]?.hasCreds
-              );
-              const missingLabels = missingCreds.map((ex) => getExchangeName(ex));
+              const credStatusKnown = !credStatusLoading && credentialStatus !== undefined;
+              const missingServerCreds = credStatusKnown
+                ? [botExchangeA, botExchangeB].filter((ex) => !serverSyncedExchanges.has(ex))
+                : [];
+              const missingLabels = missingServerCreds.map((ex) => getExchangeName(ex));
+              const credsMissing = missingServerCreds.length > 0;
               return (
                 <>
+                  {credsMissing && (
+                    <div className="flex items-start gap-2 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2.5" data-testid="credentials-warning-banner">
+                      <AlertTriangle className="w-3.5 h-3.5 text-destructive mt-0.5 shrink-0" />
+                      <p className="text-xs text-destructive leading-snug">
+                        <span className="font-semibold">{missingLabels.join(" & ")} credentials not synced to server.</span>{" "}
+                        Go to{" "}
+                        <Link href="/settings" className="underline hover:text-destructive/80 font-semibold">Settings</Link>
+                        {" "}and re-save your API keys so the bot can trade on your behalf.
+                      </p>
+                    </div>
+                  )}
                   <Button
                     onClick={handleBotStart}
-                    disabled={botBusy || missingCreds.length > 0}
+                    disabled={botBusy || credsMissing}
                     className="w-full bg-primary text-primary-foreground hover:bg-primary/90 font-bold text-sm py-5 tracking-wider"
                     data-testid="btn-bot-start"
+                    title={credsMissing ? `Credentials not synced: ${missingLabels.join(", ")}` : undefined}
                   >
                     {botBusy ? (
                       <span className="flex items-center gap-2">
                         <span className="w-3 h-3 border border-primary-foreground border-t-transparent rounded-full animate-spin" />
                         STARTING…
+                      </span>
+                    ) : credsMissing ? (
+                      <span className="flex items-center gap-2">
+                        <AlertTriangle className="w-4 h-4" />
+                        CREDENTIALS NOT SYNCED
                       </span>
                     ) : (
                       <span className="flex items-center gap-2">
@@ -412,12 +423,6 @@ export function TokenDetailPanel({
                       </span>
                     )}
                   </Button>
-                  {missingCreds.length > 0 && (
-                    <p className="text-xs text-destructive text-center">
-                      Add {missingLabels.join(" & ")} API keys in{" "}
-                      <Link href="/settings" className="underline hover:text-destructive/80">Settings</Link>
-                    </p>
-                  )}
                 </>
               );
             })()}
@@ -463,7 +468,7 @@ export function TokenDetailPanel({
 
       {/* Other exchanges — shows exchanges not selected as A or B */}
       {(() => {
-        const others = ALL_EXCHANGE_KEYS.filter((ex) => ex !== botExchangeA && ex !== botExchangeB);
+        const others = (["bybit", "binance", "gate", "okx", "mexc"] as const).filter((ex) => ex !== botExchangeA && ex !== botExchangeB);
         const othersWithData = others.filter((ex) => {
           const d = getExchangeTokenData(token, ex);
           return d.price != null;
