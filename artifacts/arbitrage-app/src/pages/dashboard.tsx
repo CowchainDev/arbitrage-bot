@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import { Link } from "wouter";
-import { Star, Search, TrendingUp, Zap, AlertCircle, ChevronDown, ChevronUp, X, Bell, BellOff, Bot } from "lucide-react";
+import { Star, Search, TrendingUp, Zap, AlertCircle, ChevronDown, ChevronUp, X, Bell, BellOff, Bot, LayoutList, LayoutGrid, ChevronsUpDown } from "lucide-react";
 import { useGetExchangePrices, getGetExchangePricesQueryKey, useGetPositions, getGetPositionsQueryKey } from "@workspace/api-client-react";
 import type { TokenSpread, Position, BotConfig } from "@workspace/api-client-react";
 import { TokenDetailPanel } from "@/components/token-detail-panel";
@@ -22,7 +22,16 @@ import {
   formatPrice,
 } from "@/components/position-rows";
 
-type SortOption = "spread_desc" | "spread_asc" | "volume_desc" | "alpha";
+type SortOption =
+  | "spread_desc" | "spread_asc"
+  | "eff_desc"    | "eff_asc"
+  | "volume_desc" | "volume_asc"
+  | "oi_desc"     | "oi_asc"
+  | "depth_desc"  | "depth_asc"
+  | "alpha"       | "alpha_desc";
+
+type ViewMode = "list" | "card";
+const VIEW_MODE_KEY = "dashboard-view-mode";
 
 const ALL_EXCHANGES_LIST = ["bybit", "binance", "gate", "okx", "mexc"] as const;
 const FILTER_STORAGE_KEY = "dashboard-filters";
@@ -99,19 +108,82 @@ const EXCHANGE_COLORS: Record<string, string> = {
 
 const ROW_COLS = "grid grid-cols-[130px_82px_82px_68px_100px_100px_66px_72px_72px_66px_60px] items-center gap-0";
 
-function TableHeader() {
+type SortColKey = "alpha" | "spread" | "eff" | "volume" | "oi" | "depth";
+
+function sortColFromOption(sort: SortOption): SortColKey | null {
+  if (sort === "alpha" || sort === "alpha_desc") return "alpha";
+  if (sort === "spread_desc" || sort === "spread_asc") return "spread";
+  if (sort === "eff_desc" || sort === "eff_asc") return "eff";
+  if (sort === "volume_desc" || sort === "volume_asc") return "volume";
+  if (sort === "oi_desc" || sort === "oi_asc") return "oi";
+  if (sort === "depth_desc" || sort === "depth_asc") return "depth";
+  return null;
+}
+
+function sortDirFromOption(sort: SortOption): "asc" | "desc" {
+  return sort.endsWith("_asc") || sort === "alpha" ? "asc" : "desc";
+}
+
+function toggleSort(current: SortOption, col: SortColKey): SortOption {
+  const currentCol = sortColFromOption(current);
+  const currentDir = sortDirFromOption(current);
+  if (currentCol === col) {
+    // Toggle direction
+    if (col === "alpha") return currentDir === "asc" ? "alpha_desc" : "alpha";
+    if (col === "spread") return currentDir === "desc" ? "spread_asc" : "spread_desc";
+    if (col === "eff")    return currentDir === "desc" ? "eff_asc"    : "eff_desc";
+    if (col === "volume") return currentDir === "desc" ? "volume_asc" : "volume_desc";
+    if (col === "oi")     return currentDir === "desc" ? "oi_asc"     : "oi_desc";
+    if (col === "depth")  return currentDir === "desc" ? "depth_asc"  : "depth_desc";
+  }
+  // First click → default direction (desc for numbers, asc for alpha)
+  if (col === "alpha")  return "alpha";
+  if (col === "spread") return "spread_desc";
+  if (col === "eff")    return "eff_desc";
+  if (col === "volume") return "volume_desc";
+  if (col === "oi")     return "oi_desc";
+  if (col === "depth")  return "depth_desc";
+  return current;
+}
+
+function SortIcon({ col, sort }: { col: SortColKey; sort: SortOption }) {
+  const active = sortColFromOption(sort) === col;
+  const dir = sortDirFromOption(sort);
+  if (!active) return <ChevronsUpDown className="w-2.5 h-2.5 opacity-20" />;
+  return dir === "desc"
+    ? <ChevronDown className="w-2.5 h-2.5 text-primary" />
+    : <ChevronUp className="w-2.5 h-2.5 text-primary" />;
+}
+
+function TableHeader({ sort, onSort }: { sort: SortOption; onSort: (col: SortColKey) => void }) {
+  const th = (label: string, col: SortColKey | null, align: "left" | "right" = "right") => {
+    const active = col !== null && sortColFromOption(sort) === col;
+    return col ? (
+      <button
+        onClick={() => onSort(col)}
+        className={`flex items-center gap-0.5 w-full text-[10px] uppercase tracking-widest font-semibold transition-colors select-none cursor-pointer ${active ? "text-primary" : "text-muted-foreground/60 hover:text-muted-foreground"} ${align === "right" ? "justify-end" : "justify-start"}`}
+      >
+        {align === "right" && <SortIcon col={col} sort={sort} />}
+        {label}
+        {align === "left" && <SortIcon col={col} sort={sort} />}
+      </button>
+    ) : (
+      <span className={`text-[10px] uppercase tracking-widest font-semibold text-muted-foreground/60 ${align === "right" ? "text-right block" : ""}`}>{label}</span>
+    );
+  };
+
   return (
-    <div className={`${ROW_COLS} px-2 py-1.5 text-[10px] uppercase tracking-widest font-semibold text-muted-foreground/60 border-b border-border/60 bg-muted/20 sticky top-0 z-10 select-none`}>
-      <span>Symbol</span>
-      <span className="text-right">Spread</span>
-      <span className="text-right">Eff</span>
-      <span className="text-right">Pair</span>
-      <span className="text-right">Ask</span>
-      <span className="text-right">Bid</span>
-      <span className="text-right">FR Δ</span>
-      <span className="text-right">Vol 24h</span>
-      <span className="text-right">OI</span>
-      <span className="text-right">Depth</span>
+    <div className={`${ROW_COLS} px-2 py-1.5 border-b border-border/60 bg-muted/20 sticky top-0 z-10`}>
+      {th("Symbol", "alpha", "left")}
+      {th("Spread", "spread")}
+      {th("Eff", "eff")}
+      <span className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground/60 text-right">Pair</span>
+      <span className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground/60 text-right">Ask</span>
+      <span className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground/60 text-right">Bid</span>
+      <span className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground/60 text-right">FR Δ</span>
+      {th("Vol 24h", "volume")}
+      {th("OI", "oi")}
+      {th("Depth", "depth")}
       <span />
     </div>
   );
@@ -280,6 +352,132 @@ function TokenRow({
   );
 }
 
+function TokenCard({
+  token,
+  isSelected,
+  isFavourite,
+  isWatched,
+  onSelect,
+  onToggleFavourite,
+  onToggleWatch,
+  bot,
+  botOpenLegsCount,
+}: {
+  token: TokenSpread;
+  isSelected: boolean;
+  isFavourite: boolean;
+  isWatched: boolean;
+  onSelect: () => void;
+  onToggleFavourite: (e: React.MouseEvent) => void;
+  onToggleWatch: (e: React.MouseEvent) => void;
+  bot?: BotConfig;
+  botOpenLegsCount?: number;
+}) {
+  const legsCount = botOpenLegsCount ?? 0;
+  const showDot = bot != null;
+  const dotColor = legsCount > 0 ? "bg-amber-400" : bot?.enabled ? "bg-emerald-500" : "bg-muted-foreground/40";
+
+  const [cheapEx, expensiveEx] = (token.bestSpreadLeg ?? "").split("/");
+  const cheapData  = cheapEx     ? getExchangeFields(token, cheapEx)     : { ask: undefined, bid: undefined, funding: undefined };
+  const expData    = expensiveEx ? getExchangeFields(token, expensiveEx) : { ask: undefined, bid: undefined, funding: undefined };
+  const rawSpread  = token.bestSpreadPct != null ? token.bestSpreadPct : Math.abs(token.spreadPct);
+  const effSpread  = cheapData.ask != null && expData.bid != null && cheapData.ask > 0
+    ? (expData.bid - cheapData.ask) / cheapData.ask * 100
+    : null;
+  const spreadColor = rawSpread >= 1
+    ? "text-primary font-bold"
+    : rawSpread >= 0.3
+    ? "text-amber-400 font-semibold"
+    : "text-muted-foreground";
+  const frDelta = cheapData.funding != null && expData.funding != null
+    ? (expData.funding - cheapData.funding) * 100
+    : null;
+  const frColor = frDelta != null
+    ? frDelta > 0 ? "text-primary/70" : frDelta < 0 ? "text-destructive/70" : "text-muted-foreground/40"
+    : "text-muted-foreground/40";
+
+  const cardBorder = isSelected
+    ? "border-primary bg-primary/8"
+    : "border-border hover:border-border/80 bg-card";
+
+  return (
+    <div
+      onClick={onSelect}
+      data-testid={`card-token-${token.symbol}`}
+      className={`relative rounded border ${cardBorder} p-2.5 cursor-pointer transition-colors group select-none`}
+    >
+      {/* Header row */}
+      <div className="flex items-start justify-between mb-1.5">
+        <div className="flex items-center gap-1.5 min-w-0">
+          <span className="font-mono font-bold text-sm text-foreground truncate">{token.symbol}</span>
+          {isFavourite && <Star className="w-3 h-3 fill-amber-400 text-amber-400 shrink-0" />}
+          {showDot && <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotColor}`} />}
+        </div>
+        {/* Hover controls */}
+        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          <button
+            onClick={onToggleFavourite}
+            className="text-muted-foreground/40 hover:text-amber-400 transition-colors"
+            data-testid={`btn-favourite-${token.symbol}`}
+          >
+            <Star className={`w-3 h-3 ${isFavourite ? "fill-amber-400 text-amber-400" : ""}`} />
+          </button>
+          <button
+            onClick={onToggleWatch}
+            className={`transition-colors ${isWatched ? "text-primary" : "text-muted-foreground/40 hover:text-primary"}`}
+            data-testid={`btn-watch-${token.symbol}`}
+          >
+            {isWatched ? <Bell className="w-3 h-3 fill-primary/20" /> : <BellOff className="w-3 h-3" />}
+          </button>
+          <Link
+            href={`/token/${token.symbol}`}
+            onClick={(e: React.MouseEvent) => e.stopPropagation()}
+            className="text-muted-foreground/40 hover:text-primary transition-colors font-mono text-[10px]"
+            data-testid={`btn-open-${token.symbol}`}
+          >↗</Link>
+        </div>
+      </div>
+
+      {/* Spread */}
+      <div className="flex items-baseline gap-2 mb-1.5">
+        <span className={`font-mono text-lg leading-none tabular-nums ${spreadColor}`}>
+          +{isFinite(rawSpread) ? rawSpread.toFixed(2) : "0.00"}%
+        </span>
+        {effSpread != null && isFinite(effSpread) && (
+          <span className="font-mono text-[10px] text-muted-foreground/50 tabular-nums">
+            {effSpread >= 0 ? "+" : ""}{effSpread.toFixed(2)}%
+          </span>
+        )}
+      </div>
+
+      {/* Exchange pair + FR delta */}
+      <div className="flex items-center gap-1.5 mb-2">
+        {cheapEx && expensiveEx ? (
+          <span className="text-[10px] font-mono">
+            <span className={EXCHANGE_COLORS[cheapEx] ?? "text-muted-foreground"}>{EXCHANGE_LABELS[cheapEx] ?? cheapEx.toUpperCase()}</span>
+            <span className="text-muted-foreground/30 mx-0.5">/</span>
+            <span className={EXCHANGE_COLORS[expensiveEx] ?? "text-muted-foreground"}>{EXCHANGE_LABELS[expensiveEx] ?? expensiveEx.toUpperCase()}</span>
+          </span>
+        ) : (
+          <span className="text-muted-foreground/30 text-[10px]">-/-</span>
+        )}
+        {frDelta != null && (
+          <span className={`font-mono text-[10px] tabular-nums ml-auto ${frColor}`}>
+            {frDelta >= 0 ? "+" : ""}{frDelta.toFixed(4)}%
+          </span>
+        )}
+      </div>
+
+      {/* Stats grid */}
+      <div className="grid grid-cols-3 gap-x-2 text-[10px] font-mono text-muted-foreground/70">
+        <div><span className="text-muted-foreground/40">VOL </span>{formatUsd(token.volume24h)}</div>
+        <div><span className="text-muted-foreground/40">OI </span>{formatUsd(token.openInterestUsd)}</div>
+        <div><span className="text-muted-foreground/40">DEP </span>{formatUsd(token.spreadDepthUsd)}</div>
+      </div>
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const { getRequestHeaders, hasCredentials } = useApiCredentials();
   const { isFavourite, toggleFavourite } = useFavourites();
@@ -295,6 +493,10 @@ export default function Dashboard() {
 
   const [_savedFilters] = useState(() => loadFilters());
 
+  const [viewMode, setViewMode] = useState<ViewMode>(() =>
+    (localStorage.getItem(VIEW_MODE_KEY) as ViewMode) ?? "list"
+  );
+
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<SortOption>(_savedFilters.sort);
   const [favsOnly, setFavsOnly] = useState(false);
@@ -303,6 +505,10 @@ export default function Dashboard() {
   const [minOpenInterest, setMinOpenInterest] = useState<string>(_savedFilters.minOpenInterest);
   const [minSpreadDepth, setMinSpreadDepth] = useState<string>(_savedFilters.minSpreadDepth);
   const [selectedExchanges, setSelectedExchanges] = useState<Set<string>>(new Set(_savedFilters.selectedExchanges));
+
+  useEffect(() => {
+    try { localStorage.setItem(VIEW_MODE_KEY, viewMode); } catch {}
+  }, [viewMode]);
 
   useEffect(() => {
     try {
@@ -494,19 +700,25 @@ export default function Dashboard() {
         return selectedExchanges.has("bybit") && selectedExchanges.has("binance");
       });
     }
+    const effOf = (t: TokenSpread) => {
+      const [cx, ex] = (t.bestSpreadLeg ?? "").split("/");
+      const c = cx ? getExchangeFields(t, cx) : { ask: undefined, bid: undefined, funding: undefined };
+      const e = ex ? getExchangeFields(t, ex)  : { ask: undefined, bid: undefined, funding: undefined };
+      return c.ask != null && e.bid != null && c.ask > 0 ? (e.bid - c.ask) / c.ask * 100 : -Infinity;
+    };
     switch (sort) {
-      case "spread_desc":
-        list.sort((a, b) => Math.abs(b.spreadPct) - Math.abs(a.spreadPct));
-        break;
-      case "spread_asc":
-        list.sort((a, b) => Math.abs(a.spreadPct) - Math.abs(b.spreadPct));
-        break;
-      case "volume_desc":
-        list.sort((a, b) => (b.volume24h ?? 0) - (a.volume24h ?? 0));
-        break;
-      case "alpha":
-        list.sort((a, b) => a.symbol.localeCompare(b.symbol));
-        break;
+      case "spread_desc":  list.sort((a, b) => Math.abs(b.bestSpreadPct ?? b.spreadPct) - Math.abs(a.bestSpreadPct ?? a.spreadPct)); break;
+      case "spread_asc":   list.sort((a, b) => Math.abs(a.bestSpreadPct ?? a.spreadPct) - Math.abs(b.bestSpreadPct ?? b.spreadPct)); break;
+      case "eff_desc":     list.sort((a, b) => effOf(b) - effOf(a)); break;
+      case "eff_asc":      list.sort((a, b) => effOf(a) - effOf(b)); break;
+      case "volume_desc":  list.sort((a, b) => (b.volume24h ?? 0) - (a.volume24h ?? 0)); break;
+      case "volume_asc":   list.sort((a, b) => (a.volume24h ?? 0) - (b.volume24h ?? 0)); break;
+      case "oi_desc":      list.sort((a, b) => (b.openInterestUsd ?? 0) - (a.openInterestUsd ?? 0)); break;
+      case "oi_asc":       list.sort((a, b) => (a.openInterestUsd ?? 0) - (b.openInterestUsd ?? 0)); break;
+      case "depth_desc":   list.sort((a, b) => (b.spreadDepthUsd ?? 0) - (a.spreadDepthUsd ?? 0)); break;
+      case "depth_asc":    list.sort((a, b) => (a.spreadDepthUsd ?? 0) - (b.spreadDepthUsd ?? 0)); break;
+      case "alpha":        list.sort((a, b) => a.symbol.localeCompare(b.symbol)); break;
+      case "alpha_desc":   list.sort((a, b) => b.symbol.localeCompare(a.symbol)); break;
     }
     if (!favsOnly) {
       list.sort((a, b) => {
@@ -664,18 +876,25 @@ export default function Dashboard() {
               FAV
             </button>
 
-            {/* Sort */}
-            <select
-              value={sort}
-              onChange={(e) => setSort(e.target.value as SortOption)}
-              className="bg-background border border-border/60 rounded text-[10px] px-2 py-0 text-foreground h-7 cursor-pointer font-mono focus:outline-none focus:border-primary/50"
-              data-testid="select-sort"
-            >
-              <option value="spread_desc">▼ SPREAD</option>
-              <option value="spread_asc">▲ SPREAD</option>
-              <option value="volume_desc">▼ VOL</option>
-              <option value="alpha">A–Z</option>
-            </select>
+            {/* View mode toggle */}
+            <div className="flex items-center rounded border border-border/60 overflow-hidden">
+              <button
+                onClick={() => setViewMode("list")}
+                title="List view"
+                className={`flex items-center justify-center w-7 h-7 transition-colors ${viewMode === "list" ? "bg-primary/20 text-primary" : "bg-transparent text-muted-foreground/40 hover:text-foreground"}`}
+                data-testid="btn-view-list"
+              >
+                <LayoutList className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={() => setViewMode("card")}
+                title="Card view"
+                className={`flex items-center justify-center w-7 h-7 transition-colors ${viewMode === "card" ? "bg-primary/20 text-primary" : "bg-transparent text-muted-foreground/40 hover:text-foreground"}`}
+                data-testid="btn-view-card"
+              >
+                <LayoutGrid className="w-3.5 h-3.5" />
+              </button>
+            </div>
 
             {/* Filter inputs */}
             <input
@@ -763,54 +982,67 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Table */}
+          {/* Content */}
           <div className="overflow-auto flex-1 min-h-0">
-            <div style={{ minWidth: "900px" }}>
-              <TableHeader />
-              {isLoading ? (
-                <div className="py-8 text-center text-muted-foreground text-xs font-mono">
-                  <span className="inline-block w-4 h-4 border border-primary border-t-transparent rounded-full animate-spin mr-2 align-middle" />
-                  Loading...
-                </div>
-              ) : isError ? (
-                <div className="flex items-center justify-center h-32 text-destructive gap-2 text-xs font-mono">
-                  <AlertCircle className="w-4 h-4" />
-                  Failed to load prices — check connection
-                </div>
-              ) : (
-                <>
-                  {filteredTokens.map((token, idx) => {
-                    const botStatus = getBotStatusForSymbol(token.symbol);
-                    return (
-                      <TokenRow
-                        key={token.symbol}
-                        token={token}
-                        rowIndex={idx}
-                        isSelected={selectedSymbol === token.symbol}
-                        isFavourite={isFavourite(token.symbol)}
-                        isWatched={isWatched(token.symbol)}
-                        onSelect={() => setSelectedSymbol(selectedSymbol === token.symbol ? null : token.symbol)}
-                        onToggleFavourite={(e) => {
-                          e.stopPropagation();
-                          toggleFavourite(token.symbol);
-                        }}
-                        onToggleWatch={(e) => {
-                          e.stopPropagation();
-                          toggleWatch(token.symbol, getThreshold(token.symbol));
-                        }}
-                        bot={botStatus?.bot}
-                        botOpenLegsCount={botStatus?.openLegsCount ?? 0}
-                      />
-                    );
-                  })}
-                  {filteredTokens.length === 0 && (
-                    <div className="text-center text-muted-foreground/40 py-12 text-xs font-mono">
-                      NO TOKENS MATCH FILTERS
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
+            {isLoading ? (
+              <div className="py-8 text-center text-muted-foreground text-xs font-mono">
+                <span className="inline-block w-4 h-4 border border-primary border-t-transparent rounded-full animate-spin mr-2 align-middle" />
+                Loading...
+              </div>
+            ) : isError ? (
+              <div className="flex items-center justify-center h-32 text-destructive gap-2 text-xs font-mono">
+                <AlertCircle className="w-4 h-4" />
+                Failed to load prices — check connection
+              </div>
+            ) : viewMode === "list" ? (
+              <div style={{ minWidth: "900px" }}>
+                <TableHeader sort={sort} onSort={(col) => setSort(toggleSort(sort, col))} />
+                {filteredTokens.map((token, idx) => {
+                  const botStatus = getBotStatusForSymbol(token.symbol);
+                  return (
+                    <TokenRow
+                      key={token.symbol}
+                      token={token}
+                      rowIndex={idx}
+                      isSelected={selectedSymbol === token.symbol}
+                      isFavourite={isFavourite(token.symbol)}
+                      isWatched={isWatched(token.symbol)}
+                      onSelect={() => setSelectedSymbol(selectedSymbol === token.symbol ? null : token.symbol)}
+                      onToggleFavourite={(e) => { e.stopPropagation(); toggleFavourite(token.symbol); }}
+                      onToggleWatch={(e) => { e.stopPropagation(); toggleWatch(token.symbol, getThreshold(token.symbol)); }}
+                      bot={botStatus?.bot}
+                      botOpenLegsCount={botStatus?.openLegsCount ?? 0}
+                    />
+                  );
+                })}
+                {filteredTokens.length === 0 && (
+                  <div className="text-center text-muted-foreground/40 py-12 text-xs font-mono">NO TOKENS MATCH FILTERS</div>
+                )}
+              </div>
+            ) : (
+              <div className="p-2 grid gap-2 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
+                {filteredTokens.map((token) => {
+                  const botStatus = getBotStatusForSymbol(token.symbol);
+                  return (
+                    <TokenCard
+                      key={token.symbol}
+                      token={token}
+                      isSelected={selectedSymbol === token.symbol}
+                      isFavourite={isFavourite(token.symbol)}
+                      isWatched={isWatched(token.symbol)}
+                      onSelect={() => setSelectedSymbol(selectedSymbol === token.symbol ? null : token.symbol)}
+                      onToggleFavourite={(e) => { e.stopPropagation(); toggleFavourite(token.symbol); }}
+                      onToggleWatch={(e) => { e.stopPropagation(); toggleWatch(token.symbol, getThreshold(token.symbol)); }}
+                      bot={botStatus?.bot}
+                      botOpenLegsCount={botStatus?.openLegsCount ?? 0}
+                    />
+                  );
+                })}
+                {filteredTokens.length === 0 && (
+                  <div className="col-span-full text-center text-muted-foreground/40 py-12 text-xs font-mono">NO TOKENS MATCH FILTERS</div>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
