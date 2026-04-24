@@ -697,6 +697,20 @@ export default function TokenDetail({ params }: { params: { symbol: string } }) 
       }));
   }, [closedLegs]);
 
+  // Cumulative P&L over time — one point per closed leg, sorted by closedAt
+  const pnlChartData = useMemo((): { t: number; pnl: number }[] => {
+    const legs = closedLegs
+      .filter((leg) => leg.closedAt != null && leg.realizedPnlUsd != null)
+      .slice()
+      .sort((a, b) => new Date(a.closedAt!).getTime() - new Date(b.closedAt!).getTime());
+
+    let cumulative = 0;
+    return legs.map((leg) => {
+      cumulative += leg.realizedPnlUsd!;
+      return { t: new Date(leg.closedAt!).getTime(), pnl: cumulative };
+    });
+  }, [closedLegs]);
+
   // Extend X domain so markers that fall outside the klines window remain visible
   const chartXDomain = useMemo((): [number, number] | ["dataMin", "dataMax"] => {
     if (chartDataFinal.length === 0) return ["dataMin", "dataMax"];
@@ -992,6 +1006,87 @@ export default function TokenDetail({ params }: { params: { symbol: string } }) 
                       isAnimationActive={false}
                     />
                   </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          )}
+
+          {/* Cumulative P&L chart — shown when there are closed legs with P&L data */}
+          {pnlChartData.length > 0 && (
+            <div className="bg-card border border-border rounded-md p-3" data-testid="pnl-chart">
+              <div className="text-xs text-muted-foreground mb-2 uppercase tracking-wider font-semibold">
+                Cumulative Realized P&amp;L (USD)
+              </div>
+              <div className="h-36">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={pnlChartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+                    <CartesianGrid
+                      strokeDasharray="3 3"
+                      stroke="hsl(var(--border))"
+                      strokeOpacity={0.4}
+                    />
+                    <XAxis
+                      dataKey="t"
+                      type="number"
+                      scale="time"
+                      domain={["dataMin", "dataMax"]}
+                      tickFormatter={(t: number) => {
+                        const d = new Date(t);
+                        return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+                      }}
+                      tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+                      tickLine={false}
+                      axisLine={false}
+                      minTickGap={60}
+                    />
+                    <YAxis
+                      tickFormatter={(v: number) =>
+                        `${v >= 0 ? "+" : ""}${v.toFixed(2)}`
+                      }
+                      tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+                      tickLine={false}
+                      axisLine={false}
+                      width={70}
+                      domain={["auto", "auto"]}
+                    />
+                    <ReferenceLine y={0} stroke="hsl(var(--border))" strokeWidth={1} />
+                    <Tooltip
+                      content={({ active, payload, label }) => {
+                        if (!active || !payload?.length) return null;
+                        const val = payload[0].value as number;
+                        const d = new Date(label as number);
+                        return (
+                          <div className="bg-background border border-border rounded px-2.5 py-1.5 text-xs shadow-lg font-mono">
+                            <div className="text-muted-foreground mb-0.5">
+                              {d.toLocaleDateString("en-US", {
+                                month: "short",
+                                day: "numeric",
+                                year: "numeric",
+                              })}
+                              {" "}
+                              {d.toLocaleTimeString("en-US", {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })}
+                            </div>
+                            <span className={val >= 0 ? "text-emerald-400" : "text-red-400"}>
+                              {val >= 0 ? "+" : ""}
+                              {val.toFixed(4)} USD
+                            </span>
+                          </div>
+                        );
+                      }}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="pnl"
+                      stroke="#22c55e"
+                      strokeWidth={1.5}
+                      dot={{ r: 3, fill: "#22c55e", strokeWidth: 0 }}
+                      activeDot={{ r: 5 }}
+                      isAnimationActive={false}
+                    />
+                  </LineChart>
                 </ResponsiveContainer>
               </div>
             </div>
