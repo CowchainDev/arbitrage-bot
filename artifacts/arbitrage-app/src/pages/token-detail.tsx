@@ -579,8 +579,13 @@ export default function TokenDetail({ params }: { params: { symbol: string } }) 
     if (timeRange.interval === "1d") {
       return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
     }
-    if (timeRange.interval === "4h") {
-      return d.toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit" });
+    if (timeRange.interval === "4h" || timeRange.interval === "1h") {
+      // These span multiple days — show abbreviated weekday + time
+      return d.toLocaleString("en-US", { weekday: "short", hour: "2-digit", minute: "2-digit", hour12: false });
+    }
+    if (timeRange.interval === "15m") {
+      // Spans ~24h — show day + time to disambiguate yesterday vs today
+      return d.toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false });
     }
     return d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
   };
@@ -645,6 +650,17 @@ export default function TokenDetail({ params }: { params: { symbol: string } }) 
         closedAtMs: new Date(leg.closedAt!).getTime(),
       }));
   }, [closedLegs]);
+
+  // Extend X domain so markers that fall outside the klines window remain visible
+  const chartXDomain = useMemo((): [number, number] | ["dataMin", "dataMax"] => {
+    if (chartDataFinal.length === 0) return ["dataMin", "dataMax"];
+    const dataMin = Math.min(...chartDataFinal.map((d) => d.t));
+    const dataMax = Math.max(...chartDataFinal.map((d) => d.t));
+    if (tradeMarkers.length === 0) return [dataMin, dataMax];
+    const markerMin = Math.min(...tradeMarkers.map((m) => m.t));
+    const markerMax = Math.max(...tradeMarkers.map((m) => m.t));
+    return [Math.min(dataMin, markerMin), Math.max(dataMax, markerMax)];
+  }, [chartDataFinal, tradeMarkers]);
 
   const hasOpenLegs = (botStatus?.openLegs.length ?? 0) > 0;
 
@@ -746,7 +762,7 @@ export default function TokenDetail({ params }: { params: { symbol: string } }) 
                       dataKey="t"
                       type="number"
                       scale="time"
-                      domain={["dataMin", "dataMax"]}
+                      domain={chartXDomain}
                       tickFormatter={formatXAxis}
                       tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
                       tickLine={false}
@@ -879,7 +895,7 @@ export default function TokenDetail({ params }: { params: { symbol: string } }) 
                       dataKey="t"
                       type="number"
                       scale="time"
-                      domain={["dataMin", "dataMax"]}
+                      domain={chartXDomain}
                       tickFormatter={formatXAxis}
                       tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
                       tickLine={false}
