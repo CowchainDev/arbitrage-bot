@@ -27,6 +27,7 @@ export const PREWARM_SYMBOLS = ["BTC", "ETH", "SOL"];
 export const PREWARM_INTERVALS = ["15m", "1h", "4h", "1d"];
 const PREWARM_LIMIT = 168;
 const KLINES_TIMEOUT_MS = 4000;
+const PREWARM_TOP_N = 10;
 
 async function fetchKlinesForSymbol(
   symbol: string,
@@ -81,8 +82,21 @@ async function fetchKlinesForSymbol(
 
 export const KLINES_PREWARM_INTERVAL_MS = KLINES_TTL_SHORT_MS;
 
-export async function prewarmKlinesCache(): Promise<{ succeeded: number; failed: number }> {
-  const pairs = PREWARM_SYMBOLS.flatMap((symbol) =>
+function getTopSymbolsByVolume(n: number): string[] {
+  if (!priceCache || priceCache.data.length === 0) return PREWARM_SYMBOLS;
+  type PriceRow = { symbol: string; volume24h?: number };
+  const rows = priceCache.data as PriceRow[];
+  const sorted = [...rows]
+    .filter((r) => typeof r.volume24h === "number")
+    .sort((a, b) => (b.volume24h ?? 0) - (a.volume24h ?? 0));
+  const top = sorted.slice(0, n).map((r) => r.symbol);
+  return top.length > 0 ? top : PREWARM_SYMBOLS;
+}
+
+export async function prewarmKlinesCache(): Promise<{ succeeded: number; failed: number; symbols: string[] }> {
+  const symbols = getTopSymbolsByVolume(PREWARM_TOP_N);
+
+  const pairs = symbols.flatMap((symbol) =>
     PREWARM_INTERVALS.map((interval) => ({ symbol, interval }))
   );
 
@@ -93,7 +107,7 @@ export async function prewarmKlinesCache(): Promise<{ succeeded: number; failed:
   const succeeded = results.filter((r) => r.status === "fulfilled").length;
   const failed = results.length - succeeded;
 
-  return { succeeded, failed };
+  return { succeeded, failed, symbols };
 }
 
 type SymbolPriceEntry = { bybitPrice: number | null; binancePrice: number | null };
