@@ -429,6 +429,13 @@ function TokenCard({
     ? frDelta > 0 ? "text-primary/70" : frDelta < 0 ? "text-destructive/70" : "text-muted-foreground/40"
     : "text-muted-foreground/40";
 
+  const ema = token.emaSpreadPct;
+  const emaColor = ema == null
+    ? "text-muted-foreground/30"
+    : ema >= 1   ? "text-primary/70 font-semibold"
+    : ema >= 0.3 ? "text-amber-400/70"
+    : "text-muted-foreground/50";
+
   const cardBorder = isSelected
     ? "border-primary bg-primary/8"
     : "border-border hover:border-border/80 bg-card";
@@ -506,6 +513,14 @@ function TokenCard({
         <div><span className="text-muted-foreground/40">VOL </span>{formatUsd(token.volume24h)}</div>
         <div><span className="text-muted-foreground/40">OI </span>{formatUsd(token.openInterestUsd)}</div>
         <div><span className="text-muted-foreground/40">DEP </span>{formatUsd(token.spreadDepthUsd)}</div>
+      </div>
+
+      {/* EMA spread */}
+      <div className="mt-1 text-[10px] font-mono">
+        <span className="text-muted-foreground/40">EMA </span>
+        <span className={emaColor} title="10-min EMA of spread">
+          {ema != null && isFinite(ema) ? `${ema >= 0 ? "+" : ""}${ema.toFixed(4)}%` : "-"}
+        </span>
       </div>
     </div>
   );
