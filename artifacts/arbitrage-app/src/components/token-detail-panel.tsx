@@ -233,16 +233,24 @@ export function TokenDetailPanel({
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2 flex-wrap">
           <span className="font-bold text-base">{token.symbol}</span>
-          {token.bybitPrice != null && (
-            <span className="text-xs font-semibold px-2 py-0.5 rounded bg-muted text-muted-foreground">
-              Bybit {token.binancePrice != null ? (token.bybitPrice > token.binancePrice ? "↑" : "↓") : ""}
-            </span>
-          )}
-          {token.binancePrice != null && (
-            <span className="text-xs font-semibold px-2 py-0.5 rounded bg-muted text-muted-foreground">
-              Binance {token.bybitPrice != null ? (token.binancePrice > token.bybitPrice ? "↑" : "↓") : ""}
-            </span>
-          )}
+          {(() => {
+            const dA = getExchangeTokenData(token, botExchangeA);
+            const dB = getExchangeTokenData(token, botExchangeB);
+            return (
+              <>
+                {dA.price != null && (
+                  <span className="text-xs font-semibold px-2 py-0.5 rounded bg-muted text-muted-foreground">
+                    {getExchangeName(botExchangeA)}{dB.price != null ? (dA.price > dB.price ? " ↑" : " ↓") : ""}
+                  </span>
+                )}
+                {dB.price != null && (
+                  <span className="text-xs font-semibold px-2 py-0.5 rounded bg-muted text-muted-foreground">
+                    {getExchangeName(botExchangeB)}{dA.price != null ? (dB.price > dA.price ? " ↑" : " ↓") : ""}
+                  </span>
+                )}
+              </>
+            );
+          })()}
           {bot ? (
             bot.enabled ? (
               botOpenLegsCount > 0 ? (
