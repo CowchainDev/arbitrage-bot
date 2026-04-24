@@ -35,6 +35,27 @@ const EXCHANGE_TEXT_COLOR: Record<string, string> = {
   mexc: "text-rose-400",
 };
 
+const EXCHANGE_HEADER_COLOR: Record<string, string> = {
+  bybit: "text-amber-400/80",
+  binance: "text-violet-400/80",
+  gate: "text-sky-400/80",
+  okx: "text-emerald-400/80",
+  mexc: "text-rose-400/80",
+};
+
+const ALL_EXCHANGE_KEYS = ["bybit", "binance", "gate", "okx", "mexc"] as const;
+
+function getExchangeTokenData(token: TokenSpread, exchange: string) {
+  switch (exchange) {
+    case "bybit":   return { price: token.bybitPrice,   bid: token.bybitBid,   ask: token.bybitAsk,   fundingRate: token.bybitFundingRate,   nextFunding: token.bybitNextFunding   ?? null };
+    case "binance": return { price: token.binancePrice, bid: token.binanceBid, ask: token.binanceAsk, fundingRate: token.binanceFundingRate, nextFunding: token.binanceNextFunding ?? null };
+    case "gate":    return { price: token.gatePrice,    bid: token.gateBid,    ask: token.gateAsk,    fundingRate: token.gateFundingRate,    nextFunding: null };
+    case "okx":     return { price: token.okxPrice,     bid: token.okxBid,     ask: token.okxAsk,     fundingRate: token.okxFundingRate,     nextFunding: null };
+    case "mexc":    return { price: token.mexcPrice,    bid: token.mexcBid,    ask: token.mexcAsk,    fundingRate: token.mexcFundingRate,     nextFunding: null };
+    default:        return { price: null, bid: null, ask: null, fundingRate: null, nextFunding: null };
+  }
+}
+
 function formatPrice(price: number | null | undefined): string {
   if (price == null) return "-";
   if (price >= 1000) return price.toLocaleString("en-US", { maximumFractionDigits: 2 });
@@ -381,56 +402,87 @@ export function TokenDetailPanel({
         )}
       </div>
 
-      {/* All-exchange price matrix */}
-      <div className="border border-border rounded overflow-hidden">
-        <div className="grid grid-cols-3 bg-muted text-xs px-2 py-1.5 font-semibold uppercase tracking-wider">
-          <span className="text-muted-foreground"></span>
-          <span className="text-amber-400/80">BYBIT</span>
-          <span className="text-violet-400/80">BINANCE</span>
-        </div>
-        {[
-          { label: "Price",   bybit: formatPrice(token.bybitPrice),   binance: formatPrice(token.binancePrice) },
-          { label: "Bid",     bybit: formatPrice(token.bybitBid),     binance: formatPrice(token.binanceBid) },
-          { label: "Ask",     bybit: formatPrice(token.bybitAsk),     binance: formatPrice(token.binanceAsk) },
-          { label: "Funding", bybit: formatFunding(token.bybitFundingRate), binance: formatFunding(token.binanceFundingRate) },
-          { label: "Next FR", bybit: token.bybitNextFunding ? new Date(token.bybitNextFunding).toLocaleTimeString() : "-", binance: token.binanceNextFunding ? new Date(token.binanceNextFunding).toLocaleTimeString() : "-" },
-          { label: "Spread",  bybit: (token.bybitPrice != null && token.binancePrice != null && isFinite(token.spreadPct)) ? formatPct(token.spreadPct) : "-", binance: "-" },
-        ].map((row, i) => (
-          <div key={row.label} className={`grid grid-cols-3 text-xs px-2 py-1.5 ${i % 2 === 0 ? "bg-card" : "bg-background"}`}>
-            <span className="text-muted-foreground">{row.label}</span>
-            <span className="font-mono text-foreground">{row.bybit}</span>
-            <span className="font-mono text-foreground">{row.binance}</span>
-          </div>
-        ))}
-      </div>
-
-      {/* Read-only exchange prices */}
-      {(token.gatePrice != null || token.okxPrice != null || token.mexcPrice != null) && (
-        <div className="border border-border rounded overflow-hidden">
-          <div className="bg-muted text-xs px-2 py-1.5 font-semibold uppercase tracking-wider text-muted-foreground">
-            Read-only exchanges
-          </div>
-          <div className="grid grid-cols-4 text-xs px-2 py-1 bg-muted/50 text-muted-foreground font-semibold">
-            <span></span>
-            <span className="text-sky-400/80">GATE</span>
-            <span className="text-emerald-400/80">OKX</span>
-            <span className="text-rose-400/80">MEXC</span>
-          </div>
-          {[
-            { label: "Price",   gate: formatPrice(token.gatePrice),   okx: formatPrice(token.okxPrice),   mexc: formatPrice(token.mexcPrice) },
-            { label: "Bid",     gate: formatPrice(token.gateBid),     okx: formatPrice(token.okxBid),     mexc: formatPrice(token.mexcBid) },
-            { label: "Ask",     gate: formatPrice(token.gateAsk),     okx: formatPrice(token.okxAsk),     mexc: formatPrice(token.mexcAsk) },
-            { label: "Funding", gate: formatFunding(token.gateFundingRate), okx: formatFunding(token.okxFundingRate), mexc: formatFunding(token.mexcFundingRate) },
-          ].map((row, i) => (
-            <div key={row.label} className={`grid grid-cols-4 text-xs px-2 py-1.5 ${i % 2 === 0 ? "bg-card" : "bg-background"}`}>
-              <span className="text-muted-foreground">{row.label}</span>
-              <span className="font-mono text-foreground">{row.gate}</span>
-              <span className="font-mono text-foreground">{row.okx}</span>
-              <span className="font-mono text-foreground">{row.mexc}</span>
+      {/* Selected exchange pair price matrix — updates when Exchange A / B dropdowns change */}
+      {(() => {
+        const exAData = getExchangeTokenData(token, botExchangeA);
+        const exBData = getExchangeTokenData(token, botExchangeB);
+        const labelA = EXCHANGE_LABELS[botExchangeA] ?? botExchangeA.toUpperCase();
+        const labelB = EXCHANGE_LABELS[botExchangeB] ?? botExchangeB.toUpperCase();
+        const headerA = EXCHANGE_HEADER_COLOR[botExchangeA] ?? "text-muted-foreground";
+        const headerB = EXCHANGE_HEADER_COLOR[botExchangeB] ?? "text-muted-foreground";
+        const spreadVal =
+          exAData.price != null && exBData.price != null && exBData.price !== 0
+            ? ((exAData.price - exBData.price) / exBData.price) * 100
+            : null;
+        const rows = [
+          { label: "Price",   a: formatPrice(exAData.price),   b: formatPrice(exBData.price) },
+          { label: "Bid",     a: formatPrice(exAData.bid),     b: formatPrice(exBData.bid) },
+          { label: "Ask",     a: formatPrice(exAData.ask),     b: formatPrice(exBData.ask) },
+          { label: "Funding", a: formatFunding(exAData.fundingRate), b: formatFunding(exBData.fundingRate) },
+          { label: "Next FR", a: exAData.nextFunding ? new Date(exAData.nextFunding).toLocaleTimeString() : "-", b: exBData.nextFunding ? new Date(exBData.nextFunding).toLocaleTimeString() : "-" },
+          { label: "Spread",  a: spreadVal != null && isFinite(spreadVal) ? formatPct(spreadVal) : "-", b: "-" },
+        ];
+        return (
+          <div className="border border-border rounded overflow-hidden">
+            <div className="grid grid-cols-3 bg-muted text-xs px-2 py-1.5 font-semibold uppercase tracking-wider">
+              <span className="text-muted-foreground"></span>
+              <span className={headerA}>{labelA}</span>
+              <span className={headerB}>{labelB}</span>
             </div>
-          ))}
-        </div>
-      )}
+            {rows.map((row, i) => (
+              <div key={row.label} className={`grid grid-cols-3 text-xs px-2 py-1.5 ${i % 2 === 0 ? "bg-card" : "bg-background"}`}>
+                <span className="text-muted-foreground">{row.label}</span>
+                <span className="font-mono text-foreground">{row.a}</span>
+                <span className="font-mono text-foreground">{row.b}</span>
+              </div>
+            ))}
+          </div>
+        );
+      })()}
+
+      {/* Other exchanges — shows exchanges not selected as A or B */}
+      {(() => {
+        const others = ALL_EXCHANGE_KEYS.filter((ex) => ex !== botExchangeA && ex !== botExchangeB);
+        const othersWithData = others.filter((ex) => {
+          const d = getExchangeTokenData(token, ex);
+          return d.price != null;
+        });
+        if (othersWithData.length === 0) return null;
+        const colCount = othersWithData.length + 1;
+        return (
+          <div className="border border-border rounded overflow-hidden">
+            <div className="bg-muted text-xs px-2 py-1.5 font-semibold uppercase tracking-wider text-muted-foreground">
+              Other exchanges
+            </div>
+            <div
+              className="text-xs px-2 py-1 bg-muted/50 text-muted-foreground font-semibold"
+              style={{ display: "grid", gridTemplateColumns: `repeat(${colCount}, minmax(0,1fr))` }}
+            >
+              <span></span>
+              {othersWithData.map((ex) => (
+                <span key={ex} className={EXCHANGE_HEADER_COLOR[ex] ?? "text-muted-foreground"}>{EXCHANGE_LABELS[ex] ?? ex.toUpperCase()}</span>
+              ))}
+            </div>
+            {(["Price", "Bid", "Ask", "Funding"] as const).map((field, i) => (
+              <div
+                key={field}
+                className={`text-xs px-2 py-1.5 ${i % 2 === 0 ? "bg-card" : "bg-background"}`}
+                style={{ display: "grid", gridTemplateColumns: `repeat(${colCount}, minmax(0,1fr))` }}
+              >
+                <span className="text-muted-foreground">{field}</span>
+                {othersWithData.map((ex) => {
+                  const d = getExchangeTokenData(token, ex);
+                  const val = field === "Price" ? formatPrice(d.price)
+                    : field === "Bid" ? formatPrice(d.bid)
+                    : field === "Ask" ? formatPrice(d.ask)
+                    : formatFunding(d.fundingRate);
+                  return <span key={ex} className="font-mono text-foreground">{val}</span>;
+                })}
+              </div>
+            ))}
+          </div>
+        );
+      })()}
 
       {/* Cross-exchange spread matrix */}
       {(() => {
