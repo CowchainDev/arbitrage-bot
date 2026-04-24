@@ -196,14 +196,14 @@ export function BotSummaryRow({
       <span className="font-mono font-semibold">${netUsdSize.toFixed(2)}</span>
       <span className="font-mono leading-tight">
         <span className="flex flex-col gap-0.5">
-          <span className="text-amber-400">{avgBybitEntry != null ? formatPrice(avgBybitEntry) : "-"}</span>
-          <span className="text-violet-400">{avgBinanceEntry != null ? formatPrice(avgBinanceEntry) : "-"}</span>
+          <span className={firstBybitSide === "long" ? "text-primary" : "text-destructive"}>{avgBybitEntry != null ? formatPrice(avgBybitEntry) : "-"}</span>
+          <span className={positions[0].binanceSide === "long" ? "text-primary" : "text-destructive"}>{avgBinanceEntry != null ? formatPrice(avgBinanceEntry) : "-"}</span>
         </span>
       </span>
       <span className="font-mono leading-tight">
         <span className="flex flex-col gap-0.5">
-          <span className="text-amber-400">{bybitCurrentPrice != null ? formatPrice(bybitCurrentPrice) : "-"}</span>
-          <span className="text-violet-400">{binanceCurrentPrice != null ? formatPrice(binanceCurrentPrice) : "-"}</span>
+          <span className={firstBybitSide === "long" ? "text-primary" : "text-destructive"}>{bybitCurrentPrice != null ? formatPrice(bybitCurrentPrice) : "-"}</span>
+          <span className={positions[0].binanceSide === "long" ? "text-primary" : "text-destructive"}>{binanceCurrentPrice != null ? formatPrice(binanceCurrentPrice) : "-"}</span>
         </span>
       </span>
       <span className="font-mono">{formatPct(avgSpread)}</span>
@@ -316,20 +316,20 @@ export function PositionRow({
         <span className="font-mono">${(position.usdSize ?? 0).toFixed(2)}</span>
         <span className="font-mono leading-tight">
           <span className="flex flex-col gap-0.5">
-            <span className="text-amber-400">
+            <span className={position.bybitSide === "long" ? "text-primary" : "text-destructive"}>
               {position.bybitEntryPrice != null ? formatPrice(position.bybitEntryPrice) : "-"}
             </span>
-            <span className="text-violet-400">
+            <span className={position.binanceSide === "long" ? "text-primary" : "text-destructive"}>
               {position.binanceEntryPrice != null ? formatPrice(position.binanceEntryPrice) : "-"}
             </span>
           </span>
         </span>
         <span className="font-mono leading-tight">
           <span className="flex flex-col gap-0.5">
-            <span className="text-amber-400">
+            <span className={position.bybitSide === "long" ? "text-primary" : "text-destructive"}>
               {position.bybitCurrentPrice != null ? formatPrice(position.bybitCurrentPrice) : "-"}
             </span>
-            <span className="text-violet-400">
+            <span className={position.binanceSide === "long" ? "text-primary" : "text-destructive"}>
               {position.binanceCurrentPrice != null ? formatPrice(position.binanceCurrentPrice) : "-"}
             </span>
           </span>
