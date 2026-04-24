@@ -31,7 +31,7 @@ import { usePriceStream } from "@/hooks/use-price-stream";
 import { useApiCredentials } from "@/hooks/use-api-credentials";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
-import { useQueryClient, useQuery } from "@tanstack/react-query";
+import { useQueryClient, useQuery, keepPreviousData } from "@tanstack/react-query";
 import {
   BotSummaryRow,
   PositionRow,
@@ -519,7 +519,7 @@ export default function TokenDetail({ params }: { params: { symbol: string } }) 
   }, [liveToken, isLiveMode, timeRange.liveSeconds]);
 
   const klinesParams = { symbol, interval: timeRange.interval, limit: timeRange.limit };
-  const { data: klines, isLoading: klinesLoading, isError: klinesError } = useGetExchangeKlines(
+  const { data: klines, isLoading: klinesLoading, isError: klinesError, isFetching: klinesIsFetching } = useGetExchangeKlines(
     klinesParams,
     {
       query: {
@@ -527,6 +527,7 @@ export default function TokenDetail({ params }: { params: { symbol: string } }) 
         refetchInterval: 60_000,
         staleTime: 30_000,
         enabled: !isLiveMode,
+        placeholderData: keepPreviousData,
       },
     }
   );
@@ -732,6 +733,9 @@ export default function TokenDetail({ params }: { params: { symbol: string } }) 
                   {tr.label}
                 </button>
               ))}
+              {klinesIsFetching && !klinesLoading && !isLiveMode && (
+                <span className="w-3.5 h-3.5 border-2 border-muted-foreground border-t-transparent rounded-full animate-spin ml-1 opacity-60" />
+              )}
               </div>
               <button
                 onClick={() => setTerminalCollapsed((v) => !v)}
@@ -767,7 +771,7 @@ export default function TokenDetail({ params }: { params: { symbol: string } }) 
               <div className="h-64 flex items-center justify-center">
                 <span className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
               </div>
-            ) : !isLiveMode && (klinesError || chartDataFinal.length === 0) ? (
+            ) : !isLiveMode && !klinesIsFetching && (klinesError || chartDataFinal.length === 0) ? (
               <div className="h-64 flex items-center justify-center text-muted-foreground text-sm">
                 No chart data available
               </div>
