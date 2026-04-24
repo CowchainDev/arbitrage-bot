@@ -366,6 +366,9 @@ type SymbolPriceEntry = {
 };
 const priceCacheBySymbol = new Map<string, SymbolPriceEntry>();
 
+// EMA of bestSpreadPct per symbol. α ≈ 0.006 → ~10-minute half-life at 5s refresh.
+const SPREAD_EMA_ALPHA = 0.006;
+const spreadEmaMap = new Map<string, number>();
 
 export function getPriceCacheEntry(symbol: string): SymbolPriceEntry | null {
   return priceCacheBySymbol.get(symbol) ?? null;
@@ -472,6 +475,7 @@ async function fetchAndCachePrices(): Promise<unknown[]> {
     spreadPct: number;
     bestSpreadPct: number;
     bestSpreadLeg: string | null;
+    emaSpreadPct: number;
     openInterestUsd: number | null;
     totalVolume: number;
     needsMexcOb: boolean;
