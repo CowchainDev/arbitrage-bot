@@ -22,15 +22,22 @@ import {
 } from "@/components/position-rows";
 import { getExchangeName } from "@/lib/exchange-config";
 
-type SortOption =
-  | "spread_desc" | "spread_asc"
-  | "eff_desc"    | "eff_asc"
-  | "volume_desc" | "volume_asc"
-  | "oi_desc"     | "oi_asc"
-  | "depth_desc"  | "depth_asc"
-  | "ema_desc"    | "ema_asc"
-  | "alpha"       | "alpha_desc"
-  | "fav"         | "fav_desc";
+const VALID_SORT_OPTIONS = [
+  "spread_desc", "spread_asc",
+  "eff_desc",    "eff_asc",
+  "volume_desc", "volume_asc",
+  "oi_desc",     "oi_asc",
+  "depth_desc",  "depth_asc",
+  "ema_desc",    "ema_asc",
+  "alpha",       "alpha_desc",
+  "fav",         "fav_desc",
+] as const;
+
+type SortOption = typeof VALID_SORT_OPTIONS[number];
+
+function isValidSortOption(value: unknown): value is SortOption {
+  return typeof value === "string" && (VALID_SORT_OPTIONS as readonly string[]).includes(value);
+}
 
 type ViewMode = "list" | "card";
 const VIEW_MODE_KEY = "dashboard-view-mode";
@@ -53,7 +60,7 @@ function loadFilters() {
     if (!raw) return DEFAULT_FILTERS;
     const parsed = JSON.parse(raw);
     return {
-      sort: (parsed.sort as SortOption) ?? DEFAULT_FILTERS.sort,
+      sort: isValidSortOption(parsed.sort) ? parsed.sort : DEFAULT_FILTERS.sort,
       maxSpread: parsed.maxSpread ?? DEFAULT_FILTERS.maxSpread,
       minVolume: parsed.minVolume ?? DEFAULT_FILTERS.minVolume,
       minOpenInterest: parsed.minOpenInterest ?? DEFAULT_FILTERS.minOpenInterest,
