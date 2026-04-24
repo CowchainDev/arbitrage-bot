@@ -19,8 +19,8 @@ export function useBotSecret() {
     setBotSecretState(val);
   }, []);
 
-  const getBotRequestOptions = useCallback((): RequestInit | undefined => {
-    if (!botSecret) return undefined;
+  const getBotRequestOptions = useCallback((): RequestInit => {
+    if (!botSecret) return {};
     return { headers: { "x-bot-secret": botSecret } };
   }, [botSecret]);
 

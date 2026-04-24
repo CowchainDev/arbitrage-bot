@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { useBotSecret } from "@/hooks/use-bot-secret";
+import { useExchangeCredentials, type SupportedExchange } from "@/hooks/use-exchange-credentials";
 
 const EXCHANGE_LABELS: Record<string, string> = {
   bybit: "BYBIT", binance: "BINANCE", gate: "GATE", okx: "OKX", mexc: "MEXC",
@@ -87,6 +88,16 @@ export function TokenDetailPanel({
 }) {
   const { getBotRequestOptions } = useBotSecret();
   const botRequestOptions = getBotRequestOptions();
+
+  // Check API credentials for each exchange so we can warn when they're missing
+  const credsBybit   = useExchangeCredentials("bybit");
+  const credsBinance = useExchangeCredentials("binance");
+  const credsGate    = useExchangeCredentials("gate");
+  const credsOkx     = useExchangeCredentials("okx");
+  const credsMexc    = useExchangeCredentials("mexc");
+  const allCreds: Record<SupportedExchange, { hasCreds: boolean }> = {
+    bybit: credsBybit, binance: credsBinance, gate: credsGate, okx: credsOkx, mexc: credsMexc,
+  };
   const [botEnterSpread, setBotEnterSpread] = useState(() => bot ? String(bot.enterSpreadPct) : "0.5");
   const [botCloseSpread, setBotCloseSpread] = useState(() => bot ? String(bot.closeSpreadPct) : "0.2");
   const [botStopLossSpread, setBotStopLossSpread] = useState(() => bot ? String(bot.stopLossSpreadPct ?? 0) : "0");
@@ -374,30 +385,40 @@ export function TokenDetailPanel({
           </div>
         ) : (
           <>
-            <Button
-              onClick={handleBotStart}
-              disabled={botBusy || !botRequestOptions}
-              className="w-full bg-primary text-primary-foreground hover:bg-primary/90 font-bold text-sm py-5 tracking-wider"
-              data-testid="btn-bot-start"
-            >
-              {botBusy ? (
-                <span className="flex items-center gap-2">
-                  <span className="w-3 h-3 border border-primary-foreground border-t-transparent rounded-full animate-spin" />
-                  STARTING…
-                </span>
-              ) : (
-                <span className="flex items-center gap-2">
-                  <Zap className="w-4 h-4" />
-                  JUMP IN
-                </span>
-              )}
-            </Button>
-            {!botRequestOptions && (
-              <p className="text-xs text-destructive text-center">
-                Configure API keys in{" "}
-                <Link href="/settings" className="underline hover:text-destructive/80">Settings</Link>
-              </p>
-            )}
+            {(() => {
+              const missingCreds = [botExchangeA, botExchangeB].filter(
+                (ex) => !allCreds[ex as SupportedExchange]?.hasCreds
+              );
+              const missingLabels = missingCreds.map((ex) => EXCHANGE_LABELS[ex] ?? ex.toUpperCase());
+              return (
+                <>
+                  <Button
+                    onClick={handleBotStart}
+                    disabled={botBusy || missingCreds.length > 0}
+                    className="w-full bg-primary text-primary-foreground hover:bg-primary/90 font-bold text-sm py-5 tracking-wider"
+                    data-testid="btn-bot-start"
+                  >
+                    {botBusy ? (
+                      <span className="flex items-center gap-2">
+                        <span className="w-3 h-3 border border-primary-foreground border-t-transparent rounded-full animate-spin" />
+                        STARTING…
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-2">
+                        <Zap className="w-4 h-4" />
+                        JUMP IN
+                      </span>
+                    )}
+                  </Button>
+                  {missingCreds.length > 0 && (
+                    <p className="text-xs text-destructive text-center">
+                      Add {missingLabels.join(" & ")} API keys in{" "}
+                      <Link href="/settings" className="underline hover:text-destructive/80">Settings</Link>
+                    </p>
+                  )}
+                </>
+              );
+            })()}
           </>
         )}
       </div>
