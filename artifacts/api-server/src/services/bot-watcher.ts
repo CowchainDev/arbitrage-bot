@@ -214,10 +214,15 @@ async function closeLeg(
   }
 
   const closeFees = result.closeFeeA + result.closeFeeB;
-  const realizedPnl = computeLegPnl(leg, priceA, priceB, closeFees);
+  // Use actual fill prices from the close orders when available — cache prices are stale
+  // and can differ from real fills, especially on illiquid tokens. Fall back to the
+  // cache prices that triggered the close trigger if the exchange didn't return an avgPrice.
+  const closePriceA = result.closePriceA ?? priceA;
+  const closePriceB = result.closePriceB ?? priceB;
+  const realizedPnl = computeLegPnl(leg, closePriceA, closePriceB, closeFees);
   const totalFees =
     Number(leg.openFeeA ?? 0) + Number(leg.openFeeB ?? 0) + closeFees;
-  const spreadAtExit = getSpreadPct(priceA, priceB);
+  const spreadAtExit = getSpreadPct(closePriceA, closePriceB);
 
   await db
     .update(botLegsTable)
@@ -358,9 +363,11 @@ export async function closeAllLegsForBot(botId: number): Promise<{ closed: numbe
 
     if (result.bothClosed) {
       const closeFees = result.closeFeeA + result.closeFeeB;
-      const realizedPnl = computeLegPnl(leg, priceA, priceB, closeFees);
+      const closePriceA = result.closePriceA ?? priceA;
+      const closePriceB = result.closePriceB ?? priceB;
+      const realizedPnl = computeLegPnl(leg, closePriceA, closePriceB, closeFees);
       const totalFees = Number(leg.openFeeA ?? 0) + Number(leg.openFeeB ?? 0) + closeFees;
-      const spreadAtExit = getSpreadPct(priceA, priceB);
+      const spreadAtExit = getSpreadPct(closePriceA, closePriceB);
       await db.update(botLegsTable).set({
         status: "closed",
         closedAt: new Date(),

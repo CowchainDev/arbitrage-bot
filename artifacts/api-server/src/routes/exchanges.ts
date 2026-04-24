@@ -1678,6 +1678,8 @@ export type ClosePositionInternalResult = {
   orderIdB: string | null;
   closeFeeA: number;
   closeFeeB: number;
+  closePriceA: number | null;
+  closePriceB: number | null;
   errorA?: string;
   errorB?: string;
   /** @deprecated use orderIdA */ bybitOrderId: string | null;
@@ -1691,7 +1693,7 @@ async function closeOnExchange(
   symbol: string,
   positionSide: "long" | "short",
   qty: number,
-): Promise<{ orderId: string; feeCost: number }> {
+): Promise<{ orderId: string; feeCost: number; avgPrice: number | null }> {
   const marketSymbol = `${symbol}/USDT:USDT`;
   const closeSide = positionSide === "long" ? "sell" : "buy";
   let order;
@@ -1714,7 +1716,7 @@ async function closeOnExchange(
     order = await ex.createMarketOrder(marketSymbol, closeSide, qty, undefined, { reduceOnly: true });
   }
   const feeCost = await extractFeeFromOrder(ex, order, marketSymbol);
-  return { orderId: String(order.id), feeCost };
+  return { orderId: String(order.id), feeCost, avgPrice: order.average ?? null };
 }
 
 export async function closePositionInternal(
@@ -1735,6 +1737,8 @@ export async function closePositionInternal(
   const orderIdB = orderB.status === "fulfilled" ? orderB.value.orderId : null;
   const closeFeeA = orderA.status === "fulfilled" ? orderA.value.feeCost : 0;
   const closeFeeB = orderB.status === "fulfilled" ? orderB.value.feeCost : 0;
+  const closePriceA = orderA.status === "fulfilled" ? orderA.value.avgPrice : null;
+  const closePriceB = orderB.status === "fulfilled" ? orderB.value.avgPrice : null;
   const errorA = orderA.status === "rejected" ? String(orderA.reason) : undefined;
   const errorB = orderB.status === "rejected" ? String(orderB.reason) : undefined;
 
@@ -1744,6 +1748,8 @@ export async function closePositionInternal(
     orderIdB,
     closeFeeA,
     closeFeeB,
+    closePriceA,
+    closePriceB,
     errorA,
     errorB,
     bybitOrderId: orderIdA,
