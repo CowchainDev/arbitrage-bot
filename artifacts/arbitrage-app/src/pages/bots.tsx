@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
+import { Link } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
-import { Bot, Power, TrendingUp, TrendingDown, Layers, XCircle, Trash2 } from "lucide-react";
+import { Bot, Power, TrendingUp, TrendingDown, Layers, XCircle, Trash2, LineChart } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { useBots } from "@/hooks/use-bots";
@@ -343,26 +344,42 @@ function BotCard({ bot, openLegs }: { bot: BotConfig; openLegs: BotLeg[] }) {
             <Power className="w-3 h-3 mr-1.5" />
             Stop only (keep positions open)
           </Button>
+          <Link
+            href={`/token/${bot.symbol}`}
+            className="inline-flex items-center justify-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors mt-0.5"
+          >
+            <LineChart className="w-3 h-3" />
+            Open Chart
+          </Link>
         </div>
       ) : (
-        <Button
-          size="sm"
-          className="w-full bg-emerald-600 hover:bg-emerald-500 text-white"
-          disabled={busy}
-          onClick={handleStart}
-        >
-          {busy ? (
-            <span className="flex items-center gap-2">
-              <span className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
-              Starting…
-            </span>
-          ) : (
-            <span className="flex items-center gap-2">
-              <Power className="w-3.5 h-3.5" />
-              START BOT
-            </span>
-          )}
-        </Button>
+        <div className="flex flex-col gap-1.5">
+          <Button
+            size="sm"
+            className="w-full bg-emerald-600 hover:bg-emerald-500 text-white"
+            disabled={busy}
+            onClick={handleStart}
+          >
+            {busy ? (
+              <span className="flex items-center gap-2">
+                <span className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
+                Starting…
+              </span>
+            ) : (
+              <span className="flex items-center gap-2">
+                <Power className="w-3.5 h-3.5" />
+                START BOT
+              </span>
+            )}
+          </Button>
+          <Link
+            href={`/token/${bot.symbol}`}
+            className="inline-flex items-center justify-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors mt-0.5"
+          >
+            <LineChart className="w-3 h-3" />
+            Open Chart
+          </Link>
+        </div>
       )}
     </div>
   );
