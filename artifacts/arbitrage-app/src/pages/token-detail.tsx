@@ -972,6 +972,27 @@ export default function TokenDetail({ params }: { params: { symbol: string } }) 
   const [highlightedLegId, setHighlightedLegId] = useState<number | null>(null);
   const clearHighlight = useCallback(() => setHighlightedLegId(null), []);
 
+  type PnlRange = "7d" | "30d" | "all";
+  const [pnlRange, setPnlRange] = useState<PnlRange>("all");
+
+  const filteredPnlChartData = useMemo(() => {
+    if (pnlRange === "all") return pnlChartData;
+    const cutoffMs = Date.now() - (pnlRange === "7d" ? 7 : 30) * 24 * 60 * 60 * 1000;
+    const filtered = pnlChartData.filter((pt) => pt.t >= cutoffMs);
+    let cumulative = 0;
+    return filtered.map((pt) => {
+      cumulative += pt.delta;
+      return { ...pt, pnl: cumulative };
+    });
+  }, [pnlChartData, pnlRange]);
+
+  // Clear highlighted leg if it falls outside the currently visible range
+  useEffect(() => {
+    if (highlightedLegId == null) return;
+    const visible = filteredPnlChartData.some((pt) => pt.legId === highlightedLegId);
+    if (!visible) setHighlightedLegId(null);
+  }, [filteredPnlChartData, highlightedLegId]);
+
   // Extend X domain so markers that fall outside the klines window remain visible
   const chartXDomain = useMemo((): [number, number] | ["dataMin", "dataMax"] => {
     if (chartDataFinal.length === 0) return ["dataMin", "dataMax"];
@@ -1279,14 +1300,37 @@ export default function TokenDetail({ params }: { params: { symbol: string } }) 
                 <div className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">
                   Cumulative Realized P&amp;L (USD)
                 </div>
-                <div className="text-[10px] text-muted-foreground/60">
-                  Click a point to highlight its trade below
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1" data-testid="pnl-range-selector">
+                    {(["7d", "30d", "all"] as const).map((r) => (
+                      <button
+                        key={r}
+                        onClick={() => setPnlRange(r)}
+                        data-testid={`btn-pnl-range-${r}`}
+                        className={`px-2 py-0.5 text-[11px] rounded font-mono transition-colors ${
+                          pnlRange === r
+                            ? "bg-primary text-primary-foreground"
+                            : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                        }`}
+                      >
+                        {r === "all" ? "All" : r}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="text-[10px] text-muted-foreground/60">
+                    Click a point to highlight its trade below
+                  </div>
                 </div>
               </div>
-              <div className="h-36" style={{ cursor: "pointer" }}>
+              <div className="h-36" style={{ cursor: filteredPnlChartData.length > 0 ? "pointer" : "default" }}>
+                {filteredPnlChartData.length === 0 ? (
+                  <div className="flex items-center justify-center h-full text-xs text-muted-foreground/60">
+                    No closed trades in the selected range
+                  </div>
+                ) : (
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart
-                    data={pnlChartData}
+                    data={filteredPnlChartData}
                     margin={{ top: 4, right: 8, left: 0, bottom: 0 }}
                     onClick={(chartState) => {
                       if (!chartState?.activePayload?.length) return;
@@ -1421,6 +1465,7 @@ export default function TokenDetail({ params }: { params: { symbol: string } }) 
                     />
                   </LineChart>
                 </ResponsiveContainer>
+                )}
               </div>
             </div>
           )}
