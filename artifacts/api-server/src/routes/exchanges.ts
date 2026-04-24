@@ -984,8 +984,15 @@ export async function fetchPriceSpreads(): Promise<ReturnType<typeof generateDem
       return priceCache!.data as ReturnType<typeof generateDemoSpreads>;
     }
 
-    // No valid cache — kick off a fetch and return empty until real data arrives.
+    // Cache is stale — kick off a background refresh.
     ensurePriceFetch();
+
+    // If we have stale-but-real data, serve it while the refresh runs.
+    if (priceCache) {
+      return priceCache.data as ReturnType<typeof generateDemoSpreads>;
+    }
+
+    // True cold start — no data at all yet, return empty.
     return [] as unknown as ReturnType<typeof generateDemoSpreads>;
   } catch {
     return [] as unknown as ReturnType<typeof generateDemoSpreads>;
