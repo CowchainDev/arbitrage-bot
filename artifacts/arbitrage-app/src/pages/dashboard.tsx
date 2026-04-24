@@ -214,7 +214,8 @@ function TokenRow({
     ? `Bot: ${legsCount} leg${legsCount !== 1 ? "s" : ""} open`
     : bot?.enabled ? "Bot: running" : "Bot: stopped";
 
-  const [cheapEx, expensiveEx] = (token.bestSpreadLeg ?? "").split("/");
+  // bestSpreadLeg is "expensive/cheap" from the backend (higher-price exchange first)
+  const [expensiveEx, cheapEx] = (token.bestSpreadLeg ?? "").split("/");
   const cheapData  = cheapEx     ? getExchangeFields(token, cheapEx)     : { ask: undefined, bid: undefined, funding: undefined };
   const expData    = expensiveEx ? getExchangeFields(token, expensiveEx) : { ask: undefined, bid: undefined, funding: undefined };
   const rawSpread  = token.bestSpreadPct != null ? token.bestSpreadPct : Math.abs(token.spreadPct);
@@ -386,7 +387,8 @@ function TokenCard({
   const showDot = bot != null;
   const dotColor = legsCount > 0 ? "bg-amber-400" : bot?.enabled ? "bg-emerald-500" : "bg-muted-foreground/40";
 
-  const [cheapEx, expensiveEx] = (token.bestSpreadLeg ?? "").split("/");
+  // bestSpreadLeg is "expensive/cheap" from the backend (higher-price exchange first)
+  const [expensiveEx, cheapEx] = (token.bestSpreadLeg ?? "").split("/");
   const cheapData  = cheapEx     ? getExchangeFields(token, cheapEx)     : { ask: undefined, bid: undefined, funding: undefined };
   const expData    = expensiveEx ? getExchangeFields(token, expensiveEx) : { ask: undefined, bid: undefined, funding: undefined };
   const rawSpread  = token.bestSpreadPct != null ? token.bestSpreadPct : Math.abs(token.spreadPct);
@@ -738,7 +740,8 @@ export default function Dashboard() {
       });
     }
     const effOf = (t: TokenSpread) => {
-      const [cx, ex] = (t.bestSpreadLeg ?? "").split("/");
+      // bestSpreadLeg is "expensive/cheap" from the backend
+      const [ex, cx] = (t.bestSpreadLeg ?? "").split("/");
       const c = cx ? getExchangeFields(t, cx) : { ask: undefined, bid: undefined, funding: undefined };
       const e = ex ? getExchangeFields(t, ex)  : { ask: undefined, bid: undefined, funding: undefined };
       return c.ask != null && e.bid != null && c.ask > 0 ? (e.bid - c.ask) / c.ask * 100 : -Infinity;
