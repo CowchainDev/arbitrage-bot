@@ -140,6 +140,13 @@ export function TokenDetailPanel({
       setBotOrderSize("10");
       setBotMaxOrders("3");
       setBotForceStop("50");
+      if (token.bestSpreadLeg) {
+        const parts = token.bestSpreadLeg.split("/");
+        if (parts.length === 2) {
+          setBotExchangeA(parts[0]);
+          setBotExchangeB(parts[1]);
+        }
+      }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bot?.id, token.symbol]);
