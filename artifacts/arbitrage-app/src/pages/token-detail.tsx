@@ -305,7 +305,7 @@ function PnlSummaryBar({ legs }: { legs: BotLeg[] }) {
   const fmtPnl = (v: number) =>
     `${v >= 0 ? "+" : "-"}$${Math.abs(v).toFixed(2)}`;
   const pnlColor = (v: number) =>
-    v >= 0 ? "text-emerald-400" : "text-red-400";
+    v >= 0 ? "text-primary" : "text-destructive";
 
   const items: { label: string; value: string; color: string }[] = [
     { label: "Total P&L", value: fmtPnl(stats.total), color: pnlColor(stats.total) },
@@ -439,8 +439,8 @@ function ClosedLegsSection({
                     const pnlClass =
                       pnl != null
                         ? pnl >= 0
-                          ? "text-emerald-400"
-                          : "text-red-400"
+                          ? "text-primary"
+                          : "text-destructive"
                         : "text-muted-foreground";
                     const isLong = leg.bybitSide === "long";
                     const durationMs =
@@ -470,7 +470,7 @@ function ClosedLegsSection({
                         <td className="px-3 py-2.5">
                           <span
                             className={
-                              isLong ? "text-emerald-400" : "text-red-400"
+                              isLong ? "text-primary" : "text-destructive"
                             }
                           >
                             {isLong ? "Long" : "Short"}
@@ -1399,19 +1399,19 @@ export default function TokenDetail({ params }: { params: { symbol: string } }) 
                             </div>
                             <div className="flex justify-between gap-4">
                               <span className="text-muted-foreground">Cumulative</span>
-                              <span className={pt.pnl >= 0 ? "text-emerald-400" : "text-red-400"}>
+                              <span className={pt.pnl >= 0 ? "text-primary" : "text-destructive"}>
                                 {fmtPnl(pt.pnl)}
                               </span>
                             </div>
                             <div className="flex justify-between gap-4">
                               <span className="text-muted-foreground">This trade</span>
-                              <span className={pt.delta >= 0 ? "text-emerald-400 font-semibold" : "text-red-400 font-semibold"}>
+                              <span className={pt.delta >= 0 ? "text-primary font-semibold" : "text-destructive font-semibold"}>
                                 {fmtPnl(pt.delta)}
                               </span>
                             </div>
                             <div className="flex justify-between gap-4">
                               <span className="text-muted-foreground">Side</span>
-                              <span className={pt.side === "long" ? "text-emerald-400" : "text-red-400"}>
+                              <span className={pt.side === "long" ? "text-primary" : "text-destructive"}>
                                 {pt.side === "long" ? "Long" : "Short"}
                               </span>
                             </div>
