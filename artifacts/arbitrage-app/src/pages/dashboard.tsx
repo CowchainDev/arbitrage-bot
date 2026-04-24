@@ -899,7 +899,7 @@ export default function Dashboard() {
               type="text"
               value={minVolume}
               onChange={(e) => setMinVolume(e.target.value)}
-              placeholder="MIN VOL"
+              placeholder="24h Volume"
               className="bg-background border border-border/60 rounded text-[10px] px-2 h-7 text-foreground w-20 placeholder:text-muted-foreground/40 focus:outline-none focus:border-primary/50 font-mono"
               data-testid="select-min-volume"
               title="Min 24h volume — supports 1k, 5M, 1B"
@@ -908,7 +908,7 @@ export default function Dashboard() {
               type="text"
               value={minOpenInterest}
               onChange={(e) => setMinOpenInterest(e.target.value)}
-              placeholder="MIN OI"
+              placeholder="Open Interest"
               className="bg-background border border-border/60 rounded text-[10px] px-2 h-7 text-foreground w-20 placeholder:text-muted-foreground/40 focus:outline-none focus:border-primary/50 font-mono"
               data-testid="select-min-open-interest"
               title="Min open interest — 1k, 5M, 1B"
@@ -917,7 +917,7 @@ export default function Dashboard() {
               type="text"
               value={minSpreadDepth}
               onChange={(e) => setMinSpreadDepth(e.target.value)}
-              placeholder="MIN DEPTH"
+              placeholder="Spread Depth"
               className="bg-background border border-border/60 rounded text-[10px] px-2 h-7 text-foreground w-24 placeholder:text-muted-foreground/40 focus:outline-none focus:border-primary/50 font-mono"
               data-testid="select-min-spread-depth"
               title="Min fillable depth at this spread"
