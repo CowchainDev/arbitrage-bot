@@ -14,6 +14,15 @@ let priceCache: { data: unknown[]; ts: number } | null = null;
 let priceFetchInFlight: Promise<unknown[]> | null = null;
 const PRICE_CACHE_TTL_MS = 9_000;
 
+type KlinesCacheEntry = { data: Record<string, { t: number; c: number }[]>; ts: number };
+const klinesCache = new Map<string, KlinesCacheEntry>();
+const KLINES_TTL_SHORT_MS = 2 * 60 * 1000;
+const KLINES_TTL_LONG_MS  = 10 * 60 * 1000;
+
+function getKlinesCacheTtl(interval: string): number {
+  return interval === "4h" || interval === "1d" ? KLINES_TTL_LONG_MS : KLINES_TTL_SHORT_MS;
+}
+
 type SymbolPriceEntry = { bybitPrice: number | null; binancePrice: number | null };
 const priceCacheBySymbol = new Map<string, SymbolPriceEntry>();
 
@@ -511,6 +520,14 @@ router.get("/exchanges/klines", async (req: Request, res: Response) => {
     return;
   }
 
+  const cacheKey = `${symbol}:${interval}:${limit}`;
+  const cached = klinesCache.get(cacheKey);
+  const ttl = getKlinesCacheTtl(interval);
+  if (cached && Date.now() - cached.ts < ttl) {
+    res.json(cached.data);
+    return;
+  }
+
   const ccxtSymbol = `${symbol}/USDT:USDT`;
   const timeframeMap: Record<string, string> = {
     "15m": "15m", "1h": "1h", "4h": "4h", "1d": "1d",
@@ -546,6 +563,10 @@ router.get("/exchanges/klines", async (req: Request, res: Response) => {
     if (result.status === "fulfilled" && result.value.data.length > 0) {
       out[result.value.name] = result.value.data;
     }
+  }
+
+  if (Object.keys(out).length > 0) {
+    klinesCache.set(cacheKey, { data: out, ts: Date.now() });
   }
 
   res.json(out);
