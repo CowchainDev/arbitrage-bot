@@ -332,7 +332,13 @@ export async function prewarmKlinesCache(): Promise<{ succeeded: number; failed:
   return { succeeded, failed, symbols };
 }
 
-type SymbolPriceEntry = { bybitPrice: number | null; binancePrice: number | null };
+type SymbolPriceEntry = {
+  bybitPrice: number | null;
+  binancePrice: number | null;
+  mexcPrice: number | null;
+  gatePrice: number | null;
+  okxPrice: number | null;
+};
 const priceCacheBySymbol = new Map<string, SymbolPriceEntry>();
 
 export function getPriceCacheEntry(symbol: string): SymbolPriceEntry | null {
@@ -643,6 +649,9 @@ async function fetchAndCachePrices(): Promise<unknown[]> {
     priceCacheBySymbol.set(s.symbol, {
       bybitPrice: s.bybitPrice as number | null,
       binancePrice: s.binancePrice as number | null,
+      mexcPrice: s.mexcPrice as number | null,
+      gatePrice: s.gatePrice as number | null,
+      okxPrice: s.okxPrice as number | null,
     });
   }
 
@@ -1235,6 +1244,23 @@ router.post("/exchanges/close-position", async (req: Request, res: Response) => 
 
     const realizedPnl = clientRealizedPnl ?? 0;
 
+    if (result.bothClosed) {
+      try {
+        await db.insert(closedTradesTable).values({
+          symbol,
+          longExchange,
+          shortExchange,
+          spreadAtEntry: String(spreadAtEntry),
+          realizedPnl: String(realizedPnl),
+          quantity: String(quantity),
+          entryTime: entryTime ? new Date(entryTime) : new Date(),
+          closeTime: new Date(),
+        });
+      } catch {
+        // Non-fatal: DB logging failure should not abort position close
+      }
+    }
+
     res.json({
       success: result.bothClosed,
       bybitResult: result.orderIdA
@@ -1643,23 +1669,6 @@ export async function closePositionInternal(
   const closeFeeB = orderB.status === "fulfilled" ? orderB.value.feeCost : 0;
   const errorA = orderA.status === "rejected" ? String(orderA.reason) : undefined;
   const errorB = orderB.status === "rejected" ? String(orderB.reason) : undefined;
-
-  if (bothClosed && spreadAtEntry !== undefined) {
-    try {
-      await db.insert(closedTradesTable).values({
-        symbol,
-        longExchange: longExchange ?? (sideA === "long" ? exA.id : exB.id),
-        shortExchange: shortExchange ?? (sideA === "short" ? exA.id : exB.id),
-        spreadAtEntry: String(spreadAtEntry),
-        realizedPnl: "0",
-        quantity: String(quantity ?? qtyA),
-        entryTime: entryTime ?? new Date(),
-        closeTime: new Date(),
-      });
-    } catch {
-      // Non-fatal: DB logging failure should not abort position close
-    }
-  }
 
   return {
     bothClosed,

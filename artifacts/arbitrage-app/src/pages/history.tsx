@@ -41,8 +41,8 @@ function StatCard({
 }
 
 function formatPnl(val: number) {
-  const sign = val >= 0 ? "+" : "";
-  return `${sign}$${Math.abs(val).toFixed(2)}`;
+  if (val < 0) return `-$${Math.abs(val).toFixed(2)}`;
+  return `+$${val.toFixed(2)}`;
 }
 
 function formatDuration(entryTime: string, closeTime: string) {
@@ -162,7 +162,7 @@ function TradeTable({ trades }: { trades: ClosedTrade[] }) {
             const pnlPositive = trade.realizedPnl >= 0;
             const pnlPct =
               trade.quantity > 0
-                ? (trade.realizedPnl / trade.quantity) * 100
+                ? (trade.realizedPnl / (trade.quantity * 2)) * 100
                 : null;
             return (
               <tr

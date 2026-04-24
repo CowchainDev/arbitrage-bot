@@ -58,6 +58,19 @@ function getSpreadPct(priceA: number | null, priceB: number | null): number | nu
   return ((priceA - priceB) / priceB) * 100;
 }
 
+type PriceCacheEntry = NonNullable<ReturnType<typeof getPriceCacheEntry>>;
+
+function priceFromCache(entry: PriceCacheEntry, exchange: string): number | null {
+  switch (exchange) {
+    case "bybit":   return entry.bybitPrice;
+    case "binance": return entry.binancePrice;
+    case "mexc":    return entry.mexcPrice;
+    case "gate":    return entry.gatePrice;
+    case "okx":     return entry.okxPrice;
+    default:        return null;
+  }
+}
+
 function computeLegPnl(
   leg: BotLeg,
   priceA: number,
@@ -224,7 +237,7 @@ async function closeLeg(
       spreadAtEntry: String(leg.spreadAtEntry),
       realizedPnl: String(realizedPnl),
       totalFees: String(totalFees),
-      quantity: String((Number(leg.bybitQty) * priceA + Number(leg.binanceQty) * priceB) / 2),
+      quantity: String((Number(leg.bybitQty) * Number(leg.bybitEntry) + Number(leg.binanceQty) * Number(leg.binanceEntry)) / 2),
       entryTime: leg.openedAt,
       closeTime: new Date(),
     });
@@ -243,12 +256,15 @@ async function processBotConfig(config: BotConfig, canOpen: boolean): Promise<vo
     return;
   }
 
-  const spreadPctRaw = getSpreadPct(priceRow.bybitPrice, priceRow.binancePrice);
+  const { exchangeA, exchangeB } = botExchangeNames(config);
+  const priceA = priceFromCache(priceRow, exchangeA);
+  const priceB = priceFromCache(priceRow, exchangeB);
+
+  const spreadPctRaw = getSpreadPct(priceA, priceB);
   if (spreadPctRaw === null) return;
   const spreadPct: number = spreadPctRaw;
 
-  const priceA = priceRow.bybitPrice!;
-  const priceB = priceRow.binancePrice!;
+  if (!priceA || !priceB) return;
 
   const openLegs = await db
     .select()
@@ -323,8 +339,8 @@ export async function closeAllLegsForBot(botId: number): Promise<{ closed: numbe
 
   for (const leg of openLegs) {
     const priceRow = getPriceCacheEntry(leg.symbol);
-    const priceA = priceRow?.bybitPrice ?? Number(leg.bybitEntry);
-    const priceB = priceRow?.binancePrice ?? Number(leg.binanceEntry);
+    const priceA = (priceRow ? priceFromCache(priceRow, exchangeA) : null) ?? Number(leg.bybitEntry);
+    const priceB = (priceRow ? priceFromCache(priceRow, exchangeB) : null) ?? Number(leg.binanceEntry);
 
     const result = await closePositionInternal({
       exA,
@@ -359,7 +375,7 @@ export async function closeAllLegsForBot(botId: number): Promise<{ closed: numbe
           spreadAtEntry: String(leg.spreadAtEntry),
           realizedPnl: String(realizedPnl),
           totalFees: String(totalFees),
-          quantity: String((Number(leg.bybitQty) * priceA + Number(leg.binanceQty) * priceB) / 2),
+          quantity: String((Number(leg.bybitQty) * Number(leg.bybitEntry) + Number(leg.binanceQty) * Number(leg.binanceEntry)) / 2),
           entryTime: leg.openedAt,
           closeTime: new Date(),
         });
