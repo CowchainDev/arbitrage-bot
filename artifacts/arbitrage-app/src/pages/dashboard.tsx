@@ -100,7 +100,7 @@ function getExchangeFields(token: TokenSpread, ex: string) {
 }
 
 
-const ROW_COLS = "grid grid-cols-[120px_82px_72px_72px_130px_90px_90px_68px_70px_70px_64px_28px] items-center gap-0";
+const ROW_COLS = "grid grid-cols-[24px_120px_82px_72px_72px_130px_90px_90px_68px_70px_70px_64px_28px] items-center gap-0";
 
 type SortColKey = "alpha" | "spread" | "eff" | "volume" | "oi" | "depth";
 
@@ -168,6 +168,7 @@ function TableHeader({ sort, onSort }: { sort: SortOption; onSort: (col: SortCol
 
   return (
     <div className={`${ROW_COLS} px-2 py-1.5 border-b border-border/60 bg-muted/20 sticky top-0 z-10`}>
+      <span className="flex items-center justify-center"><Star className="w-3 h-3 text-muted-foreground/40" /></span>
       {th("Symbol", "alpha", "left")}
       {th("Spread", "spread")}
       <span className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground/60 text-right" title="Exponential moving average of spread (~10 min)">EMA</span>
@@ -250,16 +251,17 @@ function TokenRow({
       className={`${ROW_COLS} px-2 cursor-pointer transition-colors border-b border-border/30 group select-none ${rowBg}`}
       style={{ minHeight: "34px" }}
     >
+      {/* Favourite star */}
+      <button
+        onClick={onToggleFavourite}
+        className={`flex items-center justify-center transition-colors shrink-0 ${isFavourite ? "text-amber-400" : "text-muted-foreground/30 opacity-0 group-hover:opacity-100 hover:text-amber-400"}`}
+        data-testid={`btn-favourite-${token.symbol}`}
+      >
+        <Star className={`w-3 h-3 ${isFavourite ? "fill-amber-400" : ""}`} />
+      </button>
       {/* Symbol + controls */}
       <div className="flex items-center gap-1 min-w-0 py-1">
         <span className="font-mono font-semibold text-xs text-foreground truncate">{token.symbol}</span>
-        <button
-          onClick={onToggleFavourite}
-          className="text-muted-foreground/30 hover:text-amber-400 transition-colors shrink-0 opacity-0 group-hover:opacity-100"
-          data-testid={`btn-favourite-${token.symbol}`}
-        >
-          <Star className={`w-3 h-3 ${isFavourite ? "fill-amber-400 text-amber-400 opacity-100" : ""}`} />
-        </button>
         <button
           onClick={onToggleWatch}
           className={`shrink-0 transition-colors opacity-0 group-hover:opacity-100 ${isWatched ? "text-primary opacity-100" : "text-muted-foreground/30 hover:text-primary"}`}
@@ -274,9 +276,6 @@ function TokenRow({
             title={dotTitle}
             data-testid={`bot-dot-${token.symbol}`}
           />
-        )}
-        {isFavourite && !showDot && (
-          <Star className="w-2.5 h-2.5 fill-amber-400 text-amber-400 shrink-0" />
         )}
       </div>
 
