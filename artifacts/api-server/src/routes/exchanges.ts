@@ -392,6 +392,20 @@ function buildTickerMap(raw: Record<string, any>): Map<string, any> {
 // Tight timeout for price-scan fetches — fail fast so the dashboard stays responsive.
 const PRICE_FETCH_TIMEOUT_MS = 8000;
 
+/**
+ * Races a promise against a hard wall-clock timeout.
+ * Unlike CCXT's own timeout (which only covers connect), this terminates
+ * slow responses (e.g. MEXC returning thousands of swap pairs) within ms.
+ */
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms),
+    ),
+  ]);
+}
+
 async function fetchAndCachePrices(): Promise<unknown[]> {
   const bybit   = createBybitExchange();   bybit.timeout   = PRICE_FETCH_TIMEOUT_MS;
   const binance = createBinanceExchange(); binance.timeout = PRICE_FETCH_TIMEOUT_MS;
@@ -399,25 +413,27 @@ async function fetchAndCachePrices(): Promise<unknown[]> {
   const okx     = createOkxExchange();     okx.timeout     = PRICE_FETCH_TIMEOUT_MS;
   const mexc    = createMexcExchange();    mexc.timeout    = PRICE_FETCH_TIMEOUT_MS;
 
+  const T = PRICE_FETCH_TIMEOUT_MS;
+
   const [
     bybitTickers, binanceTickers, gateTickers, okxTickers, mexcTickers,
     bybitFunding, binanceFunding, gateFunding, okxFunding, mexcFunding,
     bybitOIResult, binanceOIResult, gateOIResult, okxOIResult,
   ] = await Promise.allSettled([
-    bybit.fetchTickers(undefined, { type: "linear" }),
-    binance.fetchTickers(undefined, { type: "future" }),
-    gate.fetchTickers(undefined, { type: "swap" }),
-    okx.fetchTickers(undefined, { type: "swap" }),
-    mexc.fetchTickers(undefined, { type: "swap" }),
-    bybit.fetchFundingRates(),
-    binance.fetchFundingRates(),
-    gate.fetchFundingRates(),
-    okx.fetchFundingRates(),
-    mexc.fetchFundingRates(),
-    bybit.fetchOpenInterests(undefined, { type: "linear" }),
-    binance.fetchOpenInterests(undefined, { type: "future" }),
-    gate.fetchOpenInterests(undefined, { type: "swap" }),
-    okx.fetchOpenInterests(undefined, { type: "swap" }),
+    withTimeout(bybit.fetchTickers(undefined, { type: "linear" }), T, "bybit tickers"),
+    withTimeout(binance.fetchTickers(undefined, { type: "future" }), T, "binance tickers"),
+    withTimeout(gate.fetchTickers(undefined, { type: "swap" }), T, "gate tickers"),
+    withTimeout(okx.fetchTickers(undefined, { type: "swap" }), T, "okx tickers"),
+    withTimeout(mexc.fetchTickers(undefined, { type: "swap" }), T, "mexc tickers"),
+    withTimeout(bybit.fetchFundingRates(), T, "bybit funding"),
+    withTimeout(binance.fetchFundingRates(), T, "binance funding"),
+    withTimeout(gate.fetchFundingRates(), T, "gate funding"),
+    withTimeout(okx.fetchFundingRates(), T, "okx funding"),
+    withTimeout(mexc.fetchFundingRates(), T, "mexc funding"),
+    withTimeout(bybit.fetchOpenInterests(undefined, { type: "linear" }), T, "bybit OI"),
+    withTimeout(binance.fetchOpenInterests(undefined, { type: "future" }), T, "binance OI"),
+    withTimeout(gate.fetchOpenInterests(undefined, { type: "swap" }), T, "gate OI"),
+    withTimeout(okx.fetchOpenInterests(undefined, { type: "swap" }), T, "okx OI"),
   ]);
 
   const bybitMap   = buildTickerMap(bybitTickers.status   === "fulfilled" ? bybitTickers.value   : {});

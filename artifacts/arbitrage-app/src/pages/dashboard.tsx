@@ -876,11 +876,11 @@ export default function Dashboard() {
         </div>
       )}
       {isDemoData && (
-        <div className="flex items-center gap-3 bg-card border border-violet-500/20 rounded px-3 py-2 text-xs shrink-0">
-          <Zap className="w-3 h-3 text-violet-400 shrink-0" />
+        <div className="flex items-center gap-3 bg-card border border-amber-500/20 rounded px-3 py-2 text-xs shrink-0">
+          <Zap className="w-3 h-3 text-amber-400 shrink-0 animate-pulse" />
           <span className="text-muted-foreground">
-            <span className="text-violet-400 font-semibold">DEMO</span>
-            {" — "}live exchange data unavailable from this server region. Deploy to a supported region for real-time spreads.
+            <span className="text-amber-400 font-semibold">LOADING</span>
+            {" — "}fetching live prices from exchanges, refreshes automatically in a few seconds…
           </span>
         </div>
       )}
