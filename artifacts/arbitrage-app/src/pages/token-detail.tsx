@@ -23,7 +23,7 @@ import {
   getGetBotLegsQueryKey,
   getListBotsQueryKey,
 } from "@workspace/api-client-react";
-import type { ExchangeKlinePoint, BotConfig, BotLeg, TokenSpread } from "@workspace/api-client-react";
+import type { ExchangeKlinePoint, BotConfig, BotLeg, TokenSpread, GetExchangeKlinesInterval } from "@workspace/api-client-react";
 import { TokenDetailPanel } from "@/components/token-detail-panel";
 import { useBots } from "@/hooks/use-bots";
 import { useBotSecret } from "@/hooks/use-bot-secret";
@@ -45,7 +45,9 @@ const CANDLE_LIMIT_BY_INTERVAL: Record<string, number> = {
   "1d":  60,
 };
 
-type TimeRange = { label: string; interval: string; limit: number; liveSeconds?: number };
+type LiveTimeRange   = { label: string; interval: "live";                   limit: number; liveSeconds: number };
+type CandleTimeRange = { label: string; interval: GetExchangeKlinesInterval; limit: number; liveSeconds?: never };
+type TimeRange = LiveTimeRange | CandleTimeRange;
 const TIME_RANGES: TimeRange[] = [
   { label: "30s", interval: "live", limit: 120,                              liveSeconds: 30  },
   { label: "1m",  interval: "live", limit: 240,                              liveSeconds: 60  },
@@ -732,7 +734,8 @@ export default function TokenDetail({ params }: { params: { symbol: string } }) 
     setLiveBuffer([...liveBufferRef.current]);
   }, [liveToken, isLiveMode, timeRange.liveSeconds]);
 
-  const klinesParams = { symbol, interval: timeRange.interval, limit: effectiveLimit };
+  const klinesInterval = timeRange.interval !== "live" ? timeRange.interval : undefined;
+  const klinesParams = { symbol, interval: klinesInterval, limit: effectiveLimit };
   const { data: klines, isLoading: klinesLoading, isError: klinesError, isFetching: klinesIsFetching } = useGetExchangeKlines(
     klinesParams,
     {
