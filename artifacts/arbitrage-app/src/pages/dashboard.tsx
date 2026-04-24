@@ -28,7 +28,8 @@ type SortOption =
   | "volume_desc" | "volume_asc"
   | "oi_desc"     | "oi_asc"
   | "depth_desc"  | "depth_asc"
-  | "alpha"       | "alpha_desc";
+  | "alpha"       | "alpha_desc"
+  | "fav"         | "fav_desc";
 
 type ViewMode = "list" | "card";
 const VIEW_MODE_KEY = "dashboard-view-mode";
@@ -102,7 +103,7 @@ function getExchangeFields(token: TokenSpread, ex: string) {
 
 const ROW_COLS = "grid grid-cols-[24px_120px_82px_72px_72px_130px_90px_90px_68px_70px_70px_64px_28px] items-center gap-0";
 
-type SortColKey = "alpha" | "spread" | "eff" | "volume" | "oi" | "depth";
+type SortColKey = "alpha" | "spread" | "eff" | "volume" | "oi" | "depth" | "fav";
 
 function sortColFromOption(sort: SortOption): SortColKey | null {
   if (sort === "alpha" || sort === "alpha_desc") return "alpha";
@@ -111,10 +112,12 @@ function sortColFromOption(sort: SortOption): SortColKey | null {
   if (sort === "volume_desc" || sort === "volume_asc") return "volume";
   if (sort === "oi_desc" || sort === "oi_asc") return "oi";
   if (sort === "depth_desc" || sort === "depth_asc") return "depth";
+  if (sort === "fav" || sort === "fav_desc") return "fav";
   return null;
 }
 
 function sortDirFromOption(sort: SortOption): "asc" | "desc" {
+  if (sort === "fav") return "asc";
   return sort.endsWith("_asc") || sort === "alpha" ? "asc" : "desc";
 }
 
@@ -123,20 +126,22 @@ function toggleSort(current: SortOption, col: SortColKey): SortOption {
   const currentDir = sortDirFromOption(current);
   if (currentCol === col) {
     // Toggle direction
-    if (col === "alpha") return currentDir === "asc" ? "alpha_desc" : "alpha";
+    if (col === "alpha")  return currentDir === "asc" ? "alpha_desc" : "alpha";
     if (col === "spread") return currentDir === "desc" ? "spread_asc" : "spread_desc";
     if (col === "eff")    return currentDir === "desc" ? "eff_asc"    : "eff_desc";
     if (col === "volume") return currentDir === "desc" ? "volume_asc" : "volume_desc";
     if (col === "oi")     return currentDir === "desc" ? "oi_asc"     : "oi_desc";
     if (col === "depth")  return currentDir === "desc" ? "depth_asc"  : "depth_desc";
+    if (col === "fav")    return currentDir === "asc"  ? "fav_desc"   : "fav";
   }
-  // First click → default direction (desc for numbers, asc for alpha)
+  // First click → default direction (desc for numbers, asc for alpha/fav)
   if (col === "alpha")  return "alpha";
   if (col === "spread") return "spread_desc";
   if (col === "eff")    return "eff_desc";
   if (col === "volume") return "volume_desc";
   if (col === "oi")     return "oi_desc";
   if (col === "depth")  return "depth_desc";
+  if (col === "fav")    return "fav";
   return current;
 }
 
@@ -168,7 +173,14 @@ function TableHeader({ sort, onSort }: { sort: SortOption; onSort: (col: SortCol
 
   return (
     <div className={`${ROW_COLS} px-2 py-1.5 border-b border-border/60 bg-muted/20 sticky top-0 z-10`}>
-      <span className="flex items-center justify-center"><Star className="w-3 h-3 text-muted-foreground/40" /></span>
+      <button
+        onClick={() => onSort("fav")}
+        className={`flex items-center justify-center gap-0.5 cursor-pointer select-none transition-colors ${sortColFromOption(sort) === "fav" ? "text-primary" : "text-muted-foreground/40 hover:text-muted-foreground"}`}
+        title="Sort by favourites"
+      >
+        <Star className="w-3 h-3" />
+        <SortIcon col="fav" sort={sort} />
+      </button>
       {th("Symbol", "alpha", "left")}
       {th("Spread", "spread")}
       <span className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground/60 text-right" title="Exponential moving average of spread (~10 min)">EMA</span>
@@ -760,26 +772,41 @@ export default function Dashboard() {
       const e = ex ? getExchangeFields(t, ex)  : { ask: undefined, bid: undefined, funding: undefined };
       return c.ask != null && e.bid != null && c.ask > 0 ? (e.bid - c.ask) / c.ask * 100 : -Infinity;
     };
+    const alphaCmp = (a: TokenSpread, b: TokenSpread) => a.symbol.localeCompare(b.symbol);
+    const favGroup = (t: TokenSpread) => (isFavourite(t.symbol) ? 0 : 1);
+
+    let primaryCmp: (a: TokenSpread, b: TokenSpread) => number;
     switch (sort) {
-      case "spread_desc":  list.sort((a, b) => Math.abs(b.bestSpreadPct ?? b.spreadPct) - Math.abs(a.bestSpreadPct ?? a.spreadPct)); break;
-      case "spread_asc":   list.sort((a, b) => Math.abs(a.bestSpreadPct ?? a.spreadPct) - Math.abs(b.bestSpreadPct ?? b.spreadPct)); break;
-      case "eff_desc":     list.sort((a, b) => effOf(b) - effOf(a)); break;
-      case "eff_asc":      list.sort((a, b) => effOf(a) - effOf(b)); break;
-      case "volume_desc":  list.sort((a, b) => (b.volume24h ?? 0) - (a.volume24h ?? 0)); break;
-      case "volume_asc":   list.sort((a, b) => (a.volume24h ?? 0) - (b.volume24h ?? 0)); break;
-      case "oi_desc":      list.sort((a, b) => (b.openInterestUsd ?? 0) - (a.openInterestUsd ?? 0)); break;
-      case "oi_asc":       list.sort((a, b) => (a.openInterestUsd ?? 0) - (b.openInterestUsd ?? 0)); break;
-      case "depth_desc":   list.sort((a, b) => (b.spreadDepthUsd ?? 0) - (a.spreadDepthUsd ?? 0)); break;
-      case "depth_asc":    list.sort((a, b) => (a.spreadDepthUsd ?? 0) - (b.spreadDepthUsd ?? 0)); break;
-      case "alpha":        list.sort((a, b) => a.symbol.localeCompare(b.symbol)); break;
-      case "alpha_desc":   list.sort((a, b) => b.symbol.localeCompare(a.symbol)); break;
+      case "spread_desc":  primaryCmp = (a, b) => Math.abs(b.bestSpreadPct ?? b.spreadPct) - Math.abs(a.bestSpreadPct ?? a.spreadPct); break;
+      case "spread_asc":   primaryCmp = (a, b) => Math.abs(a.bestSpreadPct ?? a.spreadPct) - Math.abs(b.bestSpreadPct ?? b.spreadPct); break;
+      case "eff_desc":     primaryCmp = (a, b) => effOf(b) - effOf(a); break;
+      case "eff_asc":      primaryCmp = (a, b) => effOf(a) - effOf(b); break;
+      case "volume_desc":  primaryCmp = (a, b) => (b.volume24h ?? 0) - (a.volume24h ?? 0); break;
+      case "volume_asc":   primaryCmp = (a, b) => (a.volume24h ?? 0) - (b.volume24h ?? 0); break;
+      case "oi_desc":      primaryCmp = (a, b) => (b.openInterestUsd ?? 0) - (a.openInterestUsd ?? 0); break;
+      case "oi_asc":       primaryCmp = (a, b) => (a.openInterestUsd ?? 0) - (b.openInterestUsd ?? 0); break;
+      case "depth_desc":   primaryCmp = (a, b) => (b.spreadDepthUsd ?? 0) - (a.spreadDepthUsd ?? 0); break;
+      case "depth_asc":    primaryCmp = (a, b) => (a.spreadDepthUsd ?? 0) - (b.spreadDepthUsd ?? 0); break;
+      case "alpha":        primaryCmp = alphaCmp; break;
+      case "alpha_desc":   primaryCmp = (a, b) => b.symbol.localeCompare(a.symbol); break;
+      case "fav":          primaryCmp = alphaCmp; break;
+      case "fav_desc":     primaryCmp = alphaCmp; break;
+      default:             primaryCmp = () => 0;
     }
-    if (!favsOnly) {
+
+    if (sort === "fav" || sort === "fav_desc") {
+      // Fav sort: group by fav status (starred first for "fav", non-starred first for "fav_desc"), then alpha within each group
       list.sort((a, b) => {
-        const af = isFavourite(a.symbol) ? 0 : 1;
-        const bf = isFavourite(b.symbol) ? 0 : 1;
-        return af - bf;
+        const groupDiff = sort === "fav"
+          ? favGroup(a) - favGroup(b)
+          : favGroup(b) - favGroup(a);
+        return groupDiff || alphaCmp(a, b);
       });
+    } else if (!favsOnly) {
+      // All other sorts: starred group first, then non-starred group; primary sort respected within each group
+      list.sort((a, b) => (favGroup(a) - favGroup(b)) || primaryCmp(a, b));
+    } else {
+      list.sort(primaryCmp);
     }
     return list;
   }, [tokens, favsOnly, search, sort, maxSpread, minVolume, minOpenInterest, minSpreadDepth, selectedExchanges, isFavourite]);
