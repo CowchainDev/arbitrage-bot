@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { Link } from "wouter";
 import { ArrowLeft, TrendingUp, XCircle, ChevronDown, ChevronUp, PanelRight, PanelRightClose, History } from "lucide-react";
 import {
@@ -337,11 +337,16 @@ function PnlSummaryBar({ legs }: { legs: BotLeg[] }) {
 function ClosedLegsSection({
   legs,
   loading,
+  highlightedLegId,
+  onClearHighlight,
 }: {
   legs: BotLeg[];
   loading?: boolean;
+  highlightedLegId?: number | null;
+  onClearHighlight?: () => void;
 }) {
   const [expanded, setExpanded] = useState(true);
+  const rowRefs = useRef<Map<number, HTMLTableRowElement>>(new Map());
 
   const sortedLegs = useMemo(
     () =>
@@ -352,6 +357,21 @@ function ClosedLegsSection({
       ),
     [legs]
   );
+
+  // Scroll to + flash the highlighted row whenever it changes
+  useEffect(() => {
+    if (highlightedLegId == null) return;
+    // Ensure the section is expanded so the row is visible
+    setExpanded(true);
+    // Defer scroll until after paint so the row is in the DOM
+    const raf = requestAnimationFrame(() => {
+      const el = rowRefs.current.get(highlightedLegId);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [highlightedLegId]);
 
   if (!loading && legs.length === 0) return null;
 
@@ -430,10 +450,22 @@ function ClosedLegsSection({
                         : null;
                     const duration =
                       durationMs != null ? formatDuration(durationMs) : "—";
+                    const isHighlighted = highlightedLegId === leg.id;
                     return (
                       <tr
                         key={leg.id}
-                        className="border-b border-border/40 hover:bg-muted/30 transition-colors"
+                        ref={(el) => {
+                          if (el) rowRefs.current.set(leg.id, el);
+                          else rowRefs.current.delete(leg.id);
+                        }}
+                        data-leg-id={leg.id}
+                        onClick={() => isHighlighted && onClearHighlight?.()}
+                        className={`border-b border-border/40 transition-colors ${
+                          isHighlighted
+                            ? "bg-primary/15 ring-1 ring-inset ring-primary/40"
+                            : "hover:bg-muted/30"
+                        }`}
+                        style={isHighlighted ? { cursor: "pointer" } : undefined}
                       >
                         <td className="px-3 py-2.5">
                           <span
@@ -443,6 +475,11 @@ function ClosedLegsSection({
                           >
                             {isLong ? "Long" : "Short"}
                           </span>
+                          {isHighlighted && (
+                            <span className="ml-1.5 text-[9px] text-primary uppercase tracking-wide font-semibold">
+                              ← chart
+                            </span>
+                          )}
                         </td>
                         <td className="px-3 py-2.5 text-right text-muted-foreground">
                           {leg.spreadAtEntry != null
@@ -899,7 +936,16 @@ export default function TokenDetail({ params }: { params: { symbol: string } }) 
   }, [closedLegs]);
 
   // Cumulative P&L over time — one point per closed leg, sorted by closedAt
-  const pnlChartData = useMemo((): { t: number; pnl: number }[] => {
+  const pnlChartData = useMemo((): {
+    t: number;
+    pnl: number;
+    legId: number;
+    delta: number;
+    side: "long" | "short";
+    spreadAtEntry?: number;
+    spreadAtExit?: number;
+    durationMs: number;
+  }[] => {
     const legs = closedLegs
       .filter((leg) => leg.closedAt != null && leg.realizedPnlUsd != null)
       .slice()
@@ -907,10 +953,24 @@ export default function TokenDetail({ params }: { params: { symbol: string } }) 
 
     let cumulative = 0;
     return legs.map((leg) => {
-      cumulative += leg.realizedPnlUsd!;
-      return { t: new Date(leg.closedAt!).getTime(), pnl: cumulative };
+      const delta = leg.realizedPnlUsd!;
+      cumulative += delta;
+      return {
+        t: new Date(leg.closedAt!).getTime(),
+        pnl: cumulative,
+        legId: leg.id,
+        delta,
+        side: leg.bybitSide === "long" ? "long" : "short",
+        spreadAtEntry: leg.spreadAtEntry ?? undefined,
+        spreadAtExit: leg.spreadAtExit ?? undefined,
+        durationMs:
+          new Date(leg.closedAt!).getTime() - new Date(leg.openedAt).getTime(),
+      };
     });
   }, [closedLegs]);
+
+  const [highlightedLegId, setHighlightedLegId] = useState<number | null>(null);
+  const clearHighlight = useCallback(() => setHighlightedLegId(null), []);
 
   // Extend X domain so markers that fall outside the klines window remain visible
   const chartXDomain = useMemo((): [number, number] | ["dataMin", "dataMax"] => {
@@ -1215,12 +1275,29 @@ export default function TokenDetail({ params }: { params: { symbol: string } }) 
           {/* Cumulative P&L chart — shown when there are closed legs with P&L data */}
           {pnlChartData.length > 0 && (
             <div className="bg-card border border-border rounded-md p-3" data-testid="pnl-chart">
-              <div className="text-xs text-muted-foreground mb-2 uppercase tracking-wider font-semibold">
-                Cumulative Realized P&amp;L (USD)
+              <div className="flex items-center justify-between mb-2">
+                <div className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">
+                  Cumulative Realized P&amp;L (USD)
+                </div>
+                <div className="text-[10px] text-muted-foreground/60">
+                  Click a point to highlight its trade below
+                </div>
               </div>
-              <div className="h-36">
+              <div className="h-36" style={{ cursor: "pointer" }}>
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={pnlChartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+                  <LineChart
+                    data={pnlChartData}
+                    margin={{ top: 4, right: 8, left: 0, bottom: 0 }}
+                    onClick={(chartState) => {
+                      if (!chartState?.activePayload?.length) return;
+                      const pt = chartState.activePayload[0].payload as { legId: number };
+                      if (pt?.legId != null) {
+                        setHighlightedLegId((prev) =>
+                          prev === pt.legId ? null : pt.legId
+                        );
+                      }
+                    }}
+                  >
                     <CartesianGrid
                       strokeDasharray="3 3"
                       stroke="hsl(var(--border))"
@@ -1254,26 +1331,61 @@ export default function TokenDetail({ params }: { params: { symbol: string } }) 
                     <Tooltip
                       content={({ active, payload, label }) => {
                         if (!active || !payload?.length) return null;
-                        const val = payload[0].value as number;
+                        const pt = payload[0].payload as {
+                          pnl: number;
+                          delta: number;
+                          side: "long" | "short";
+                          spreadAtEntry?: number;
+                          spreadAtExit?: number;
+                          durationMs: number;
+                          legId: number;
+                        };
                         const d = new Date(label as number);
+                        const fmtSpread = (v?: number) =>
+                          v != null ? `+${v.toFixed(3)}%` : "N/A";
+                        const fmtPnl = (v: number) =>
+                          `${v >= 0 ? "+" : ""}$${Math.abs(v).toFixed(4)}`;
+                        const isHighlighted = highlightedLegId === pt.legId;
                         return (
-                          <div className="bg-background border border-border rounded px-2.5 py-1.5 text-xs shadow-lg font-mono">
-                            <div className="text-muted-foreground mb-0.5">
-                              {d.toLocaleDateString("en-US", {
-                                month: "short",
-                                day: "numeric",
-                                year: "numeric",
-                              })}
+                          <div className="bg-background border border-border rounded px-3 py-2 text-xs shadow-lg font-mono space-y-1 min-w-[180px]">
+                            <div className="text-muted-foreground text-[10px] mb-1">
+                              {d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
                               {" "}
-                              {d.toLocaleTimeString("en-US", {
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              })}
+                              {d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}
                             </div>
-                            <span className={val >= 0 ? "text-emerald-400" : "text-red-400"}>
-                              {val >= 0 ? "+" : ""}
-                              {val.toFixed(4)} USD
-                            </span>
+                            <div className="flex justify-between gap-4">
+                              <span className="text-muted-foreground">Cumulative</span>
+                              <span className={pt.pnl >= 0 ? "text-emerald-400" : "text-red-400"}>
+                                {fmtPnl(pt.pnl)}
+                              </span>
+                            </div>
+                            <div className="flex justify-between gap-4">
+                              <span className="text-muted-foreground">This trade</span>
+                              <span className={pt.delta >= 0 ? "text-emerald-400 font-semibold" : "text-red-400 font-semibold"}>
+                                {fmtPnl(pt.delta)}
+                              </span>
+                            </div>
+                            <div className="flex justify-between gap-4">
+                              <span className="text-muted-foreground">Side</span>
+                              <span className={pt.side === "long" ? "text-emerald-400" : "text-red-400"}>
+                                {pt.side === "long" ? "Long" : "Short"}
+                              </span>
+                            </div>
+                            <div className="flex justify-between gap-4">
+                              <span className="text-muted-foreground">Entry spread</span>
+                              <span className="text-foreground">{fmtSpread(pt.spreadAtEntry)}</span>
+                            </div>
+                            <div className="flex justify-between gap-4">
+                              <span className="text-muted-foreground">Exit spread</span>
+                              <span className="text-foreground">{fmtSpread(pt.spreadAtExit)}</span>
+                            </div>
+                            <div className="flex justify-between gap-4">
+                              <span className="text-muted-foreground">Duration</span>
+                              <span className="text-foreground">{formatDuration(pt.durationMs)}</span>
+                            </div>
+                            <div className="border-t border-border/40 pt-1 text-[10px] text-muted-foreground/60 text-center">
+                              {isHighlighted ? "Click to deselect" : "Click to highlight row ↓"}
+                            </div>
                           </div>
                         );
                       }}
@@ -1283,8 +1395,28 @@ export default function TokenDetail({ params }: { params: { symbol: string } }) 
                       dataKey="pnl"
                       stroke="#22c55e"
                       strokeWidth={1.5}
-                      dot={{ r: 3, fill: "#22c55e", strokeWidth: 0 }}
-                      activeDot={{ r: 5 }}
+                      dot={(props) => {
+                        const { cx, cy, payload } = props as {
+                          cx: number;
+                          cy: number;
+                          payload: { legId: number; delta: number };
+                        };
+                        const isHl = highlightedLegId === payload.legId;
+                        const r = isHl ? 6 : 3;
+                        const fill = payload.delta >= 0 ? "#22c55e" : "#ef4444";
+                        return (
+                          <circle
+                            key={`dot-${payload.legId}`}
+                            cx={cx}
+                            cy={cy}
+                            r={r}
+                            fill={fill}
+                            stroke={isHl ? "white" : "none"}
+                            strokeWidth={isHl ? 1.5 : 0}
+                          />
+                        );
+                      }}
+                      activeDot={{ r: 6, strokeWidth: 0 }}
                       isAnimationActive={false}
                     />
                   </LineChart>
@@ -1340,6 +1472,8 @@ export default function TokenDetail({ params }: { params: { symbol: string } }) 
             <ClosedLegsSection
               legs={closedLegs}
               loading={closedLegsQuery.isLoading}
+              highlightedLegId={highlightedLegId}
+              onClearHighlight={clearHighlight}
             />
           )}
         </div>
