@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import { Link } from "wouter";
-import { ArrowLeft, TrendingUp, XCircle, ChevronDown, ChevronUp } from "lucide-react";
+import { ArrowLeft, TrendingUp, XCircle, ChevronDown, ChevronUp, PanelRight, PanelRightClose } from "lucide-react";
 import {
   LineChart,
   Line,
@@ -253,6 +253,13 @@ function OpenPositionsSection({
 export default function TokenDetail({ params }: { params: { symbol: string } }) {
   const symbol = params.symbol.toUpperCase();
   const [timeRange, setTimeRange] = useState<TimeRange>(TIME_RANGES[3]); // default 15m
+  const [terminalCollapsed, setTerminalCollapsed] = useState<boolean>(() => {
+    try { return localStorage.getItem("arbitrage-terminalCollapsed") === "true"; } catch { return false; }
+  });
+
+  useEffect(() => {
+    try { localStorage.setItem("arbitrage-terminalCollapsed", String(terminalCollapsed)); } catch {}
+  }, [terminalCollapsed]);
 
   const isLiveMode = timeRange.interval === "live";
 
@@ -425,11 +432,12 @@ export default function TokenDetail({ params }: { params: { symbol: string } }) 
       {/* Main grid: chart area + terminal */}
       <div className="grid grid-cols-1 lg:grid-cols-3 xl:grid-cols-4 gap-4">
         {/* Charts */}
-        <div className="lg:col-span-2 xl:col-span-3 space-y-3">
+        <div className={`space-y-3 ${terminalCollapsed ? "col-span-full" : "lg:col-span-2 xl:col-span-3"}`}>
           {/* Header + time range selector */}
           <div className="flex items-center justify-between flex-wrap gap-2">
             <h2 className="text-base font-semibold">{symbol} — Price History</h2>
-            <div className="flex items-center gap-1" data-testid="time-range-selector">
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1" data-testid="time-range-selector">
               {TIME_RANGES.map((tr) => (
                 <button
                   key={tr.label}
@@ -444,6 +452,21 @@ export default function TokenDetail({ params }: { params: { symbol: string } }) 
                   {tr.label}
                 </button>
               ))}
+              </div>
+              <button
+                onClick={() => setTerminalCollapsed((v) => !v)}
+                title={terminalCollapsed ? "Show terminal" : "Hide terminal"}
+                aria-label={terminalCollapsed ? "Show terminal panel" : "Hide terminal panel"}
+                aria-pressed={!terminalCollapsed}
+                data-testid="btn-toggle-terminal"
+                className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+              >
+                {terminalCollapsed ? (
+                  <PanelRight className="w-4 h-4" />
+                ) : (
+                  <PanelRightClose className="w-4 h-4" />
+                )}
+              </button>
             </div>
           </div>
 
@@ -682,7 +705,7 @@ export default function TokenDetail({ params }: { params: { symbol: string } }) 
         </div>
 
         {/* Trade terminal */}
-        <div className="lg:col-span-1" data-testid="token-detail-terminal">
+        <div className={`lg:col-span-1 ${terminalCollapsed ? "hidden" : ""}`} data-testid="token-detail-terminal">
           {token ? (
             <TokenDetailPanel
               token={token}
