@@ -20,6 +20,7 @@ import {
   botLegToPosition,
   formatPrice,
 } from "@/components/position-rows";
+import { getExchangeName } from "@/lib/exchange-config";
 
 type SortOption =
   | "spread_desc" | "spread_asc"
@@ -98,14 +99,8 @@ function getExchangeFields(token: TokenSpread, ex: string) {
   }
 }
 
-const EXCHANGE_LABELS: Record<string, string> = {
-  bybit: "BB", binance: "BN", gate: "GT", okx: "OKX", mexc: "MX",
-};
-const EXCHANGE_COLORS: Record<string, string> = {
-  bybit: "text-amber-400", binance: "text-violet-400", gate: "text-sky-400", okx: "text-emerald-400", mexc: "text-rose-400",
-};
 
-const ROW_COLS = "grid grid-cols-[130px_82px_82px_68px_100px_100px_66px_72px_72px_66px_60px] items-center gap-0";
+const ROW_COLS = "grid grid-cols-[120px_86px_78px_130px_98px_98px_68px_70px_70px_64px_28px] items-center gap-0";
 
 type SortColKey = "alpha" | "spread" | "eff" | "volume" | "oi" | "depth";
 
@@ -297,9 +292,9 @@ function TokenRow({
       <div className="text-right pr-2">
         {cheapEx && expensiveEx ? (
           <span className="text-[10px] font-mono leading-none">
-            <span className={EXCHANGE_COLORS[cheapEx] ?? "text-muted-foreground"}>{EXCHANGE_LABELS[cheapEx] ?? cheapEx.toUpperCase()}</span>
+            <span className="text-muted-foreground">{getExchangeName(cheapEx)}</span>
             <span className="text-muted-foreground/30">/</span>
-            <span className={EXCHANGE_COLORS[expensiveEx] ?? "text-muted-foreground"}>{EXCHANGE_LABELS[expensiveEx] ?? expensiveEx.toUpperCase()}</span>
+            <span className="text-muted-foreground">{getExchangeName(expensiveEx)}</span>
           </span>
         ) : (
           <span className="text-muted-foreground/30 text-[10px]">-/-</span>
@@ -453,9 +448,9 @@ function TokenCard({
       <div className="flex items-center gap-1.5 mb-2">
         {cheapEx && expensiveEx ? (
           <span className="text-[10px] font-mono">
-            <span className={EXCHANGE_COLORS[cheapEx] ?? "text-muted-foreground"}>{EXCHANGE_LABELS[cheapEx] ?? cheapEx.toUpperCase()}</span>
+            <span className="text-muted-foreground">{getExchangeName(cheapEx)}</span>
             <span className="text-muted-foreground/30 mx-0.5">/</span>
-            <span className={EXCHANGE_COLORS[expensiveEx] ?? "text-muted-foreground"}>{EXCHANGE_LABELS[expensiveEx] ?? expensiveEx.toUpperCase()}</span>
+            <span className="text-muted-foreground">{getExchangeName(expensiveEx)}</span>
           </span>
         ) : (
           <span className="text-muted-foreground/30 text-[10px]">-/-</span>
@@ -925,26 +920,23 @@ export default function Dashboard() {
 
             {/* Exchange toggles */}
             <div className="flex items-center gap-0.5" data-testid="exchange-toggles">
-              {([
-                { key: "bybit",   label: "BB",  on: "text-amber-400 border-amber-400/40 bg-amber-400/10" },
-                { key: "binance", label: "BN",  on: "text-violet-400 border-violet-400/40 bg-violet-400/10" },
-                { key: "gate",    label: "GT",  on: "text-sky-400 border-sky-400/40 bg-sky-400/10" },
-                { key: "okx",     label: "OKX", on: "text-emerald-400 border-emerald-400/40 bg-emerald-400/10" },
-                { key: "mexc",    label: "MX",  on: "text-rose-400 border-rose-400/40 bg-rose-400/10" },
-              ] as const).map(({ key, label, on }) => (
-                <button
-                  key={key}
-                  onClick={() => toggleExchange(key)}
-                  title={selectedExchanges.has(key) ? `Hide ${label}` : `Show ${label}`}
-                  className={`px-1.5 py-0 h-7 rounded text-[10px] font-semibold font-mono border transition-all ${
-                    selectedExchanges.has(key)
-                      ? on
-                      : "text-muted-foreground/20 border-border/30 bg-transparent"
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
+              {(["bybit", "binance", "gate", "okx", "mexc"] as const).map((key) => {
+                const name = getExchangeName(key);
+                return (
+                  <button
+                    key={key}
+                    onClick={() => toggleExchange(key)}
+                    title={selectedExchanges.has(key) ? `Hide ${name}` : `Show ${name}`}
+                    className={`flex items-center gap-1 px-1.5 py-0 h-7 rounded text-[10px] font-semibold font-mono border transition-all ${
+                      selectedExchanges.has(key)
+                        ? "text-foreground border-primary/40 bg-primary/10"
+                        : "text-muted-foreground/30 border-border/30 bg-transparent"
+                    }`}
+                  >
+                    {name}
+                  </button>
+                );
+              })}
             </div>
 
             {filtersActive && (

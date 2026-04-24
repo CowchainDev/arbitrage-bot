@@ -34,17 +34,15 @@ function HeaderBalances() {
 
   return (
     <div className="flex items-center gap-2">
-      <div className="flex items-center gap-1.5 bg-card border border-amber-500/20 rounded px-2.5 py-1 text-xs">
-        <div className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-        <span className="text-muted-foreground">BB</span>
+      <div className="flex items-center gap-1.5 bg-card border border-border rounded px-2.5 py-1 text-xs">
+        <span className="text-muted-foreground">Bybit</span>
         <span className="font-mono font-semibold">${bybit.toFixed(2)}</span>
         <span className={`font-mono ${(bybitPnl ?? 0) >= 0 ? "text-primary" : "text-destructive"}`}>
           {(bybitPnl ?? 0) >= 0 ? "+" : ""}${(bybitPnl ?? 0).toFixed(2)}
         </span>
       </div>
-      <div className="flex items-center gap-1.5 bg-card border border-violet-500/20 rounded px-2.5 py-1 text-xs">
-        <div className="w-1.5 h-1.5 rounded-full bg-violet-400" />
-        <span className="text-muted-foreground">BN</span>
+      <div className="flex items-center gap-1.5 bg-card border border-border rounded px-2.5 py-1 text-xs">
+        <span className="text-muted-foreground">Binance</span>
         <span className="font-mono font-semibold">${binance.toFixed(2)}</span>
         <span className={`font-mono ${(binancePnl ?? 0) >= 0 ? "text-primary" : "text-destructive"}`}>
           {(binancePnl ?? 0) >= 0 ? "+" : ""}${(binancePnl ?? 0).toFixed(2)}

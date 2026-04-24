@@ -17,32 +17,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { useBotSecret } from "@/hooks/use-bot-secret";
 import { useExchangeCredentials, type SupportedExchange } from "@/hooks/use-exchange-credentials";
-
-const EXCHANGE_LABELS: Record<string, string> = {
-  bybit: "BYBIT", binance: "BINANCE", gate: "GATE", okx: "OKX", mexc: "MEXC",
-};
-const EXCHANGE_COLORS_TW: Record<string, string> = {
-  bybit: "text-amber-400 bg-amber-400/10",
-  binance: "text-violet-400 bg-violet-400/10",
-  gate: "text-sky-400 bg-sky-400/10",
-  okx: "text-emerald-400 bg-emerald-400/10",
-  mexc: "text-rose-400 bg-rose-400/10",
-};
-const EXCHANGE_TEXT_COLOR: Record<string, string> = {
-  bybit: "text-amber-400",
-  binance: "text-violet-400",
-  gate: "text-sky-400",
-  okx: "text-emerald-400",
-  mexc: "text-rose-400",
-};
-
-const EXCHANGE_HEADER_COLOR: Record<string, string> = {
-  bybit: "text-amber-400/80",
-  binance: "text-violet-400/80",
-  gate: "text-sky-400/80",
-  okx: "text-emerald-400/80",
-  mexc: "text-rose-400/80",
-};
+import { getExchangeName } from "@/lib/exchange-config";
 
 const ALL_EXCHANGE_KEYS = ["bybit", "binance", "gate", "okx", "mexc"] as const;
 
@@ -259,13 +234,13 @@ export function TokenDetailPanel({
         <div className="flex items-center gap-2 flex-wrap">
           <span className="font-bold text-base">{token.symbol}</span>
           {token.bybitPrice != null && (
-            <span className={`text-xs font-semibold px-2 py-0.5 rounded ${EXCHANGE_COLORS_TW.bybit}`}>
-              BYBIT {token.binancePrice != null ? (token.bybitPrice > token.binancePrice ? "↑" : "↓") : ""}
+            <span className="text-xs font-semibold px-2 py-0.5 rounded bg-muted text-muted-foreground">
+              Bybit {token.binancePrice != null ? (token.bybitPrice > token.binancePrice ? "↑" : "↓") : ""}
             </span>
           )}
           {token.binancePrice != null && (
-            <span className={`text-xs font-semibold px-2 py-0.5 rounded ${EXCHANGE_COLORS_TW.binance}`}>
-              BINANCE {token.bybitPrice != null ? (token.binancePrice > token.bybitPrice ? "↑" : "↓") : ""}
+            <span className="text-xs font-semibold px-2 py-0.5 rounded bg-muted text-muted-foreground">
+              Binance {token.bybitPrice != null ? (token.binancePrice > token.bybitPrice ? "↑" : "↓") : ""}
             </span>
           )}
           {bot ? (
@@ -314,7 +289,7 @@ export function TokenDetailPanel({
               data-testid="select-bot-exchange-a"
             >
               {["bybit", "binance", "gate", "okx", "mexc"].map((ex) => (
-                <option key={ex} value={ex} disabled={ex === botExchangeB}>{EXCHANGE_LABELS[ex]}</option>
+                <option key={ex} value={ex} disabled={ex === botExchangeB}>{getExchangeName(ex)}</option>
               ))}
             </select>
           </div>
@@ -327,7 +302,7 @@ export function TokenDetailPanel({
               data-testid="select-bot-exchange-b"
             >
               {["bybit", "binance", "gate", "okx", "mexc"].map((ex) => (
-                <option key={ex} value={ex} disabled={ex === botExchangeA}>{EXCHANGE_LABELS[ex]}</option>
+                <option key={ex} value={ex} disabled={ex === botExchangeA}>{getExchangeName(ex)}</option>
               ))}
             </select>
           </div>
@@ -396,7 +371,7 @@ export function TokenDetailPanel({
               const missingCreds = [botExchangeA, botExchangeB].filter(
                 (ex) => !allCreds[ex as SupportedExchange]?.hasCreds
               );
-              const missingLabels = missingCreds.map((ex) => EXCHANGE_LABELS[ex] ?? ex.toUpperCase());
+              const missingLabels = missingCreds.map((ex) => getExchangeName(ex));
               return (
                 <>
                   <Button
@@ -434,10 +409,8 @@ export function TokenDetailPanel({
       {(() => {
         const exAData = getExchangeTokenData(token, botExchangeA);
         const exBData = getExchangeTokenData(token, botExchangeB);
-        const labelA = EXCHANGE_LABELS[botExchangeA] ?? botExchangeA.toUpperCase();
-        const labelB = EXCHANGE_LABELS[botExchangeB] ?? botExchangeB.toUpperCase();
-        const headerA = EXCHANGE_HEADER_COLOR[botExchangeA] ?? "text-muted-foreground";
-        const headerB = EXCHANGE_HEADER_COLOR[botExchangeB] ?? "text-muted-foreground";
+        const labelA = getExchangeName(botExchangeA);
+        const labelB = getExchangeName(botExchangeB);
         const spreadVal =
           exAData.price != null && exBData.price != null && exBData.price !== 0
             ? ((exAData.price - exBData.price) / exBData.price) * 100
@@ -454,8 +427,8 @@ export function TokenDetailPanel({
           <div className="border border-border rounded overflow-hidden">
             <div className="grid grid-cols-3 bg-muted text-xs px-2 py-1.5 font-semibold uppercase tracking-wider">
               <span className="text-muted-foreground"></span>
-              <span className={headerA}>{labelA}</span>
-              <span className={headerB}>{labelB}</span>
+              <span className="text-muted-foreground">{labelA}</span>
+              <span className="text-muted-foreground">{labelB}</span>
             </div>
             {rows.map((row, i) => (
               <div key={row.label} className={`grid grid-cols-3 text-xs px-2 py-1.5 ${i % 2 === 0 ? "bg-card" : "bg-background"}`}>
@@ -488,7 +461,7 @@ export function TokenDetailPanel({
             >
               <span></span>
               {othersWithData.map((ex) => (
-                <span key={ex} className={EXCHANGE_HEADER_COLOR[ex] ?? "text-muted-foreground"}>{EXCHANGE_LABELS[ex] ?? ex.toUpperCase()}</span>
+                <span key={ex} className="text-muted-foreground">{getExchangeName(ex)}</span>
               ))}
             </div>
             {(["Price", "Bid", "Ask", "Funding"] as const).map((field, i) => (
@@ -543,18 +516,16 @@ export function TokenDetailPanel({
               All spreads
             </div>
             {pairs.map(({ exA, exB, spread }, i) => {
-              const labelA = EXCHANGE_LABELS[exA] ?? exA.toUpperCase();
-              const labelB = EXCHANGE_LABELS[exB] ?? exB.toUpperCase();
-              const colorA = EXCHANGE_TEXT_COLOR[exA] ?? "text-muted-foreground";
-              const colorB = EXCHANGE_TEXT_COLOR[exB] ?? "text-muted-foreground";
+              const labelA = getExchangeName(exA);
+              const labelB = getExchangeName(exB);
               const isBest = Math.abs(spread) === bestAbs;
               const color = Math.abs(spread) >= 1 ? "text-primary" : Math.abs(spread) >= 0.3 ? "text-amber-400" : "text-muted-foreground";
               return (
                 <div key={`${exA}-${exB}`} className={`grid text-xs px-2 py-1.5 items-center ${i % 2 === 0 ? "bg-card" : "bg-background"} ${isBest ? "ring-1 ring-inset ring-primary/30" : ""}`} style={{ gridTemplateColumns: "minmax(0,1fr) auto auto" }}>
                   <span className="font-semibold flex items-center gap-1 min-w-0 overflow-hidden">
-                    <span className={`${colorA} shrink-0`}>{labelA}</span>
+                    <span className="text-muted-foreground shrink-0">{labelA}</span>
                     <span className="text-muted-foreground/50 shrink-0">/</span>
-                    <span className={`${colorB} shrink-0`}>{labelB}</span>
+                    <span className="text-muted-foreground shrink-0">{labelB}</span>
                     {isBest && (
                       <span className="ml-1 px-1 py-px rounded text-[9px] font-bold bg-primary/20 text-primary leading-none shrink-0">BEST</span>
                     )}
