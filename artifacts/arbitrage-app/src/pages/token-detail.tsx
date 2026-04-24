@@ -23,7 +23,6 @@ import {
   getGetBotLegsQueryKey,
   getListBotsQueryKey,
 } from "@workspace/api-client-react";
-import { CANDLE_LIMIT_BY_INTERVAL } from "@workspace/api-zod";
 import type { ExchangeKlinePoint, BotConfig, BotLeg, TokenSpread } from "@workspace/api-client-react";
 import { TokenDetailPanel } from "@/components/token-detail-panel";
 import { useBots } from "@/hooks/use-bots";
@@ -38,6 +37,13 @@ import {
   PositionRow,
   botLegToPosition,
 } from "@/components/position-rows";
+
+const CANDLE_LIMIT_BY_INTERVAL: Record<string, number> = {
+  "15m": 96,
+  "1h":  168,
+  "4h":  90,
+  "1d":  60,
+};
 
 type TimeRange = { label: string; interval: string; limit: number; liveSeconds?: number };
 const TIME_RANGES: TimeRange[] = [
@@ -457,6 +463,7 @@ function OpenPositionsSection({
 export default function TokenDetail({ params }: { params: { symbol: string } }) {
   const symbol = params.symbol.toUpperCase();
   const [timeRange, setTimeRange] = useState<TimeRange>(TIME_RANGES[3]); // default 15m
+  const [extraBatches, setExtraBatches] = useState(0);
   const [terminalCollapsed, setTerminalCollapsed] = useState<boolean>(() => {
     try { return localStorage.getItem("arbitrage-terminalCollapsed") === "true"; } catch { return false; }
   });
@@ -466,6 +473,14 @@ export default function TokenDetail({ params }: { params: { symbol: string } }) 
   }, [terminalCollapsed]);
 
   const isLiveMode = timeRange.interval === "live";
+
+  // Reset extra batches whenever the user picks a new time range
+  useEffect(() => {
+    setExtraBatches(0);
+  }, [timeRange]);
+
+  const MAX_EXTRA_BATCHES = 9; // cap at 10× the default limit per interval
+  const effectiveLimit = timeRange.limit * (1 + extraBatches);
 
   const { data: allTokens, isLoading: pricesLoading } = useGetExchangePrices({
     query: { queryKey: getGetExchangePricesQueryKey(), refetchInterval: isLiveMode ? 2000 : 10_000 },
@@ -519,7 +534,7 @@ export default function TokenDetail({ params }: { params: { symbol: string } }) 
     setLiveBuffer([...liveBufferRef.current]);
   }, [liveToken, isLiveMode, timeRange.liveSeconds]);
 
-  const klinesParams = { symbol, interval: timeRange.interval, limit: timeRange.limit };
+  const klinesParams = { symbol, interval: timeRange.interval, limit: effectiveLimit };
   const { data: klines, isLoading: klinesLoading, isError: klinesError, isFetching: klinesIsFetching } = useGetExchangeKlines(
     klinesParams,
     {
@@ -979,6 +994,37 @@ export default function TokenDetail({ params }: { params: { symbol: string } }) 
                   </AreaChart>
                 </ResponsiveContainer>
               </div>
+            </div>
+          )}
+
+          {/* Load more history button — only in non-live klines mode */}
+          {!isLiveMode && !klinesLoading && !klinesError && chartDataFinal.length > 0 && (
+            <div className="flex flex-col items-center gap-1">
+              <span className="text-xs text-muted-foreground/60 font-mono">
+                Loaded: {effectiveLimit} candles
+              </span>
+              {extraBatches < MAX_EXTRA_BATCHES && (
+                <button
+                  onClick={() => setExtraBatches((n) => Math.min(n + 1, MAX_EXTRA_BATCHES))}
+                  disabled={klinesIsFetching}
+                  data-testid="btn-load-more-history"
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded font-mono text-muted-foreground hover:text-foreground hover:bg-muted transition-colors border border-border/60 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {klinesIsFetching ? (
+                    <>
+                      <span className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
+                      Loading…
+                    </>
+                  ) : (
+                    <>
+                      Load more history
+                      <span className="text-muted-foreground/60">
+                        (+{timeRange.limit} candles)
+                      </span>
+                    </>
+                  )}
+                </button>
+              )}
             </div>
           )}
 
