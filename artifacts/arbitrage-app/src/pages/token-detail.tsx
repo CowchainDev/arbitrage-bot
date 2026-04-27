@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { Link } from "wouter";
-import { ArrowLeft, TrendingUp, XCircle, ChevronDown, ChevronUp, PanelRight, PanelRightClose, History } from "lucide-react";
+import { ArrowLeft, TrendingUp, XCircle, ChevronDown, ChevronUp, PanelRight, PanelRightClose, History, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import {
   LineChart,
   Line,
@@ -207,29 +207,101 @@ function PnlSummaryBar({ legs }: { legs: BotLeg[] }) {
   );
 }
 
+type ClosedLegsSortKey = "date" | "pnl" | "duration" | "entrySpread" | "exitSpread";
+type SortDir = "asc" | "desc";
+
+function SortIcon({ col, sortKey, sortDir }: { col: ClosedLegsSortKey; sortKey: ClosedLegsSortKey; sortDir: SortDir }) {
+  if (col !== sortKey) return <ArrowUpDown className="w-3 h-3 ml-1 opacity-40 inline" />;
+  return sortDir === "asc"
+    ? <ArrowUp className="w-3 h-3 ml-1 text-primary inline" />
+    : <ArrowDown className="w-3 h-3 ml-1 text-primary inline" />;
+}
+
+type ClosedLegsFilter = "all" | "winners" | "losers";
+
+function useSessionState<T>(key: string, defaultValue: T): [T, (v: T | ((prev: T) => T)) => void] {
+  const [state, setStateRaw] = useState<T>(() => {
+    try {
+      const stored = sessionStorage.getItem(key);
+      if (stored != null) return JSON.parse(stored) as T;
+    } catch {}
+    return defaultValue;
+  });
+  const setState = useCallback(
+    (v: T | ((prev: T) => T)) => {
+      setStateRaw((prev) => {
+        const next = typeof v === "function" ? (v as (p: T) => T)(prev) : v;
+        try { sessionStorage.setItem(key, JSON.stringify(next)); } catch {}
+        return next;
+      });
+    },
+    [key]
+  );
+  return [state, setState];
+}
+
 function ClosedLegsSection({
   legs,
   loading,
   highlightedLegId,
   onClearHighlight,
+  storageKey,
 }: {
   legs: BotLeg[];
   loading?: boolean;
   highlightedLegId?: number | null;
   onClearHighlight?: () => void;
+  storageKey?: string;
 }) {
+  const sk = storageKey ?? "closed-legs";
   const [expanded, setExpanded] = useState(true);
+  const [sortKey, setSortKey] = useSessionState<ClosedLegsSortKey>(`${sk}:sortKey`, "date");
+  const [sortDir, setSortDir] = useSessionState<SortDir>(`${sk}:sortDir`, "desc");
+  const [filter, setFilter] = useSessionState<ClosedLegsFilter>(`${sk}:filter`, "all");
   const rowRefs = useRef<Map<number, HTMLTableRowElement>>(new Map());
 
-  const sortedLegs = useMemo(
-    () =>
-      [...legs].sort(
-        (a, b) =>
-          new Date(b.closedAt ?? b.openedAt).getTime() -
-          new Date(a.closedAt ?? a.openedAt).getTime()
-      ),
-    [legs]
-  );
+  const handleSort = (col: ClosedLegsSortKey) => {
+    if (sortKey === col) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(col);
+      setSortDir("desc");
+    }
+  };
+
+  const processedLegs = useMemo(() => {
+    const filtered = legs.filter((leg) => {
+      if (filter === "winners") return (leg.realizedPnlUsd ?? 0) >= 0;
+      if (filter === "losers") return (leg.realizedPnlUsd ?? 0) < 0;
+      return true;
+    });
+
+    const sorted = [...filtered].sort((a, b) => {
+      let diff = 0;
+      if (sortKey === "date") {
+        diff =
+          new Date(a.openedAt).getTime() -
+          new Date(b.openedAt).getTime();
+      } else if (sortKey === "pnl") {
+        diff = (a.realizedPnlUsd ?? -Infinity) - (b.realizedPnlUsd ?? -Infinity);
+      } else if (sortKey === "duration") {
+        const durA = a.closedAt
+          ? new Date(a.closedAt).getTime() - new Date(a.openedAt).getTime()
+          : 0;
+        const durB = b.closedAt
+          ? new Date(b.closedAt).getTime() - new Date(b.openedAt).getTime()
+          : 0;
+        diff = durA - durB;
+      } else if (sortKey === "entrySpread") {
+        diff = (a.spreadAtEntry ?? -Infinity) - (b.spreadAtEntry ?? -Infinity);
+      } else if (sortKey === "exitSpread") {
+        diff = (a.spreadAtExit ?? -Infinity) - (b.spreadAtExit ?? -Infinity);
+      }
+      return sortDir === "asc" ? diff : -diff;
+    });
+
+    return sorted;
+  }, [legs, filter, sortKey, sortDir]);
 
   // Scroll to + flash the highlighted row whenever it changes
   useEffect(() => {
@@ -247,6 +319,8 @@ function ClosedLegsSection({
   }, [highlightedLegId]);
 
   if (!loading && legs.length === 0) return null;
+
+  const thClass = "px-3 py-2 font-semibold uppercase tracking-wider cursor-pointer select-none hover:text-foreground transition-colors whitespace-nowrap";
 
   return (
     <div
@@ -274,7 +348,34 @@ function ClosedLegsSection({
 
       {expanded && (
         <div>
-          <PnlSummaryBar legs={sortedLegs} />
+          <PnlSummaryBar legs={processedLegs} />
+
+          {/* Filter buttons */}
+          <div className="flex items-center gap-1.5 px-3 py-2 border-b border-border/60 bg-muted/10">
+            {(["all", "winners", "losers"] as ClosedLegsFilter[]).map((f) => (
+              <button
+                key={f}
+                onClick={() => setFilter(f)}
+                data-testid={`filter-${f}`}
+                className={`px-2.5 py-0.5 rounded text-[11px] font-semibold uppercase tracking-wide transition-colors ${
+                  filter === f
+                    ? f === "winners"
+                      ? "bg-primary/20 text-primary ring-1 ring-primary/40"
+                      : f === "losers"
+                      ? "bg-destructive/20 text-destructive ring-1 ring-destructive/40"
+                      : "bg-muted text-foreground ring-1 ring-border"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                }`}
+              >
+                {f === "all" ? `All (${legs.length})` : f === "winners" ? `Winners` : `Losers`}
+              </button>
+            ))}
+            {processedLegs.length !== legs.length && (
+              <span className="ml-auto text-[10px] text-muted-foreground font-mono">
+                {processedLegs.length} shown
+              </span>
+            )}
+          </div>
 
           {loading ? (
             <div className="flex items-center justify-center py-8 text-muted-foreground text-xs">
@@ -286,106 +387,139 @@ function ClosedLegsSection({
               <table className="w-full text-xs font-mono">
                 <thead>
                   <tr className="border-b border-border text-muted-foreground bg-muted/20">
-                    <th className="text-left px-3 py-2 font-semibold uppercase tracking-wider">
+                    <th className="text-left px-3 py-2 font-semibold uppercase tracking-wider whitespace-nowrap">
                       Side
                     </th>
-                    <th className="text-right px-3 py-2 font-semibold uppercase tracking-wider">
+                    <th
+                      className={`text-right ${thClass}`}
+                      onClick={() => handleSort("entrySpread")}
+                      data-testid="sort-entrySpread"
+                    >
                       Entry Spread
+                      <SortIcon col="entrySpread" sortKey={sortKey} sortDir={sortDir} />
                     </th>
-                    <th className="text-right px-3 py-2 font-semibold uppercase tracking-wider">
+                    <th
+                      className={`text-right ${thClass}`}
+                      onClick={() => handleSort("exitSpread")}
+                      data-testid="sort-exitSpread"
+                    >
                       Exit Spread
+                      <SortIcon col="exitSpread" sortKey={sortKey} sortDir={sortDir} />
                     </th>
-                    <th className="text-right px-3 py-2 font-semibold uppercase tracking-wider">
+                    <th
+                      className={`text-right ${thClass}`}
+                      onClick={() => handleSort("pnl")}
+                      data-testid="sort-pnl"
+                    >
                       Realized P&amp;L
+                      <SortIcon col="pnl" sortKey={sortKey} sortDir={sortDir} />
                     </th>
-                    <th className="text-right px-3 py-2 font-semibold uppercase tracking-wider">
+                    <th
+                      className={`text-right ${thClass}`}
+                      onClick={() => handleSort("date")}
+                      data-testid="sort-date"
+                    >
                       Opened
+                      <SortIcon col="date" sortKey={sortKey} sortDir={sortDir} />
                     </th>
-                    <th className="text-right px-3 py-2 font-semibold uppercase tracking-wider">
+                    <th
+                      className={`text-right ${thClass}`}
+                      onClick={() => handleSort("duration")}
+                      data-testid="sort-duration"
+                    >
                       Duration
+                      <SortIcon col="duration" sortKey={sortKey} sortDir={sortDir} />
                     </th>
                   </tr>
                 </thead>
                 <tbody>
-                  {sortedLegs.map((leg) => {
-                    const pnl = leg.realizedPnlUsd;
-                    const pnlClass =
-                      pnl != null
-                        ? pnl >= 0
-                          ? "text-primary"
-                          : "text-destructive"
-                        : "text-muted-foreground";
-                    const isLong = leg.bybitSide === "long";
-                    const durationMs =
-                      leg.closedAt
-                        ? new Date(leg.closedAt).getTime() -
-                          new Date(leg.openedAt).getTime()
-                        : null;
-                    const duration =
-                      durationMs != null ? formatDuration(durationMs) : "—";
-                    const isHighlighted = highlightedLegId === leg.id;
-                    return (
-                      <tr
-                        key={leg.id}
-                        ref={(el) => {
-                          if (el) rowRefs.current.set(leg.id, el);
-                          else rowRefs.current.delete(leg.id);
-                        }}
-                        data-leg-id={leg.id}
-                        onClick={() => isHighlighted && onClearHighlight?.()}
-                        className={`border-b border-border/40 transition-colors ${
-                          isHighlighted
-                            ? "bg-primary/15 ring-1 ring-inset ring-primary/40"
-                            : "hover:bg-muted/30"
-                        }`}
-                        style={isHighlighted ? { cursor: "pointer" } : undefined}
-                      >
-                        <td className="px-3 py-2.5">
-                          <span
-                            className={
-                              isLong ? "text-primary" : "text-destructive"
-                            }
-                          >
-                            {isLong ? "Long" : "Short"}
-                          </span>
-                          {isHighlighted && (
-                            <span className="ml-1.5 text-[9px] text-primary uppercase tracking-wide font-semibold">
-                              ← chart
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-3 py-2.5 text-right text-muted-foreground">
-                          {leg.spreadAtEntry != null
-                            ? `+${leg.spreadAtEntry.toFixed(3)}%`
-                            : "—"}
-                        </td>
-                        <td className="px-3 py-2.5 text-right text-muted-foreground">
-                          {leg.spreadAtExit != null
-                            ? `+${leg.spreadAtExit.toFixed(3)}%`
-                            : "—"}
-                        </td>
-                        <td
-                          className={`px-3 py-2.5 text-right font-semibold ${pnlClass}`}
+                  {processedLegs.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="px-3 py-6 text-center text-muted-foreground text-[11px]">
+                        No trades match this filter
+                      </td>
+                    </tr>
+                  ) : (
+                    processedLegs.map((leg) => {
+                      const pnl = leg.realizedPnlUsd;
+                      const pnlClass =
+                        pnl != null
+                          ? pnl >= 0
+                            ? "text-primary"
+                            : "text-destructive"
+                          : "text-muted-foreground";
+                      const isLong = leg.bybitSide === "long";
+                      const durationMs =
+                        leg.closedAt
+                          ? new Date(leg.closedAt).getTime() -
+                            new Date(leg.openedAt).getTime()
+                          : null;
+                      const duration =
+                        durationMs != null ? formatDuration(durationMs) : "—";
+                      const isHighlighted = highlightedLegId === leg.id;
+                      return (
+                        <tr
+                          key={leg.id}
+                          ref={(el) => {
+                            if (el) rowRefs.current.set(leg.id, el);
+                            else rowRefs.current.delete(leg.id);
+                          }}
+                          data-leg-id={leg.id}
+                          onClick={() => isHighlighted && onClearHighlight?.()}
+                          className={`border-b border-border/40 transition-colors ${
+                            isHighlighted
+                              ? "bg-primary/15 ring-1 ring-inset ring-primary/40"
+                              : "hover:bg-muted/30"
+                          }`}
+                          style={isHighlighted ? { cursor: "pointer" } : undefined}
                         >
-                          {pnl != null
-                            ? `${pnl >= 0 ? "+" : "-"}$${Math.abs(pnl).toFixed(2)}`
-                            : "—"}
-                        </td>
-                        <td className="px-3 py-2.5 text-right text-muted-foreground">
-                          {new Date(leg.openedAt).toLocaleString("en-US", {
-                            month: "short",
-                            day: "numeric",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                            hour12: false,
-                          })}
-                        </td>
-                        <td className="px-3 py-2.5 text-right text-muted-foreground">
-                          {duration}
-                        </td>
-                      </tr>
-                    );
-                  })}
+                          <td className="px-3 py-2.5">
+                            <span
+                              className={
+                                isLong ? "text-primary" : "text-destructive"
+                              }
+                            >
+                              {isLong ? "Long" : "Short"}
+                            </span>
+                            {isHighlighted && (
+                              <span className="ml-1.5 text-[9px] text-primary uppercase tracking-wide font-semibold">
+                                ← chart
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2.5 text-right text-muted-foreground">
+                            {leg.spreadAtEntry != null
+                              ? `+${leg.spreadAtEntry.toFixed(3)}%`
+                              : "—"}
+                          </td>
+                          <td className="px-3 py-2.5 text-right text-muted-foreground">
+                            {leg.spreadAtExit != null
+                              ? `+${leg.spreadAtExit.toFixed(3)}%`
+                              : "—"}
+                          </td>
+                          <td
+                            className={`px-3 py-2.5 text-right font-semibold ${pnlClass}`}
+                          >
+                            {pnl != null
+                              ? `${pnl >= 0 ? "+" : "-"}$${Math.abs(pnl).toFixed(2)}`
+                              : "—"}
+                          </td>
+                          <td className="px-3 py-2.5 text-right text-muted-foreground">
+                            {new Date(leg.openedAt).toLocaleString("en-US", {
+                              month: "short",
+                              day: "numeric",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                              hour12: false,
+                            })}
+                          </td>
+                          <td className="px-3 py-2.5 text-right text-muted-foreground">
+                            {duration}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
                 </tbody>
               </table>
             </div>
@@ -1096,6 +1230,7 @@ export default function TokenDetail({ params }: { params: { symbol: string } }) 
               loading={closedLegsQuery.isLoading}
               highlightedLegId={highlightedLegId}
               onClearHighlight={clearHighlight}
+              storageKey={`closed-legs-${symbol}`}
             />
           )}
         </div>
