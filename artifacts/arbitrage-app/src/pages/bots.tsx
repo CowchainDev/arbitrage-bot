@@ -198,7 +198,7 @@ function BotCard({ bot, openLegs }: { bot: BotConfig; openLegs: BotLeg[] }) {
   };
 
   const statsQuery = useGetBotStats(bot.id, {
-    query: { refetchInterval: 30000, queryKey: getGetBotStatsQueryKey(bot.id) },
+    query: { refetchInterval: 5000, queryKey: getGetBotStatsQueryKey(bot.id) },
     request: requestOptions,
   });
   const stats = statsQuery.data;
@@ -250,6 +250,16 @@ function BotCard({ bot, openLegs }: { bot: BotConfig; openLegs: BotLeg[] }) {
     setPnlPoints(updated);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [priceData, openLegs.length, bot.enabled]);
+
+  const prevOpenLegsCount = useRef(openLegs.length);
+
+  useEffect(() => {
+    const prev = prevOpenLegsCount.current;
+    prevOpenLegsCount.current = openLegs.length;
+    if (openLegs.length < prev) {
+      queryClient.invalidateQueries({ queryKey: getGetBotStatsQueryKey(bot.id) });
+    }
+  }, [openLegs.length, queryClient, bot.id]);
 
   const invalidate = async () => {
     await queryClient.invalidateQueries({ queryKey: getListBotsQueryKey() });
