@@ -48,6 +48,7 @@ const FILTER_STORAGE_KEY = "dashboard-filters";
 const DEFAULT_FILTERS = {
   sort: "spread_desc" as SortOption,
   maxSpread: "",
+  minSpread: "",
   minVolume: "",
   minOpenInterest: "",
   minSpreadDepth: "",
@@ -62,6 +63,7 @@ function loadFilters() {
     return {
       sort: isValidSortOption(parsed.sort) ? parsed.sort : DEFAULT_FILTERS.sort,
       maxSpread: parsed.maxSpread ?? DEFAULT_FILTERS.maxSpread,
+      minSpread: parsed.minSpread ?? DEFAULT_FILTERS.minSpread,
       minVolume: parsed.minVolume ?? DEFAULT_FILTERS.minVolume,
       minOpenInterest: parsed.minOpenInterest ?? DEFAULT_FILTERS.minOpenInterest,
       minSpreadDepth: parsed.minSpreadDepth ?? DEFAULT_FILTERS.minSpreadDepth,
@@ -548,6 +550,7 @@ export default function Dashboard() {
   const [sort, setSort] = useState<SortOption>(_savedFilters.sort);
   const [favsOnly, setFavsOnly] = useState(false);
   const [maxSpread, setMaxSpread] = useState<string>(_savedFilters.maxSpread);
+  const [minSpread, setMinSpread] = useState<string>(_savedFilters.minSpread);
   const [minVolume, setMinVolume] = useState<string>(_savedFilters.minVolume);
   const [minOpenInterest, setMinOpenInterest] = useState<string>(_savedFilters.minOpenInterest);
   const [minSpreadDepth, setMinSpreadDepth] = useState<string>(_savedFilters.minSpreadDepth);
@@ -562,17 +565,19 @@ export default function Dashboard() {
       localStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify({
         sort,
         maxSpread,
+        minSpread,
         minVolume,
         minOpenInterest,
         minSpreadDepth,
         selectedExchanges: [...selectedExchanges],
       }));
     } catch {}
-  }, [sort, maxSpread, minVolume, minOpenInterest, minSpreadDepth, selectedExchanges]);
+  }, [sort, maxSpread, minSpread, minVolume, minOpenInterest, minSpreadDepth, selectedExchanges]);
 
   function resetFilters() {
     setSort(DEFAULT_FILTERS.sort);
     setMaxSpread(DEFAULT_FILTERS.maxSpread);
+    setMinSpread(DEFAULT_FILTERS.minSpread);
     setMinVolume(DEFAULT_FILTERS.minVolume);
     setMinOpenInterest(DEFAULT_FILTERS.minOpenInterest);
     setMinSpreadDepth(DEFAULT_FILTERS.minSpreadDepth);
@@ -582,6 +587,7 @@ export default function Dashboard() {
 
   const filtersActive = sort !== DEFAULT_FILTERS.sort
     || maxSpread !== ""
+    || minSpread !== ""
     || minVolume !== ""
     || minOpenInterest !== ""
     || minSpreadDepth !== ""
@@ -770,6 +776,10 @@ export default function Dashboard() {
       const cap = parseFloat(maxSpread);
       if (!isNaN(cap)) list = list.filter((t) => Math.abs(t.bestSpreadPct ?? t.spreadPct) <= cap);
     }
+    if (minSpread.trim() !== "") {
+      const floor = parseFloat(minSpread);
+      if (!isNaN(floor)) list = list.filter((t) => Math.abs(t.bestSpreadPct ?? t.spreadPct) >= floor);
+    }
     if (minVolume.trim() !== "") {
       const floor = parseVolume(minVolume);
       if (!isNaN(floor)) list = list.filter((t) => (t.volume24h ?? 0) >= floor);
@@ -838,7 +848,7 @@ export default function Dashboard() {
       list.sort(primaryCmp);
     }
     return list;
-  }, [tokens, favsOnly, search, sort, maxSpread, minVolume, minOpenInterest, minSpreadDepth, selectedExchanges, isFavourite]);
+  }, [tokens, favsOnly, search, sort, maxSpread, minSpread, minVolume, minOpenInterest, minSpreadDepth, selectedExchanges, isFavourite]);
 
   const selectedToken = tokens.find((t) => t.symbol === selectedSymbol) ?? null;
 
@@ -1035,6 +1045,17 @@ export default function Dashboard() {
             </div>
 
             {/* Filter inputs */}
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              value={minSpread}
+              onChange={(e) => setMinSpread(e.target.value)}
+              placeholder="Min spread %"
+              className="bg-background border border-border/60 rounded text-[10px] px-2 h-7 text-foreground w-24 placeholder:text-muted-foreground/40 focus:outline-none focus:border-primary/50 font-mono"
+              data-testid="select-min-spread"
+              title="Min spread % — only show tokens above this spread"
+            />
             <input
               type="text"
               value={minVolume}
