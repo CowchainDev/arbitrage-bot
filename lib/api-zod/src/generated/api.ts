@@ -26,7 +26,7 @@ export const getExchangeKlinesQueryLimitMax = 500;
 export const GetExchangeKlinesQueryParams = zod.object({
   symbol: zod.coerce.string().describe("Token symbol e.g. BTC"),
   interval: zod
-    .enum(["15m", "1h", "4h", "1d"])
+    .enum(["1m", "5m", "15m", "1h", "4h", "1d"])
     .default(getExchangeKlinesQueryIntervalDefault)
     .describe("Candle interval"),
   limit: zod.coerce
@@ -795,6 +795,27 @@ export const GetBotStatsResponse = zod.object({
       "Sum of notional value (qty \* entry price) across all closed legs",
     ),
   closedLegCount: zod.number().describe("Number of closed legs"),
+});
+
+/**
+ * @summary Get per-day closed leg counts and cumulative totals for a bot
+ */
+export const GetBotLegHistoryParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const GetBotLegHistoryResponse = zod.object({
+  buckets: zod.array(
+    zod.object({
+      date: zod
+        .string()
+        .describe("ISO date string (YYYY-MM-DD) for the bucket"),
+      count: zod.number().describe("Number of legs closed on this day"),
+      cumulative: zod
+        .number()
+        .describe("Running total of closed legs up to and including this day"),
+    }),
+  ),
 });
 
 /**

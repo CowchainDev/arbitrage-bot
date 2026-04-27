@@ -15,15 +15,22 @@ import {
   useUpdateBot,
   useGetExchangePrices,
   useGetBotStats,
+  useGetBotLegHistory,
   getGetExchangePricesQueryKey,
   getGetBotStatsQueryKey,
+  getGetBotLegHistoryQueryKey,
   getListBotsQueryKey,
   getGetBotLegsQueryKey,
 } from "@workspace/api-client-react";
-import type { BotConfig, BotLeg } from "@workspace/api-client-react";
+import type { BotConfig, BotLeg, LegBucket } from "@workspace/api-client-react";
 import {
   AreaChart,
   Area,
+  Bar,
+  Line,
+  ComposedChart,
+  XAxis,
+  YAxis,
   ResponsiveContainer,
   Tooltip,
   ReferenceLine,
@@ -56,7 +63,15 @@ interface PnlPoint {
   pnl: number;
 }
 
-function PnlChart({ points, latestPnl }: { points: PnlPoint[]; latestPnl: number }) {
+function PnlChart({
+  points,
+  latestPnl,
+  legBuckets,
+}: {
+  points: PnlPoint[];
+  latestPnl: number;
+  legBuckets?: LegBucket[];
+}) {
   const isPositive = latestPnl >= 0;
   const color = isPositive ? "#10b981" : "#ef4444";
 
@@ -65,50 +80,110 @@ function PnlChart({ points, latestPnl }: { points: PnlPoint[]; latestPnl: number
       ? "$0.00"
       : `${latestPnl >= 0 ? "+" : ""}$${latestPnl.toFixed(4)}`;
 
+  const showLegTrend = legBuckets && legBuckets.length > 0;
+  const latestCumulative = showLegTrend ? legBuckets![legBuckets!.length - 1].cumulative : 0;
+  const showPnl = points.length > 1;
+
   return (
     <div className="mt-1">
-      <div className="flex items-baseline justify-between mb-1">
-        <span className="text-xs text-muted-foreground">Unrealized P&L</span>
-        <span
-          className="text-sm font-mono font-bold"
-          style={{ color }}
-        >
-          {formatted}
-        </span>
-      </div>
-      <div className="h-20">
-        <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={points} margin={{ top: 4, right: 0, left: 0, bottom: 0 }}>
-            <defs>
-              <linearGradient id={`pnlGrad-${isPositive}`} x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor={color} stopOpacity={0.3} />
-                <stop offset="95%" stopColor={color} stopOpacity={0} />
-              </linearGradient>
-            </defs>
-            <ReferenceLine y={0} stroke="#555" strokeDasharray="3 3" />
-            <Tooltip
-              content={({ active, payload }) => {
-                if (!active || !payload?.length) return null;
-                const val: number = payload[0].value as number;
-                return (
-                  <div className="bg-background border border-border rounded px-2 py-1 text-xs font-mono">
-                    {val >= 0 ? "+" : ""}${val.toFixed(4)}
-                  </div>
-                );
-              }}
-            />
-            <Area
-              type="monotone"
-              dataKey="pnl"
-              stroke={color}
-              strokeWidth={1.5}
-              fill={`url(#pnlGrad-${isPositive})`}
-              dot={false}
-              isAnimationActive={false}
-            />
-          </AreaChart>
-        </ResponsiveContainer>
-      </div>
+      {showPnl && (
+        <>
+          <div className="flex items-baseline justify-between mb-1">
+            <span className="text-xs text-muted-foreground">Unrealized P&L</span>
+            <span
+              className="text-sm font-mono font-bold"
+              style={{ color }}
+            >
+              {formatted}
+            </span>
+          </div>
+          <div className="h-20">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={points} margin={{ top: 4, right: 0, left: 0, bottom: 0 }}>
+                <defs>
+                  <linearGradient id={`pnlGrad-${isPositive}`} x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor={color} stopOpacity={0.3} />
+                    <stop offset="95%" stopColor={color} stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <ReferenceLine y={0} stroke="#555" strokeDasharray="3 3" />
+                <Tooltip
+                  content={({ active, payload }) => {
+                    if (!active || !payload?.length) return null;
+                    const val: number = payload[0].value as number;
+                    return (
+                      <div className="bg-background border border-border rounded px-2 py-1 text-xs font-mono">
+                        {val >= 0 ? "+" : ""}${val.toFixed(4)}
+                      </div>
+                    );
+                  }}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="pnl"
+                  stroke={color}
+                  strokeWidth={1.5}
+                  fill={`url(#pnlGrad-${isPositive})`}
+                  dot={false}
+                  isAnimationActive={false}
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </>
+      )}
+
+      {showLegTrend && (
+        <>
+          <div className="flex items-baseline justify-between mt-2 mb-1">
+            <span className="text-xs text-muted-foreground">Legs closed (by day)</span>
+            <span className="text-xs font-mono font-bold text-violet-400">
+              {latestCumulative} total
+            </span>
+          </div>
+          <div className="h-16">
+            <ResponsiveContainer width="100%" height="100%">
+              <ComposedChart data={legBuckets} margin={{ top: 2, right: 0, left: 0, bottom: 0 }}>
+                <XAxis dataKey="date" hide />
+                <YAxis yAxisId="count" hide />
+                <YAxis yAxisId="cum" orientation="right" hide />
+                <Tooltip
+                  content={({ active, payload }) => {
+                    if (!active || !payload?.length) return null;
+                    const bucket = payload[0]?.payload as LegBucket;
+                    return (
+                      <div className="bg-background border border-border rounded px-2 py-1 text-xs font-mono space-y-0.5">
+                        <div className="text-muted-foreground">{bucket.date}</div>
+                        <div className="text-violet-400">{bucket.count} closed</div>
+                        <div className="text-violet-300">{bucket.cumulative} cumulative</div>
+                      </div>
+                    );
+                  }}
+                />
+                <Bar
+                  yAxisId="count"
+                  dataKey="count"
+                  fill="#7c3aed"
+                  opacity={0.7}
+                  radius={[2, 2, 0, 0]}
+                  isAnimationActive={false}
+                />
+                {legBuckets!.length > 1 && (
+                  <Line
+                    yAxisId="cum"
+                    type="monotone"
+                    dataKey="cumulative"
+                    stroke="#a78bfa"
+                    strokeWidth={1.5}
+                    dot={false}
+                    isAnimationActive={false}
+                  />
+                )}
+              </ComposedChart>
+            </ResponsiveContainer>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -203,6 +278,12 @@ function BotCard({ bot, openLegs }: { bot: BotConfig; openLegs: BotLeg[] }) {
   });
   const stats = statsQuery.data;
 
+  const legHistoryQuery = useGetBotLegHistory(bot.id, {
+    query: { refetchInterval: 30000, queryKey: getGetBotLegHistoryQueryKey(bot.id) },
+    request: requestOptions,
+  });
+  const legBuckets = legHistoryQuery.data?.buckets ?? [];
+
   const pricesQuery = useGetExchangePrices({
     query: { refetchInterval: 2000, queryKey: getGetExchangePricesQueryKey() },
     request: requestOptions,
@@ -265,6 +346,7 @@ function BotCard({ bot, openLegs }: { bot: BotConfig; openLegs: BotLeg[] }) {
     await queryClient.invalidateQueries({ queryKey: getListBotsQueryKey() });
     await queryClient.invalidateQueries({ queryKey: getGetBotLegsQueryKey(bot.id) });
     await queryClient.invalidateQueries({ queryKey: getGetBotStatsQueryKey(bot.id) });
+    await queryClient.invalidateQueries({ queryKey: getGetBotLegHistoryQueryKey(bot.id) });
   };
 
   const handleStart = async () => {
@@ -322,7 +404,8 @@ function BotCard({ bot, openLegs }: { bot: BotConfig; openLegs: BotLeg[] }) {
   };
 
   const latestPnl = pnlPoints.length > 0 ? pnlPoints[pnlPoints.length - 1].pnl : 0;
-  const showChart = bot.enabled && openLegs.length > 0 && pnlPoints.length > 1;
+  const hasPnlPoints = bot.enabled && openLegs.length > 0 && pnlPoints.length > 1;
+  const showChart = hasPnlPoints || legBuckets.length > 0;
 
   return (
     <div className="bg-card border border-border rounded-lg p-4 flex flex-col gap-3">
@@ -561,10 +644,14 @@ function BotCard({ bot, openLegs }: { bot: BotConfig; openLegs: BotLeg[] }) {
       </div>
 
       {showChart && (
-        <PnlChart points={pnlPoints} latestPnl={latestPnl} />
+        <PnlChart
+          points={pnlPoints}
+          latestPnl={latestPnl}
+          legBuckets={legBuckets.length > 0 ? legBuckets : undefined}
+        />
       )}
 
-      {bot.enabled && openLegs.length > 0 && !showChart && (
+      {bot.enabled && openLegs.length > 0 && !hasPnlPoints && legBuckets.length === 0 && (
         <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
           Tracking P&L…

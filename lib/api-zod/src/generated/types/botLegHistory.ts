@@ -5,10 +5,8 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { LegBucket } from "./legBucket";
 
-export interface ExchangeKlinePoint {
-  /** Unix timestamp in milliseconds */
-  t: number;
-  /** Close price */
-  c: number;
+export interface BotLegHistory {
+  buckets: LegBucket[];
 }

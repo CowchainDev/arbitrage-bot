@@ -18,6 +18,7 @@ import type {
 
 import type {
   ApiError,
+  BotLegHistory,
   BotLegsResponse,
   BotListResponse,
   BotResponse,
@@ -1455,6 +1456,93 @@ export function useGetBotStats<
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getGetBotStatsQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Get per-day closed leg counts and cumulative totals for a bot
+ */
+export const getGetBotLegHistoryUrl = (id: number) => {
+  return `/api/bots/${id}/leg-history`;
+};
+
+export const getBotLegHistory = async (
+  id: number,
+  options?: RequestInit,
+): Promise<BotLegHistory> => {
+  return customFetch<BotLegHistory>(getGetBotLegHistoryUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetBotLegHistoryQueryKey = (id: number) => {
+  return [`/api/bots/${id}/leg-history`] as const;
+};
+
+export const getGetBotLegHistoryQueryOptions = <
+  TData = Awaited<ReturnType<typeof getBotLegHistory>>,
+  TError = ErrorType<ApiError>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getBotLegHistory>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetBotLegHistoryQueryKey(id);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getBotLegHistory>>
+  > = ({ signal }) => getBotLegHistory(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getBotLegHistory>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetBotLegHistoryQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getBotLegHistory>>
+>;
+export type GetBotLegHistoryQueryError = ErrorType<ApiError>;
+
+/**
+ * @summary Get per-day closed leg counts and cumulative totals for a bot
+ */
+
+export function useGetBotLegHistory<
+  TData = Awaited<ReturnType<typeof getBotLegHistory>>,
+  TError = ErrorType<ApiError>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getBotLegHistory>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetBotLegHistoryQueryOptions(id, options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

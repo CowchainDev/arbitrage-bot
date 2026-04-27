@@ -294,6 +294,46 @@ router.get("/bots/:id/stats", async (req: Request, res: Response) => {
   }
 });
 
+router.get("/bots/:id/leg-history", async (req: Request, res: Response) => {
+  const id = Number(req.params.id);
+  if (!id) {
+    res.status(400).json({ error: "bad_request", message: "Invalid bot id" });
+    return;
+  }
+
+  try {
+    const [bot] = await db.select({ id: botConfigsTable.id }).from(botConfigsTable).where(eq(botConfigsTable.id, id));
+    if (!bot) {
+      res.status(404).json({ error: "not_found", message: "Bot not found" });
+      return;
+    }
+
+    const closedLegs = await db
+      .select({ closedAt: botLegsTable.closedAt })
+      .from(botLegsTable)
+      .where(and(eq(botLegsTable.botConfigId, id), eq(botLegsTable.status, "closed")))
+      .orderBy(botLegsTable.closedAt);
+
+    const countsByDate: Record<string, number> = {};
+    for (const leg of closedLegs) {
+      if (!leg.closedAt) continue;
+      const date = leg.closedAt.toISOString().slice(0, 10);
+      countsByDate[date] = (countsByDate[date] ?? 0) + 1;
+    }
+
+    const sorted = Object.keys(countsByDate).sort();
+    let cumulative = 0;
+    const buckets = sorted.map((date) => {
+      cumulative += countsByDate[date];
+      return { date, count: countsByDate[date], cumulative };
+    });
+
+    res.json({ buckets });
+  } catch (err) {
+    res.status(500).json({ error: "internal_error", message: "Failed to fetch leg history" });
+  }
+});
+
 router.get("/bots/:id/legs", async (req: Request, res: Response) => {
   const id = Number(req.params.id);
   if (!id) {

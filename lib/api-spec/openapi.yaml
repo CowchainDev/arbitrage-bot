@@ -50,7 +50,7 @@ paths:
           name: interval
           schema:
             type: string
-            enum: ["15m", "1h", "4h", "1d"]
+            enum: ["1m", "5m", "15m", "1h", "4h", "1d"]
             default: "1h"
           required: false
           description: Candle interval
@@ -614,6 +614,31 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/BotStats"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+  /bots/{id}/leg-history:
+    get:
+      operationId: getBotLegHistory
+      tags: [bots]
+      summary: Get per-day closed leg counts and cumulative totals for a bot
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Leg history bucketed by day
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BotLegHistory"
         "404":
           description: Not found
           content:
@@ -1425,6 +1450,33 @@ components:
         - avgExitSpread
         - totalVolumeUsd
         - closedLegCount
+
+    LegBucket:
+      type: object
+      properties:
+        date:
+          type: string
+          description: ISO date string (YYYY-MM-DD) for the bucket
+        count:
+          type: number
+          description: Number of legs closed on this day
+        cumulative:
+          type: number
+          description: Running total of closed legs up to and including this day
+      required:
+        - date
+        - count
+        - cumulative
+
+    BotLegHistory:
+      type: object
+      properties:
+        buckets:
+          type: array
+          items:
+            $ref: "#/components/schemas/LegBucket"
+      required:
+        - buckets
 
     DeleteBotResult:
       type: object
