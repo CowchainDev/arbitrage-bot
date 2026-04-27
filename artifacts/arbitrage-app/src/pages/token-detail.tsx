@@ -122,6 +122,7 @@ function TradingViewChart({ symbol, exchange }: { symbol: string; exchange: Exch
       style: "1",
       locale: "en",
       allow_symbol_change: false,
+      hide_side_toolbar: false,
       calendar: false,
       hide_legend: false,
       hide_volume: false,
