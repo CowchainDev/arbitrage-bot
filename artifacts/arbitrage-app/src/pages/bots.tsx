@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from "react";
 import { Link } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
-import { Bot, Power, TrendingUp, TrendingDown, Layers, XCircle, Trash2, LineChart } from "lucide-react";
+import { Bot, Power, TrendingUp, TrendingDown, Layers, XCircle, Trash2, LineChart, Pencil, Check, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { useBots } from "@/hooks/use-bots";
 import { useApiCredentials } from "@/hooks/use-api-credentials";
@@ -11,6 +12,7 @@ import {
   useStopBot,
   useStopAndCloseBot,
   useDeleteBot,
+  useUpdateBot,
   useGetExchangePrices,
   useGetBotStats,
   getGetExchangePricesQueryKey,
@@ -118,6 +120,17 @@ function capitalize(s: string) {
 function BotCard({ bot, openLegs }: { bot: BotConfig; openLegs: BotLeg[] }) {
   const [busy, setBusy] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+
+  const [editEnterSpread, setEditEnterSpread] = useState("");
+  const [editCloseSpread, setEditCloseSpread] = useState("");
+  const [editStopLoss, setEditStopLoss] = useState("");
+  const [editOrderSize, setEditOrderSize] = useState("");
+  const [editMaxOrders, setEditMaxOrders] = useState("");
+  const [editForceStop, setEditForceStop] = useState("");
+
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { getRequestHeaders } = useApiCredentials();
@@ -127,6 +140,62 @@ function BotCard({ bot, openLegs }: { bot: BotConfig; openLegs: BotLeg[] }) {
   const stopMutation = useStopBot({ request: requestOptions });
   const stopAndCloseMutation = useStopAndCloseBot({ request: requestOptions });
   const deleteMutation = useDeleteBot({ request: requestOptions });
+  const updateMutation = useUpdateBot({ request: requestOptions });
+
+  const enterEditMode = () => {
+    setEditEnterSpread(String(bot.enterSpreadPct));
+    setEditCloseSpread(String(bot.closeSpreadPct));
+    setEditStopLoss(String(bot.stopLossSpreadPct));
+    setEditOrderSize(String(bot.orderSizeUsd));
+    setEditMaxOrders(String(bot.maxOrders));
+    setEditForceStop(String(bot.forceStopUsd));
+    setEditError(null);
+    setIsEditing(true);
+  };
+
+  const cancelEdit = () => {
+    setIsEditing(false);
+    setEditError(null);
+  };
+
+  const saveEdit = async () => {
+    const enterSpread = Number(editEnterSpread);
+    const closeSpread = Number(editCloseSpread);
+    const stopLoss = Number(editStopLoss) || 0;
+    const orderSize = Number(editOrderSize);
+    const maxOrders = Math.max(1, Number(editMaxOrders) || 1);
+    const forceStop = Number(editForceStop) || 0;
+    if (!enterSpread || !closeSpread || !orderSize) {
+      setEditError("Enter spread, take profit, and order size are required.");
+      return;
+    }
+    setEditSaving(true);
+    setEditError(null);
+    try {
+      await updateMutation.mutateAsync({
+        id: bot.id,
+        data: {
+          enterSpreadPct: enterSpread,
+          closeSpreadPct: closeSpread,
+          stopLossSpreadPct: stopLoss,
+          orderSizeUsd: orderSize,
+          maxOrders,
+          forceStopUsd: forceStop,
+          exchangeA: bot.exchangeA,
+          exchangeB: bot.exchangeB,
+          leverageA: bot.leverageA,
+          leverageB: bot.leverageB,
+        },
+      });
+      await queryClient.invalidateQueries({ queryKey: getListBotsQueryKey() });
+      setIsEditing(false);
+      toast({ title: "Settings saved", description: `${bot.symbol} bot updated` });
+    } catch (err) {
+      setEditError(err instanceof Error ? err.message : "Save failed");
+    } finally {
+      setEditSaving(false);
+    }
+  };
 
   const statsQuery = useGetBotStats(bot.id, {
     query: { refetchInterval: 30000, queryKey: getGetBotStatsQueryKey(bot.id) },
@@ -249,26 +318,26 @@ function BotCard({ bot, openLegs }: { bot: BotConfig; openLegs: BotLeg[] }) {
     <div className="bg-card border border-border rounded-lg p-4 flex flex-col gap-3">
       <div className="flex items-center justify-between">
         <span className="font-bold text-base tracking-wider">{bot.symbol}</span>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           <StatusBadge bot={bot} legsCount={openLegs.length} />
-          {!bot.enabled && (
+          {!isEditing && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
+              onClick={enterEditMode}
+              title="Edit settings"
+            >
+              <Pencil className="w-3.5 h-3.5" />
+            </Button>
+          )}
+          {!bot.enabled && !isEditing && (
             confirmDelete ? (
               <div className="flex items-center gap-1">
-                <Button
-                  size="sm"
-                  variant="destructive"
-                  className="h-6 px-2 text-xs"
-                  disabled={busy}
-                  onClick={handleDelete}
-                >
+                <Button size="sm" variant="destructive" className="h-6 px-2 text-xs" disabled={busy} onClick={handleDelete}>
                   Confirm
                 </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-6 px-2 text-xs"
-                  onClick={() => setConfirmDelete(false)}
-                >
+                <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={() => setConfirmDelete(false)}>
                   Cancel
                 </Button>
               </div>
@@ -287,6 +356,110 @@ function BotCard({ bot, openLegs }: { bot: BotConfig; openLegs: BotLeg[] }) {
         </div>
       </div>
 
+      {isEditing ? (
+        <div className="flex flex-col gap-2">
+          <div className="grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
+            <div className="flex flex-col gap-1">
+              <label className="text-muted-foreground">Enter spread %</label>
+              <Input
+                type="number"
+                step="0.01"
+                className="h-7 text-xs font-mono px-2"
+                value={editEnterSpread}
+                onChange={(e) => setEditEnterSpread(e.target.value)}
+                placeholder="e.g. 0.5"
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-muted-foreground">Take profit %</label>
+              <Input
+                type="number"
+                step="0.01"
+                className="h-7 text-xs font-mono px-2"
+                value={editCloseSpread}
+                onChange={(e) => setEditCloseSpread(e.target.value)}
+                placeholder="e.g. 0.1"
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-muted-foreground">Stop loss % (0=off)</label>
+              <Input
+                type="number"
+                step="0.01"
+                className="h-7 text-xs font-mono px-2"
+                value={editStopLoss}
+                onChange={(e) => setEditStopLoss(e.target.value)}
+                placeholder="0"
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-muted-foreground">Order size $</label>
+              <Input
+                type="number"
+                step="1"
+                className="h-7 text-xs font-mono px-2"
+                value={editOrderSize}
+                onChange={(e) => setEditOrderSize(e.target.value)}
+                placeholder="e.g. 50"
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-muted-foreground">Max orders</label>
+              <Input
+                type="number"
+                step="1"
+                min="1"
+                className="h-7 text-xs font-mono px-2"
+                value={editMaxOrders}
+                onChange={(e) => setEditMaxOrders(e.target.value)}
+                placeholder="e.g. 3"
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-muted-foreground">Force stop $</label>
+              <Input
+                type="number"
+                step="1"
+                className="h-7 text-xs font-mono px-2"
+                value={editForceStop}
+                onChange={(e) => setEditForceStop(e.target.value)}
+                placeholder="0"
+              />
+            </div>
+          </div>
+          {editError && <p className="text-xs text-destructive">{editError}</p>}
+          <div className="flex gap-2 pt-1">
+            <Button
+              size="sm"
+              className="flex-1 h-7 text-xs bg-emerald-600 hover:bg-emerald-500 text-white"
+              disabled={editSaving}
+              onClick={saveEdit}
+            >
+              {editSaving ? (
+                <span className="flex items-center gap-1.5">
+                  <span className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
+                  Saving…
+                </span>
+              ) : (
+                <span className="flex items-center gap-1.5">
+                  <Check className="w-3 h-3" />
+                  Save
+                </span>
+              )}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="flex-1 h-7 text-xs"
+              disabled={editSaving}
+              onClick={cancelEdit}
+            >
+              <X className="w-3 h-3 mr-1" />
+              Cancel
+            </Button>
+          </div>
+        </div>
+      ) : (
       <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
         <div className="flex items-center justify-between col-span-2">
           <span className="text-muted-foreground">Exchanges</span>
@@ -331,6 +504,7 @@ function BotCard({ bot, openLegs }: { bot: BotConfig; openLegs: BotLeg[] }) {
           <span className="font-mono">${bot.forceStopUsd}</span>
         </div>
       </div>
+      )}
 
       <div className="border-t border-border pt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
         <div className="flex items-center justify-between col-span-2">

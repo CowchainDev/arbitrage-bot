@@ -31,6 +31,14 @@ const CRED_CACHE_TTL_MS = 30_000;
 type CredEntry = { apiKey: string; apiSecret: string; passphrase?: string | null };
 const credCache = new Map<string, { data: CredEntry; ts: number }>();
 
+/**
+ * Tracks the last timestamp (ms) at which each bot opened a new leg.
+ * Enforces a 2-tick cooldown between consecutive leg openings so that
+ * multiple slots don't all fire at once when conditions are broadly met.
+ */
+const lastLegOpenedAt = new Map<number, number>();
+const LEG_OPEN_COOLDOWN_MS = 2 * WATCHER_INTERVAL_MS; // ~3 s
+
 async function getCachedCredentials(exchange: SupportedExchange): Promise<CredEntry | null> {
   const cached = credCache.get(exchange);
   if (cached && Date.now() - cached.ts < CRED_CACHE_TTL_MS) {
@@ -359,8 +367,15 @@ async function processBotConfig(config: BotConfig, canOpen: boolean): Promise<vo
   if (!canOpen) return;
 
   const remainingOpen = openLegs.length - confirmedClosedCount;
-  const shouldOpen = Math.abs(spreadPct) >= enterSpread && remainingOpen < config.maxOrders;
-  if (shouldOpen) {
+  const spreadMeetsThreshold = Math.abs(spreadPct) >= enterSpread;
+  const belowMaxOrders = remainingOpen < config.maxOrders;
+
+  // Cooldown: require at least 2 watcher ticks (~3 s) between consecutive leg openings
+  // so that multiple DCA slots don't all fire in the same burst when conditions are met.
+  const lastOpenMs = lastLegOpenedAt.get(config.id) ?? 0;
+  const cooldownElapsed = Date.now() - lastOpenMs >= LEG_OPEN_COOLDOWN_MS;
+
+  if (spreadMeetsThreshold && belowMaxOrders && cooldownElapsed) {
     const [credsA, credsB] = await Promise.all([
       getCachedCredentials(exchangeA as SupportedExchange),
       getCachedCredentials(exchangeB as SupportedExchange),
@@ -373,6 +388,12 @@ async function processBotConfig(config: BotConfig, canOpen: boolean): Promise<vo
       return;
     }
     await openLeg(config, spreadPct);
+    lastLegOpenedAt.set(config.id, Date.now());
+  } else if (spreadMeetsThreshold && belowMaxOrders && !cooldownElapsed) {
+    logger.debug(
+      { symbol: config.symbol, cooldownRemainingMs: LEG_OPEN_COOLDOWN_MS - (Date.now() - lastOpenMs) },
+      "Bot: spread meets threshold but cooldown not elapsed — skipping open this tick",
+    );
   }
 }
 
