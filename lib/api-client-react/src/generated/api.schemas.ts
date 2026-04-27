@@ -460,6 +460,12 @@ export interface DeleteBotResult {
 export interface ExchangeKlinePoint {
   /** Unix timestamp in milliseconds */
   t: number;
+  /** Open price */
+  o?: number;
+  /** High price */
+  h?: number;
+  /** Low price */
+  l?: number;
   /** Close price */
   c: number;
 }
@@ -492,10 +498,12 @@ export type GetExchangeKlinesInterval =
   (typeof GetExchangeKlinesInterval)[keyof typeof GetExchangeKlinesInterval];
 
 export const GetExchangeKlinesInterval = {
+  "1m":  "1m",
+  "5m":  "5m",
   "15m": "15m",
-  "1h": "1h",
-  "4h": "4h",
-  "1d": "1d",
+  "1h":  "1h",
+  "4h":  "4h",
+  "1d":  "1d",
 } as const;
 
 export type StopAndCloseBot200 = {

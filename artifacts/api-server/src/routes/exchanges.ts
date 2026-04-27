@@ -58,7 +58,10 @@ export function recordKlinesHit(symbol: string): void {
 }
 
 function getKlinesCacheTtl(interval: string): number {
-  return interval === "4h" || interval === "1d" ? KLINES_TTL_LONG_MS : KLINES_TTL_SHORT_MS;
+  if (interval === "4h" || interval === "1d") return KLINES_TTL_LONG_MS;
+  if (interval === "1m") return 30_000;
+  if (interval === "5m") return 60_000;
+  return KLINES_TTL_SHORT_MS;
 }
 
 export const PREWARM_SYMBOLS = ["BTC", "ETH", "SOL", "BNB", "XRP", "DOGE"];
@@ -74,20 +77,20 @@ const RELAY_TIMEOUT_MS = 8000;
 // These functions return { t: ms, c: closePrice }[] sorted oldest-first.
 // ---------------------------------------------------------------------------
 
-type OhlcvPoint = { t: number; c: number };
+type OhlcvPoint = { t: number; o: number; h: number; l: number; c: number };
 
 async function fetchBinanceOhlcvDirect(symbol: string, interval: string, limit: number): Promise<OhlcvPoint[]> {
-  const intervalMap: Record<string, string> = { "15m": "15m", "1h": "1h", "4h": "4h", "1d": "1d" };
+  const intervalMap: Record<string, string> = { "1m": "1m", "5m": "5m", "15m": "15m", "1h": "1h", "4h": "4h", "1d": "1d" };
   const tf = intervalMap[interval] ?? "1h";
   const url = `https://fapi.binance.com/fapi/v1/klines?symbol=${symbol}USDT&interval=${tf}&limit=${Math.min(limit, 500)}`;
   const resp = await fetch(url, { signal: AbortSignal.timeout(RELAY_TIMEOUT_MS) });
   if (!resp.ok) throw new Error(`Binance HTTP ${resp.status}`);
   const rows = await resp.json() as [number, string, string, string, string, ...unknown[]][];
-  return rows.map((r) => ({ t: r[0], c: parseFloat(r[4]) })).filter((p) => p.t > 0 && p.c > 0);
+  return rows.map((r) => ({ t: r[0], o: parseFloat(r[1]), h: parseFloat(r[2]), l: parseFloat(r[3]), c: parseFloat(r[4]) })).filter((p) => p.t > 0 && p.c > 0);
 }
 
 async function fetchBybitOhlcvDirect(symbol: string, interval: string, limit: number): Promise<OhlcvPoint[]> {
-  const intervalMap: Record<string, string> = { "15m": "15", "1h": "60", "4h": "240", "1d": "D" };
+  const intervalMap: Record<string, string> = { "1m": "1", "5m": "5", "15m": "15", "1h": "60", "4h": "240", "1d": "D" };
   const tf = intervalMap[interval] ?? "60";
   const clampedLimit = Math.min(limit, 200);
   const url = `https://api.bybit.com/v5/market/kline?category=linear&symbol=${symbol}USDT&interval=${tf}&limit=${clampedLimit}`;
@@ -97,25 +100,25 @@ async function fetchBybitOhlcvDirect(symbol: string, interval: string, limit: nu
   const json = await resp.json() as BybitResp;
   if (json.retCode !== 0) throw new Error(`Bybit retCode ${json.retCode}`);
   return json.result.list
-    .map((r) => ({ t: parseInt(r[0], 10), c: parseFloat(r[4]) }))
+    .map((r) => ({ t: parseInt(r[0], 10), o: parseFloat(r[1]), h: parseFloat(r[2]), l: parseFloat(r[3]), c: parseFloat(r[4]) }))
     .filter((p) => p.t > 0 && p.c > 0)
     .reverse();
 }
 
 async function fetchGateOhlcvDirect(symbol: string, interval: string, limit: number): Promise<OhlcvPoint[]> {
-  const intervalMap: Record<string, string> = { "15m": "15m", "1h": "1h", "4h": "4h", "1d": "1d" };
+  const intervalMap: Record<string, string> = { "1m": "1m", "5m": "5m", "15m": "15m", "1h": "1h", "4h": "4h", "1d": "1d" };
   const tf = intervalMap[interval] ?? "1h";
   const contract = `${symbol}_USDT`;
   const url = `https://api.gateio.ws/api/v4/futures/usdt/candlesticks?contract=${contract}&interval=${tf}&limit=${Math.min(limit, 2000)}`;
   const resp = await fetch(url, { signal: AbortSignal.timeout(RELAY_TIMEOUT_MS) });
   if (!resp.ok) throw new Error(`Gate HTTP ${resp.status}`);
-  type GateCandle = { t: number; c: string };
+  type GateCandle = { t: number; o: string; h: string; l: string; c: string };
   const rows = await resp.json() as GateCandle[];
-  return rows.map((r) => ({ t: r.t * 1000, c: parseFloat(r.c) })).filter((p) => p.t > 0 && p.c > 0);
+  return rows.map((r) => ({ t: r.t * 1000, o: parseFloat(r.o), h: parseFloat(r.h), l: parseFloat(r.l), c: parseFloat(r.c) })).filter((p) => p.t > 0 && p.c > 0);
 }
 
 async function fetchOkxOhlcvDirect(symbol: string, interval: string, limit: number): Promise<OhlcvPoint[]> {
-  const intervalMap: Record<string, string> = { "15m": "15m", "1h": "1H", "4h": "4H", "1d": "1D" };
+  const intervalMap: Record<string, string> = { "1m": "1m", "5m": "5m", "15m": "15m", "1h": "1H", "4h": "4H", "1d": "1D" };
   const bar = intervalMap[interval] ?? "1H";
   const instId = `${symbol}-USDT-SWAP`;
   const OKX_MAX = 100;
@@ -135,7 +138,7 @@ async function fetchOkxOhlcvDirect(symbol: string, interval: string, limit: numb
     const json = await resp.json() as OkxResp;
     if (!json.data || json.data.length === 0) break;
 
-    const batch = json.data.map((r) => ({ t: parseInt(r[0], 10), c: parseFloat(r[4]) })).filter((p) => p.t > 0 && p.c > 0);
+    const batch = json.data.map((r) => ({ t: parseInt(r[0], 10), o: parseFloat(r[1]), h: parseFloat(r[2]), l: parseFloat(r[3]), c: parseFloat(r[4]) })).filter((p) => p.t > 0 && p.c > 0);
     points.unshift(...batch);
     remaining -= batch.length;
     if (batch.length < batchSize) break;
@@ -146,9 +149,9 @@ async function fetchOkxOhlcvDirect(symbol: string, interval: string, limit: numb
 }
 
 async function fetchMexcOhlcvDirect(symbol: string, interval: string, limit: number): Promise<OhlcvPoint[]> {
-  const intervalMap: Record<string, string> = { "15m": "Min15", "1h": "Min60", "4h": "Hour4", "1d": "Day1" };
+  const intervalMap: Record<string, string> = { "1m": "Min1", "5m": "Min5", "15m": "Min15", "1h": "Min60", "4h": "Hour4", "1d": "Day1" };
   const tf = intervalMap[interval] ?? "Min60";
-  const intervalMs: Record<string, number> = { "15m": 15 * 60_000, "1h": 60 * 60_000, "4h": 4 * 60 * 60_000, "1d": 24 * 60 * 60_000 };
+  const intervalMs: Record<string, number> = { "1m": 60_000, "5m": 5 * 60_000, "15m": 15 * 60_000, "1h": 60 * 60_000, "4h": 4 * 60 * 60_000, "1d": 24 * 60 * 60_000 };
   const msPerCandle = intervalMs[interval] ?? 60 * 60_000;
   const end = Date.now();
   const start = end - msPerCandle * Math.min(limit, 2000);
@@ -156,11 +159,11 @@ async function fetchMexcOhlcvDirect(symbol: string, interval: string, limit: num
   const url = `https://contract.mexc.com/api/v1/contract/kline/${contract}?interval=${tf}&start=${Math.floor(start / 1000)}&end=${Math.floor(end / 1000)}`;
   const resp = await fetch(url, { signal: AbortSignal.timeout(RELAY_TIMEOUT_MS) });
   if (!resp.ok) throw new Error(`MEXC HTTP ${resp.status}`);
-  type MexcResp = { success: boolean; data: { time: number[]; close: number[] } };
+  type MexcResp = { success: boolean; data: { time: number[]; open: number[]; high: number[]; low: number[]; close: number[] } };
   const json = await resp.json() as MexcResp;
   if (!json.success || !json.data) throw new Error("MEXC response error");
   return json.data.time
-    .map((t, i) => ({ t: t * 1000, c: json.data.close[i] }))
+    .map((t, i) => ({ t: t * 1000, o: json.data.open[i], h: json.data.high[i], l: json.data.low[i], c: json.data.close[i] }))
     .filter((p) => p.t > 0 && p.c > 0);
 }
 
@@ -247,7 +250,7 @@ async function fetchKlinesForSymbol(
 
   const ccxtSymbol = `${symbol}/USDT:USDT`;
   const timeframeMap: Record<string, string> = {
-    "15m": "15m", "1h": "1h", "4h": "4h", "1d": "1d",
+    "1m": "1m", "5m": "5m", "15m": "15m", "1h": "1h", "4h": "4h", "1d": "1d",
   };
   const timeframe = timeframeMap[interval] ?? "1h";
 
@@ -271,7 +274,7 @@ async function fetchKlinesForSymbol(
             setTimeout(() => reject(new Error("klines timeout")), KLINES_TIMEOUT_MS)
           ),
         ]);
-        return raw.map((row) => ({ t: row[0], c: row[4] })).filter((p) => p.t > 0 && p.c > 0);
+        return raw.map((row) => ({ t: row[0], o: row[1], h: row[2], l: row[3], c: row[4] })).filter((p) => p.t > 0 && p.c > 0);
       });
       return { name, data };
     })
@@ -1056,7 +1059,7 @@ router.get("/exchanges/klines", async (req: Request, res: Response) => {
 
   const ccxtSymbol = `${symbol}/USDT:USDT`;
   const timeframeMap: Record<string, string> = {
-    "15m": "15m", "1h": "1h", "4h": "4h", "1d": "1d",
+    "1m": "1m", "5m": "5m", "15m": "15m", "1h": "1h", "4h": "4h", "1d": "1d",
   };
   const timeframe = timeframeMap[interval] ?? "1h";
 
@@ -1080,7 +1083,7 @@ router.get("/exchanges/klines", async (req: Request, res: Response) => {
             setTimeout(() => reject(new Error("klines timeout")), KLINES_TIMEOUT_MS)
           ),
         ]);
-        return raw.map((row) => ({ t: row[0], c: row[4] })).filter((p) => p.t > 0 && p.c > 0);
+        return raw.map((row) => ({ t: row[0], o: row[1], h: row[2], l: row[3], c: row[4] })).filter((p) => p.t > 0 && p.c > 0);
       });
       return { name, data };
     })

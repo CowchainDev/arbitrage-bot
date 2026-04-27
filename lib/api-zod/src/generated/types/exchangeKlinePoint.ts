@@ -9,6 +9,12 @@
 export interface ExchangeKlinePoint {
   /** Unix timestamp in milliseconds */
   t: number;
+  /** Open price */
+  o?: number;
+  /** High price */
+  h?: number;
+  /** Low price */
+  l?: number;
   /** Close price */
   c: number;
 }

@@ -3,6 +3,7 @@ import { Link } from "wouter";
 import { ArrowLeft, TrendingUp, XCircle, ChevronDown, ChevronUp, PanelRight, PanelRightClose, History } from "lucide-react";
 import {
   LineChart,
+  ComposedChart,
   Line,
   XAxis,
   YAxis,
@@ -13,6 +14,7 @@ import {
   Area,
   ReferenceLine,
   ReferenceArea,
+  Customized,
 } from "recharts";
 import {
   useGetExchangePrices,
@@ -49,13 +51,12 @@ type LiveTimeRange   = { label: string; interval: "live";                   limi
 type CandleTimeRange = { label: string; interval: GetExchangeKlinesInterval; limit: number; liveSeconds?: never };
 type TimeRange = LiveTimeRange | CandleTimeRange;
 const TIME_RANGES: TimeRange[] = [
-  { label: "30s", interval: "live", limit: 120,                              liveSeconds: 30  },
-  { label: "1m",  interval: "live", limit: 240,                              liveSeconds: 60  },
-  { label: "5m",  interval: "live", limit: 300,                              liveSeconds: 300 },
-  { label: "15m", interval: "15m",  limit: CANDLE_LIMIT_BY_INTERVAL["15m"] },
-  { label: "1h",  interval: "1h",   limit: CANDLE_LIMIT_BY_INTERVAL["1h"]  },
-  { label: "4h",  interval: "4h",   limit: CANDLE_LIMIT_BY_INTERVAL["4h"]  },
-  { label: "1d",  interval: "1d",   limit: CANDLE_LIMIT_BY_INTERVAL["1d"]  },
+  { label: "1m",  interval: "1m",  limit: CANDLE_LIMIT_BY_INTERVAL["1m"]  },
+  { label: "5m",  interval: "5m",  limit: CANDLE_LIMIT_BY_INTERVAL["5m"]  },
+  { label: "15m", interval: "15m", limit: CANDLE_LIMIT_BY_INTERVAL["15m"] },
+  { label: "1h",  interval: "1h",  limit: CANDLE_LIMIT_BY_INTERVAL["1h"]  },
+  { label: "4h",  interval: "4h",  limit: CANDLE_LIMIT_BY_INTERVAL["4h"]  },
+  { label: "1d",  interval: "1d",  limit: CANDLE_LIMIT_BY_INTERVAL["1d"]  },
 ];
 
 const EXCHANGE_LINE_COLORS: Record<string, string> = {
@@ -266,6 +267,40 @@ function formatPriceFull(price: number): string {
 }
 
 type ChartRow = { t: number } & Partial<Record<ExchangeName, number>>;
+
+type CandlePoint = { t: number; o: number; h: number; l: number; c: number };
+
+function CandlestickLayer(props: Record<string, unknown>) {
+  const xAxisMap = props.xAxisMap as Record<string, { scale: (v: number) => number }> | undefined;
+  const yAxisMap = props.yAxisMap as Record<string, { scale: (v: number) => number }> | undefined;
+  const data = props.data as CandlePoint[] | undefined;
+  const xScale = xAxisMap ? Object.values(xAxisMap)[0]?.scale : undefined;
+  const yScale = yAxisMap ? Object.values(yAxisMap)[0]?.scale : undefined;
+  if (!xScale || !yScale || !data || data.length < 2) return null;
+  const gap = Math.abs(xScale(data[1].t) - xScale(data[0].t));
+  const candleW = Math.max(2, Math.min(10, gap * 0.7));
+  return (
+    <g>
+      {data.map((d) => {
+        const cx = xScale(d.t);
+        const yH = yScale(d.h);
+        const yL = yScale(d.l);
+        const yO = yScale(d.o);
+        const yC = yScale(d.c);
+        const isUp = d.c >= d.o;
+        const color = isUp ? "#22c55e" : "#ef4444";
+        const bodyTop = Math.min(yO, yC);
+        const bodyH = Math.max(Math.abs(yC - yO), 1);
+        return (
+          <g key={d.t}>
+            <line x1={cx} x2={cx} y1={yH} y2={yL} stroke={color} strokeWidth={1} />
+            <rect x={cx - candleW / 2} y={bodyTop} width={candleW} height={bodyH} fill={color} />
+          </g>
+        );
+      })}
+    </g>
+  );
+}
 
 function loadAllExchangeHeaders(base: RequestInit | undefined): RequestInit {
   const baseHeaders = (base?.headers ?? {}) as Record<string, string>;
@@ -699,7 +734,9 @@ function OpenPositionsSection({
 
 export default function TokenDetail({ params }: { params: { symbol: string } }) {
   const symbol = params.symbol.toUpperCase();
-  const [timeRange, setTimeRange] = useState<TimeRange>(TIME_RANGES[3]); // default 15m
+  const [timeRange, setTimeRange] = useState<TimeRange>(TIME_RANGES[2]); // default 15m
+  const [chartType, setChartType] = useState<"line" | "candle">("line");
+  const [candleExchange, setCandleExchange] = useState<ExchangeName | null>(null);
   const [extraBatches, setExtraBatches] = useState(0);
   const [terminalCollapsed, setTerminalCollapsed] = useState<boolean>(() => {
     try { return localStorage.getItem("arbitrage-terminalCollapsed") === "true"; } catch { return false; }
@@ -854,6 +891,22 @@ export default function TokenDetail({ params }: { params: { symbol: string } }) 
       return { t: row.t, spread };
     });
   }, [chartDataFinal, activeExchangesFinal]);
+
+  const effectiveCandleExchange: ExchangeName | null = useMemo(() => {
+    if (!klines) return null;
+    const exList = candleExchange && (klines[candleExchange]?.length ?? 0) > 0
+      ? candleExchange
+      : activeExchanges[0] ?? null;
+    return exList;
+  }, [candleExchange, activeExchanges, klines]);
+
+  const candleData = useMemo((): CandlePoint[] => {
+    if (chartType !== "candle" || !klines || !effectiveCandleExchange) return [];
+    const pts = klines[effectiveCandleExchange] ?? [];
+    return pts
+      .filter((pt) => pt.o != null && pt.h != null && pt.l != null)
+      .map((pt) => ({ t: pt.t, o: pt.o!, h: pt.h!, l: pt.l!, c: pt.c }));
+  }, [chartType, klines, effectiveCandleExchange]);
 
   const formatXAxis = (t: number) => {
     const d = new Date(t);
@@ -1049,6 +1102,22 @@ export default function TokenDetail({ params }: { params: { symbol: string } }) 
                 <span className="w-3.5 h-3.5 border-2 border-muted-foreground border-t-transparent rounded-full animate-spin ml-1 opacity-60" />
               )}
               </div>
+              <div className="flex items-center gap-0.5 bg-muted/40 rounded p-0.5">
+                <button
+                  onClick={() => setChartType("line")}
+                  title="Line chart"
+                  className={`px-2 py-0.5 text-xs rounded transition-colors ${chartType === "line" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                >
+                  Line
+                </button>
+                <button
+                  onClick={() => setChartType("candle")}
+                  title="Candlestick chart"
+                  className={`px-2 py-0.5 text-xs rounded transition-colors ${chartType === "candle" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                >
+                  Candle
+                </button>
+              </div>
               <button
                 onClick={() => setTerminalCollapsed((v) => !v)}
                 title={terminalCollapsed ? "Show terminal" : "Hide terminal"}
@@ -1072,12 +1141,32 @@ export default function TokenDetail({ params }: { params: { symbol: string } }) 
               <div className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">
                 Price (USDT perpetual)
               </div>
-              {isLiveMode && (
-                <div className="flex items-center gap-1.5 text-xs text-emerald-400 font-mono">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                  LIVE
-                </div>
-              )}
+              <div className="flex items-center gap-2">
+                {chartType === "candle" && activeExchanges.length > 0 && (
+                  <div className="flex items-center gap-1">
+                    {activeExchanges.map((ex) => (
+                      <button
+                        key={ex}
+                        onClick={() => setCandleExchange(ex)}
+                        className={`px-1.5 py-0.5 text-[10px] rounded font-mono transition-colors ${
+                          effectiveCandleExchange === ex
+                            ? "text-foreground border border-border bg-muted"
+                            : "text-muted-foreground hover:text-foreground"
+                        }`}
+                        style={effectiveCandleExchange === ex ? { borderColor: EXCHANGE_LINE_COLORS[ex] } : {}}
+                      >
+                        {EXCHANGE_SHORT[ex]}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {isLiveMode && (
+                  <div className="flex items-center gap-1.5 text-xs text-emerald-400 font-mono">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    LIVE
+                  </div>
+                )}
+              </div>
             </div>
             {!isLiveMode && klinesLoading ? (
               <div className="h-64 flex items-center justify-center">
@@ -1097,92 +1186,164 @@ export default function TokenDetail({ params }: { params: { symbol: string } }) 
             ) : (
               <div className="h-64">
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={chartDataFinal} margin={{ top: 14, right: 8, left: 0, bottom: 0 }}>
-                    <CartesianGrid
-                      strokeDasharray="3 3"
-                      stroke="hsl(var(--border))"
-                      strokeOpacity={0.4}
-                    />
-                    <XAxis
-                      dataKey="t"
-                      type="number"
-                      scale="time"
-                      domain={chartXDomain}
-                      tickFormatter={formatXAxis}
-                      tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
-                      tickLine={false}
-                      axisLine={false}
-                      minTickGap={50}
-                    />
-                    <YAxis
-                      tickFormatter={formatPriceAxis}
-                      tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
-                      tickLine={false}
-                      axisLine={false}
-                      width={70}
-                      domain={["auto", "auto"]}
-                    />
-                    <Tooltip
-                      content={({ active, payload, label }) => {
-                        if (!active || !payload?.length) return null;
-                        return (
-                          <div className="bg-background border border-border rounded px-2.5 py-1.5 text-xs space-y-1 shadow-lg">
-                            <div className="text-muted-foreground font-mono mb-1">
-                              {formatXAxis(label as number)}
+                  {chartType === "candle" ? (
+                    <ComposedChart data={candleData} margin={{ top: 14, right: 8, left: 0, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" strokeOpacity={0.4} />
+                      <XAxis
+                        dataKey="t"
+                        type="number"
+                        scale="time"
+                        domain={chartXDomain}
+                        tickFormatter={formatXAxis}
+                        tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+                        tickLine={false}
+                        axisLine={false}
+                        minTickGap={50}
+                      />
+                      <YAxis
+                        tickFormatter={formatPriceAxis}
+                        tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+                        tickLine={false}
+                        axisLine={false}
+                        width={70}
+                        domain={["auto", "auto"]}
+                      />
+                      <Tooltip
+                        content={({ active, label }) => {
+                          if (!active || label == null) return null;
+                          const ts = label as number;
+                          const candle = candleData.find((d) => d.t === ts);
+                          if (!candle) return null;
+                          return (
+                            <div className="bg-background border border-border rounded px-2.5 py-1.5 text-xs space-y-0.5 shadow-lg">
+                              <div className="text-muted-foreground font-mono mb-1">{formatXAxis(ts)}</div>
+                              <div className="font-mono">O: {formatPriceFull(candle.o)}</div>
+                              <div className="font-mono">H: <span className="text-emerald-400">{formatPriceFull(candle.h)}</span></div>
+                              <div className="font-mono">L: <span className="text-rose-400">{formatPriceFull(candle.l)}</span></div>
+                              <div className="font-mono">C: {formatPriceFull(candle.c)}</div>
                             </div>
-                            {payload.map((p) => (
-                              <div key={p.dataKey} className="flex items-center gap-2">
-                                <span
-                                  className="w-2 h-2 rounded-full shrink-0"
-                                  style={{ background: p.color }}
-                                />
-                                <span className="font-medium" style={{ color: p.color }}>
-                                  {EXCHANGE_DISPLAY[p.dataKey as string] ?? p.dataKey}
-                                </span>
-                                <span className="font-mono text-foreground ml-auto pl-4">
-                                  {formatPriceFull(p.value as number)}
-                                </span>
+                          );
+                        }}
+                      />
+                      {/* Hidden lines to pin Y-axis domain to candle hi/lo */}
+                      <Line dataKey="h" stroke="transparent" dot={false} isAnimationActive={false} legendType="none" />
+                      <Line dataKey="l" stroke="transparent" dot={false} isAnimationActive={false} legendType="none" />
+                      <Customized component={(p: object) => (
+                        <CandlestickLayer {...(p as Record<string, unknown>)} data={candleData} />
+                      )} />
+                      {/* Open-position horizontal entry lines */}
+                      {botStatus?.openLegs.map((leg) => [
+                        leg.bybitEntry != null && (
+                          <ReferenceLine key={`ea-${leg.id}`} y={leg.bybitEntry} stroke={leg.bybitSide === "long" ? "#22c55e" : "#ef4444"} strokeDasharray="6 3" strokeWidth={1} strokeOpacity={0.7} label={{ value: leg.bybitSide === "long" ? "Long ExA" : "Short ExA", position: "insideTopRight", fontSize: 9, fill: leg.bybitSide === "long" ? "#22c55e" : "#ef4444" }} />
+                        ),
+                        leg.binanceEntry != null && (
+                          <ReferenceLine key={`eb-${leg.id}`} y={leg.binanceEntry} stroke={leg.bybitSide === "long" ? "#ef4444" : "#22c55e"} strokeDasharray="6 3" strokeWidth={1} strokeOpacity={0.7} label={{ value: leg.bybitSide === "long" ? "Short ExB" : "Long ExB", position: "insideBottomRight", fontSize: 9, fill: leg.bybitSide === "long" ? "#ef4444" : "#22c55e" }} />
+                        ),
+                      ])}
+                      {tradePairs.map((pair) => (
+                        <ReferenceArea key={`band-${pair.legId}`} x1={pair.openedAtMs} x2={pair.closedAtMs} fill="#22c55e" fillOpacity={0.06} stroke="none" />
+                      ))}
+                      {tradeMarkers.map((marker, i) => (
+                        <ReferenceLine key={`${marker.legId}-${marker.label}-${i}`} x={marker.t} stroke={marker.color} strokeDasharray="4 2" strokeWidth={1.5} label={(props) => <TradeMarkerLabel {...props} marker={marker} />} />
+                      ))}
+                    </ComposedChart>
+                  ) : (
+                    <LineChart data={chartDataFinal} margin={{ top: 14, right: 8, left: 0, bottom: 0 }}>
+                      <CartesianGrid
+                        strokeDasharray="3 3"
+                        stroke="hsl(var(--border))"
+                        strokeOpacity={0.4}
+                      />
+                      <XAxis
+                        dataKey="t"
+                        type="number"
+                        scale="time"
+                        domain={chartXDomain}
+                        tickFormatter={formatXAxis}
+                        tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+                        tickLine={false}
+                        axisLine={false}
+                        minTickGap={50}
+                      />
+                      <YAxis
+                        tickFormatter={formatPriceAxis}
+                        tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+                        tickLine={false}
+                        axisLine={false}
+                        width={70}
+                        domain={["auto", "auto"]}
+                      />
+                      <Tooltip
+                        content={({ active, payload, label }) => {
+                          if (!active || !payload?.length) return null;
+                          return (
+                            <div className="bg-background border border-border rounded px-2.5 py-1.5 text-xs space-y-1 shadow-lg">
+                              <div className="text-muted-foreground font-mono mb-1">
+                                {formatXAxis(label as number)}
                               </div>
-                            ))}
-                          </div>
-                        );
-                      }}
-                    />
-                    {activeExchangesFinal.map((ex) => (
-                      <Line
-                        key={ex}
-                        type="monotone"
-                        dataKey={ex}
-                        stroke={EXCHANGE_LINE_COLORS[ex] ?? "#888"}
-                        strokeWidth={1.5}
-                        dot={false}
-                        isAnimationActive={false}
-                        connectNulls
+                              {payload.map((p) => (
+                                <div key={p.dataKey} className="flex items-center gap-2">
+                                  <span
+                                    className="w-2 h-2 rounded-full shrink-0"
+                                    style={{ background: p.color }}
+                                  />
+                                  <span className="font-medium" style={{ color: p.color }}>
+                                    {EXCHANGE_DISPLAY[p.dataKey as string] ?? p.dataKey}
+                                  </span>
+                                  <span className="font-mono text-foreground ml-auto pl-4">
+                                    {formatPriceFull(p.value as number)}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          );
+                        }}
                       />
-                    ))}
-                    {tradePairs.map((pair) => (
-                      <ReferenceArea
-                        key={`band-${pair.legId}`}
-                        x1={pair.openedAtMs}
-                        x2={pair.closedAtMs}
-                        fill="#22c55e"
-                        fillOpacity={0.06}
-                        stroke="none"
-                      />
-                    ))}
-                    {tradeMarkers.map((marker, i) => (
-                      <ReferenceLine
-                        key={`${marker.legId}-${marker.label}-${i}`}
-                        x={marker.t}
-                        stroke={marker.color}
-                        strokeDasharray="4 2"
-                        strokeWidth={1.5}
-                        label={(props) => (
-                          <TradeMarkerLabel {...props} marker={marker} />
-                        )}
-                      />
-                    ))}
-                  </LineChart>
+                      {activeExchangesFinal.map((ex) => (
+                        <Line
+                          key={ex}
+                          type="monotone"
+                          dataKey={ex}
+                          stroke={EXCHANGE_LINE_COLORS[ex] ?? "#888"}
+                          strokeWidth={1.5}
+                          dot={false}
+                          isAnimationActive={false}
+                          connectNulls
+                        />
+                      ))}
+                      {/* Open-position horizontal entry lines */}
+                      {botStatus?.openLegs.map((leg) => [
+                        leg.bybitEntry != null && (
+                          <ReferenceLine key={`ea-${leg.id}`} y={leg.bybitEntry} stroke={leg.bybitSide === "long" ? "#22c55e" : "#ef4444"} strokeDasharray="6 3" strokeWidth={1} strokeOpacity={0.7} label={{ value: leg.bybitSide === "long" ? "Long ExA" : "Short ExA", position: "insideTopRight", fontSize: 9, fill: leg.bybitSide === "long" ? "#22c55e" : "#ef4444" }} />
+                        ),
+                        leg.binanceEntry != null && (
+                          <ReferenceLine key={`eb-${leg.id}`} y={leg.binanceEntry} stroke={leg.bybitSide === "long" ? "#ef4444" : "#22c55e"} strokeDasharray="6 3" strokeWidth={1} strokeOpacity={0.7} label={{ value: leg.bybitSide === "long" ? "Short ExB" : "Long ExB", position: "insideBottomRight", fontSize: 9, fill: leg.bybitSide === "long" ? "#ef4444" : "#22c55e" }} />
+                        ),
+                      ])}
+                      {tradePairs.map((pair) => (
+                        <ReferenceArea
+                          key={`band-${pair.legId}`}
+                          x1={pair.openedAtMs}
+                          x2={pair.closedAtMs}
+                          fill="#22c55e"
+                          fillOpacity={0.06}
+                          stroke="none"
+                        />
+                      ))}
+                      {tradeMarkers.map((marker, i) => (
+                        <ReferenceLine
+                          key={`${marker.legId}-${marker.label}-${i}`}
+                          x={marker.t}
+                          stroke={marker.color}
+                          strokeDasharray="4 2"
+                          strokeWidth={1.5}
+                          label={(props) => (
+                            <TradeMarkerLabel {...props} marker={marker} />
+                          )}
+                        />
+                      ))}
+                    </LineChart>
+                  )}
                 </ResponsiveContainer>
               </div>
             )}
