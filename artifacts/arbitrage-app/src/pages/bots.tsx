@@ -542,6 +542,12 @@ function BotCard({ bot, openLegs }: { bot: BotConfig; openLegs: BotLeg[] }) {
               : <span className="text-muted-foreground/40">—</span>}
           </span>
         </div>
+        <div className="flex items-center justify-between col-span-2">
+          <span className="text-muted-foreground">Closed legs</span>
+          <span className="font-mono">
+            {stats ? stats.closedLegCount : <span className="text-muted-foreground/40">—</span>}
+          </span>
+        </div>
       </div>
 
       {showChart && (
