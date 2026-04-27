@@ -96,6 +96,33 @@ function computeLegPnl(
   return pnlA + pnlB - openFees - extraFees;
 }
 
+/**
+ * Retry a DB operation up to maxAttempts times with exponential back-off.
+ * Protects against transient "Authentication timed out" / TLS drops that caused
+ * leg 97's realized P&L to be silently lost during close.
+ */
+async function withDbRetry<T>(
+  fn: () => Promise<T>,
+  label: string,
+  maxAttempts = 4,
+  baseDelayMs = 800,
+): Promise<T> {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (attempt === maxAttempts) {
+        logger.error({ err, label, attempt }, "DB operation failed after all retries");
+        throw err;
+      }
+      const delay = baseDelayMs * attempt;
+      logger.warn({ err, label, attempt, retryInMs: delay }, "DB operation failed, retrying");
+      await new Promise((r) => setTimeout(r, delay));
+    }
+  }
+  throw new Error("unreachable");
+}
+
 function botExchangeNames(config: BotConfig): { exchangeA: string; exchangeB: string } {
   return {
     exchangeA: config.exchangeA ?? "bybit",
@@ -229,32 +256,39 @@ async function closeLeg(
   const totalFees =
     Number(leg.openFeeA ?? 0) + Number(leg.openFeeB ?? 0) + closeFees;
   const spreadAtExit = getSpreadPct(closePriceA, closePriceB);
+  const closedAt = new Date();
 
-  await db
-    .update(botLegsTable)
-    .set({
-      status: "closed",
-      closedAt: new Date(),
-      spreadAtExit: spreadAtExit != null ? String(spreadAtExit) : undefined,
-      realizedPnlUsd: String(realizedPnl),
-    })
-    .where(eq(botLegsTable.id, leg.id));
+  // Retry the DB write — a transient connection drop here silently orphans the P&L
+  // (the position stays "open" in the DB while already closed on the exchange).
+  await withDbRetry(
+    () =>
+      db
+        .update(botLegsTable)
+        .set({
+          status: "closed",
+          closedAt,
+          spreadAtExit: spreadAtExit != null ? String(spreadAtExit) : undefined,
+          realizedPnlUsd: String(realizedPnl),
+        })
+        .where(eq(botLegsTable.id, leg.id)),
+    `closeLeg update leg=${leg.id}`,
+  );
 
-  try {
-    await db.insert(closedTradesTable).values({
-      symbol: leg.symbol,
-      longExchange: leg.bybitSide === "long" ? (config.exchangeA ?? "bybit") : (config.exchangeB ?? "binance"),
-      shortExchange: leg.bybitSide === "short" ? (config.exchangeA ?? "bybit") : (config.exchangeB ?? "binance"),
-      spreadAtEntry: String(leg.spreadAtEntry),
-      realizedPnl: String(realizedPnl),
-      totalFees: String(totalFees),
-      quantity: String((Number(leg.bybitQty) * Number(leg.bybitEntry) + Number(leg.binanceQty) * Number(leg.binanceEntry)) / 2),
-      entryTime: leg.openedAt,
-      closeTime: new Date(),
-    });
-  } catch (dbErr) {
-    logger.error({ dbErr }, "Bot: failed to record closed trade to history");
-  }
+  await withDbRetry(
+    () =>
+      db.insert(closedTradesTable).values({
+        symbol: leg.symbol,
+        longExchange: leg.bybitSide === "long" ? (config.exchangeA ?? "bybit") : (config.exchangeB ?? "binance"),
+        shortExchange: leg.bybitSide === "short" ? (config.exchangeA ?? "bybit") : (config.exchangeB ?? "binance"),
+        spreadAtEntry: String(leg.spreadAtEntry),
+        realizedPnl: String(realizedPnl),
+        totalFees: String(totalFees),
+        quantity: String((Number(leg.bybitQty) * Number(leg.bybitEntry) + Number(leg.binanceQty) * Number(leg.binanceEntry)) / 2),
+        entryTime: leg.openedAt,
+        closeTime: closedAt,
+      }),
+    `closeLeg insert closed_trade leg=${leg.id}`,
+  );
 
   logger.info({ legId: leg.id, symbol: leg.symbol, realizedPnl, totalFees }, "Bot: closed leg successfully");
   return true;

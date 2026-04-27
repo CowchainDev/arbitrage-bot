@@ -4,8 +4,8 @@ import app from "./app";
 import { logger } from "./lib/logger";
 import { fetchPriceSpreads, prewarmKlinesCache, KLINES_PREWARM_INTERVAL_MS, PREWARM_INTERVALS } from "./routes/exchanges";
 import { startBotWatcher } from "./services/bot-watcher";
-import { db } from "@workspace/db";
-import { sql } from "drizzle-orm";
+import { db, botLegsTable, closedTradesTable } from "@workspace/db";
+import { sql, eq, isNull, and } from "drizzle-orm";
 
 const rawPort = process.env["PORT"];
 
@@ -75,6 +75,68 @@ wss.on("connection", (ws) => {
   });
 });
 
+/**
+ * One-time patch for leg 97 (APE, Binance→Bybit).
+ * The DB write was lost during a transient "Authentication timed out" error on 2026-04-27.
+ * Fill prices confirmed by user from exchange app:
+ *   ExA (Binance short 30 APE): entry 0.17990 → exit 0.16080
+ *   ExB (Bybit   long  28 APE): entry 0.17827 → exit 0.16289
+ */
+async function patchOrphanedLegs() {
+  try {
+    const [leg] = await db
+      .select()
+      .from(botLegsTable)
+      .where(and(eq(botLegsTable.id, 97), eq(botLegsTable.status, "closed"), isNull(botLegsTable.realizedPnlUsd)));
+
+    if (!leg) return; // already patched or doesn't exist
+
+    // pnlA (short): (entry - exit) * qty
+    const closePriceA = 0.16080;
+    const closePriceB = 0.16289;
+    const pnlA = (Number(leg.bybitEntry) - closePriceA) * Number(leg.bybitQty);
+    const pnlB = (closePriceB - Number(leg.binanceEntry)) * Number(leg.binanceQty);
+    const openFees = Number(leg.openFeeA ?? 0) + Number(leg.openFeeB ?? 0);
+    const closeFeeEstimate = 0.001929; // consistent with legs 95 and 96
+    const realizedPnl = pnlA + pnlB - openFees - closeFeeEstimate;
+    const spreadAtExit = ((closePriceA - closePriceB) / closePriceB) * 100;
+    const totalFees = openFees + closeFeeEstimate;
+    const quantity = (Number(leg.bybitQty) * Number(leg.bybitEntry) + Number(leg.binanceQty) * Number(leg.binanceEntry)) / 2;
+
+    await db
+      .update(botLegsTable)
+      .set({
+        realizedPnlUsd: String(realizedPnl),
+        spreadAtExit: String(spreadAtExit),
+      })
+      .where(eq(botLegsTable.id, 97));
+
+    // Insert closed_trades record only if not already present for this leg
+    const existing = await db
+      .select({ id: closedTradesTable.id })
+      .from(closedTradesTable)
+      .where(and(eq(closedTradesTable.symbol, "APE"), eq(closedTradesTable.entryTime, leg.openedAt!)));
+
+    if (existing.length === 0) {
+      await db.insert(closedTradesTable).values({
+        symbol: leg.symbol,
+        longExchange: "bybit",
+        shortExchange: "binance",
+        spreadAtEntry: String(leg.spreadAtEntry),
+        realizedPnl: String(realizedPnl),
+        totalFees: String(totalFees),
+        quantity: String(quantity),
+        entryTime: leg.openedAt,
+        closeTime: leg.closedAt,
+      });
+    }
+
+    logger.info({ legId: 97, realizedPnl, spreadAtExit, totalFees }, "Patched orphaned leg P&L");
+  } catch (err) {
+    logger.error({ err }, "patchOrphanedLegs failed — data not written");
+  }
+}
+
 async function runMigrations() {
   try {
     await db.execute(sql`
@@ -98,6 +160,7 @@ server.listen(port, (err?: Error) => {
 
   (async () => {
     await runMigrations();
+    await patchOrphanedLegs();
     startBotWatcher();
   })().catch((e) => logger.error({ err: e }, "Startup failed during migration or bot watcher init"));
 
