@@ -37,7 +37,9 @@ import {
   botLegToPosition,
 } from "@/components/position-rows";
 
-const CANDLE_LIMIT_BY_INTERVAL: Record<string, number> = {
+const CANDLE_LIMIT_BY_INTERVAL: Record<GetExchangeKlinesInterval, number> = {
+  "1m":  60,
+  "5m":  72,
   "15m": 96,
   "1h":  168,
   "4h":  90,
