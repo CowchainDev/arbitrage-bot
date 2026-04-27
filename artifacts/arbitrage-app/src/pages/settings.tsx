@@ -1,9 +1,10 @@
 import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { KeyRound, Eye, EyeOff, CheckCircle, Trash2, ExternalLink, Bell, Volume2, VolumeX, Server, Save, AlertTriangle } from "lucide-react";
 import { useAlertSettings } from "@/hooks/use-alert-settings";
 import { useWatchedTokens } from "@/hooks/use-watched-tokens";
 import { useToast } from "@/hooks/use-toast";
-import { useStoreCredential, useDeleteCredential } from "@workspace/api-client-react";
+import { useStoreCredential, useDeleteCredential, getGetCredentialStatusQueryKey } from "@workspace/api-client-react";
 import { useExchangeCredentials, type SupportedExchange } from "@/hooks/use-exchange-credentials";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -28,6 +29,7 @@ const EXCHANGES: ExchangeMeta[] = [
 function ExchangeCard({ meta }: { meta: ExchangeMeta }) {
   const { creds, save, remove, hasCreds } = useExchangeCredentials(meta.id);
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const storeCredential = useStoreCredential();
   const deleteCredential = useDeleteCredential();
 
@@ -56,6 +58,7 @@ function ExchangeCard({ meta }: { meta: ExchangeMeta }) {
         },
       });
       setSyncStatus("ok");
+      queryClient.invalidateQueries({ queryKey: getGetCredentialStatusQueryKey() });
       toast({ title: `${meta.label} credentials saved`, description: "Synced to server." });
     } catch {
       setSyncStatus("error");
