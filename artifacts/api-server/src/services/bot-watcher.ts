@@ -159,16 +159,16 @@ async function getExchangePairForBot(
   };
 }
 
-async function openLeg(config: BotConfig, spreadPct: number): Promise<void> {
+async function openLeg(config: BotConfig, spreadPct: number): Promise<boolean> {
   const pair = await getExchangePairForBot(config);
-  if (!pair) return;
+  if (!pair) return false;
   const { exA, exB } = pair;
   const { exchangeA, exchangeB } = botExchangeNames(config);
 
   const halfSize = Number(config.orderSizeUsd) / 2;
   if (halfSize < 5) {
     logger.warn({ symbol: config.symbol }, "Bot: order size too small, min $10 total");
-    return;
+    return false;
   }
 
   const sideA: "long" | "short" = spreadPct >= 0 ? "short" : "long";
@@ -182,7 +182,7 @@ async function openLeg(config: BotConfig, spreadPct: number): Promise<void> {
     resultA = await placeOrderInternal(exA, config.symbol, sideA, halfSize, leverageA);
   } catch (err) {
     logger.error({ err, symbol: config.symbol, exchange: exchangeA }, `Bot: ${exchangeA} leg open failed`);
-    return;
+    return false;
   }
 
   try {
@@ -210,6 +210,7 @@ async function openLeg(config: BotConfig, spreadPct: number): Promise<void> {
     });
 
     logger.info({ symbol: config.symbol, exchangeA, sideA, exchangeB, sideB, spreadPct }, "Bot: opened new leg");
+    return true;
   } catch (err) {
     logger.error({ err, symbol: config.symbol, exchange: exchangeB }, `Bot: ${exchangeB} leg open failed, compensating ${exchangeA}`);
     const compensateSide = sideA === "long" ? "sell" : "buy";
@@ -219,6 +220,7 @@ async function openLeg(config: BotConfig, spreadPct: number): Promise<void> {
     } catch (compErr) {
       logger.error({ compErr, symbol: config.symbol }, `Bot: ${exchangeA} compensation FAILED — manual intervention required`);
     }
+    return false;
   }
 }
 
@@ -387,8 +389,10 @@ async function processBotConfig(config: BotConfig, canOpen: boolean): Promise<vo
       );
       return;
     }
-    await openLeg(config, spreadPct);
-    lastLegOpenedAt.set(config.id, Date.now());
+    const opened = await openLeg(config, spreadPct);
+    if (opened) {
+      lastLegOpenedAt.set(config.id, Date.now());
+    }
   } else if (spreadMeetsThreshold && belowMaxOrders && !cooldownElapsed) {
     logger.debug(
       { symbol: config.symbol, cooldownRemainingMs: LEG_OPEN_COOLDOWN_MS - (Date.now() - lastOpenMs) },

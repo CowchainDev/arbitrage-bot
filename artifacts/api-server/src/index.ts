@@ -127,7 +127,7 @@ async function patchOrphanedLegs() {
         totalFees: String(totalFees),
         quantity: String(quantity),
         entryTime: leg.openedAt,
-        closeTime: leg.closedAt,
+        closeTime: leg.closedAt ?? undefined,
       });
     }
 
