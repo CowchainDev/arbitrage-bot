@@ -205,6 +205,8 @@ async function openLeg(config: BotConfig, spreadPct: number): Promise<boolean> {
       // Store ExB contractSize so closeOnExchange can convert base-unit qty back to contracts.
       // null means qty is already in contracts (legacy behavior); a number means qty is in base units.
       contractSizeB: resultB.contractSize > 1 ? String(resultB.contractSize) : null,
+      legExchangeA: exchangeA,
+      legExchangeB: exchangeB,
       status: "open",
       openedAt: new Date(),
     });

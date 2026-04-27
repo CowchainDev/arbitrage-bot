@@ -795,6 +795,11 @@ export const GetBotStatsResponse = zod.object({
       "Sum of notional value (qty \* entry price) across all closed legs",
     ),
   closedLegCount: zod.number().describe("Number of closed legs"),
+  closedLegsByPair: zod
+    .record(zod.string(), zod.number())
+    .describe(
+      'Closed leg count keyed by exchange pair label (e.g. \"Bybit\/Binance\")',
+    ),
 });
 
 /**

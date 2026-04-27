@@ -440,6 +440,11 @@ export interface BotLegsResponse {
   legs: BotLeg[];
 }
 
+/**
+ * Closed leg count keyed by exchange pair label (e.g. "Bybit/Binance")
+ */
+export type BotStatsClosedLegsByPair = { [key: string]: number };
+
 export interface BotStats {
   /** Sum of realizedPnlUsd across all closed legs */
   totalRealizedPnlUsd: number;
@@ -451,6 +456,8 @@ export interface BotStats {
   totalVolumeUsd: number;
   /** Number of closed legs */
   closedLegCount: number;
+  /** Closed leg count keyed by exchange pair label (e.g. "Bybit/Binance") */
+  closedLegsByPair: BotStatsClosedLegsByPair;
 }
 
 export interface LegBucket {

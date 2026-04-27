@@ -248,7 +248,10 @@ router.get("/bots/:id/stats", async (req: Request, res: Response) => {
   }
 
   try {
-    const [bot] = await db.select({ id: botConfigsTable.id }).from(botConfigsTable).where(eq(botConfigsTable.id, id));
+    const [bot] = await db
+      .select({ id: botConfigsTable.id, exchangeA: botConfigsTable.exchangeA, exchangeB: botConfigsTable.exchangeB })
+      .from(botConfigsTable)
+      .where(eq(botConfigsTable.id, id));
     if (!bot) {
       res.status(404).json({ error: "not_found", message: "Bot not found" });
       return;
@@ -282,12 +285,31 @@ router.get("/bots/:id/stats", async (req: Request, res: Response) => {
       totalVolumeUsd += bybitQty * bybitEntry + binanceQty * binanceEntry;
     }
 
+    const EXCHANGE_DISPLAY: Record<string, string> = {
+      bybit: "Bybit",
+      binance: "Binance",
+      okx: "OKX",
+      gate: "Gate",
+      mexc: "MEXC",
+    };
+    const displayExchange = (name: string) => EXCHANGE_DISPLAY[name.toLowerCase()] ?? name;
+    const fallbackLabel = `${displayExchange(bot.exchangeA)}/${displayExchange(bot.exchangeB)}`;
+    const closedLegsByPair: Record<string, number> = {};
+    for (const leg of closedLegs) {
+      const label =
+        leg.legExchangeA && leg.legExchangeB
+          ? `${displayExchange(leg.legExchangeA)}/${displayExchange(leg.legExchangeB)}`
+          : fallbackLabel;
+      closedLegsByPair[label] = (closedLegsByPair[label] ?? 0) + 1;
+    }
+
     res.json({
       totalRealizedPnlUsd,
       avgEntrySpread: count > 0 ? sumEntrySpread / count : 0,
       avgExitSpread: exitSpreadCount > 0 ? sumExitSpread / exitSpreadCount : 0,
       totalVolumeUsd,
       closedLegCount: count,
+      closedLegsByPair,
     });
   } catch (err) {
     res.status(500).json({ error: "internal_error", message: "Failed to fetch bot stats" });

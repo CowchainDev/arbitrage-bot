@@ -148,6 +148,16 @@ async function runMigrations() {
   } catch (err) {
     logger.warn({ err }, "DB migration warning — columns may already exist");
   }
+  try {
+    await db.execute(sql`
+      ALTER TABLE bot_legs
+        ADD COLUMN IF NOT EXISTS leg_exchange_a TEXT,
+        ADD COLUMN IF NOT EXISTS leg_exchange_b TEXT
+    `);
+    logger.info("DB migrations applied (bot_legs: leg_exchange_a, leg_exchange_b)");
+  } catch (err) {
+    logger.warn({ err }, "DB migration warning (leg_exchange_a/b) — columns may already exist");
+  }
 }
 
 server.listen(port, (err?: Error) => {

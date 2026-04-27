@@ -635,11 +635,23 @@ function BotCard({ bot, openLegs }: { bot: BotConfig; openLegs: BotLeg[] }) {
               : <span className="text-muted-foreground/40">—</span>}
           </span>
         </div>
-        <div className="flex items-center justify-between col-span-2">
-          <span className="text-muted-foreground">Closed legs</span>
-          <span className="font-mono">
-            {stats ? stats.closedLegCount : <span className="text-muted-foreground/40">—</span>}
-          </span>
+        <div className="col-span-2">
+          <div className="flex items-center justify-between">
+            <span className="text-muted-foreground">Closed legs</span>
+            <span className="font-mono">
+              {stats ? stats.closedLegCount : <span className="text-muted-foreground/40">—</span>}
+            </span>
+          </div>
+          {stats && Object.keys(stats.closedLegsByPair).length > 0 && (
+            <div className="mt-0.5 flex flex-col gap-0.5">
+              {Object.entries(stats.closedLegsByPair).map(([pair, count]) => (
+                <div key={pair} className="flex items-center justify-between pl-2 text-[11px]">
+                  <span className="text-muted-foreground/70">{pair}</span>
+                  <span className="font-mono text-muted-foreground/70">{count}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 

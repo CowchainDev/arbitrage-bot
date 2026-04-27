@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { BotStatsClosedLegsByPair } from "./botStatsClosedLegsByPair";
 
 export interface BotStats {
   /** Sum of realizedPnlUsd across all closed legs */
@@ -17,4 +18,6 @@ export interface BotStats {
   totalVolumeUsd: number;
   /** Number of closed legs */
   closedLegCount: number;
+  /** Closed leg count keyed by exchange pair label (e.g. "Bybit/Binance") */
+  closedLegsByPair: BotStatsClosedLegsByPair;
 }

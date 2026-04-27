@@ -1444,12 +1444,18 @@ components:
         closedLegCount:
           type: number
           description: Number of closed legs
+        closedLegsByPair:
+          type: object
+          additionalProperties:
+            type: integer
+          description: Closed leg count keyed by exchange pair label (e.g. "Bybit/Binance")
       required:
         - totalRealizedPnlUsd
         - avgEntrySpread
         - avgExitSpread
         - totalVolumeUsd
         - closedLegCount
+        - closedLegsByPair
 
     LegBucket:
       type: object
