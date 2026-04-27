@@ -3,7 +3,6 @@ import { Link } from "wouter";
 import { ArrowLeft, TrendingUp, XCircle, ChevronDown, ChevronUp, PanelRight, PanelRightClose, History } from "lucide-react";
 import {
   LineChart,
-  ComposedChart,
   Line,
   XAxis,
   YAxis,
@@ -13,8 +12,6 @@ import {
   AreaChart,
   Area,
   ReferenceLine,
-  ReferenceArea,
-  Customized,
 } from "recharts";
 import {
   useGetExchangePrices,
@@ -47,9 +44,7 @@ const CANDLE_LIMIT_BY_INTERVAL: Record<string, number> = {
   "1d":  60,
 };
 
-type LiveTimeRange   = { label: string; interval: "live";                   limit: number; liveSeconds: number };
-type CandleTimeRange = { label: string; interval: GetExchangeKlinesInterval; limit: number; liveSeconds?: never };
-type TimeRange = LiveTimeRange | CandleTimeRange;
+type TimeRange = { label: string; interval: GetExchangeKlinesInterval; limit: number };
 const TIME_RANGES: TimeRange[] = [
   { label: "1m",  interval: "1m",  limit: CANDLE_LIMIT_BY_INTERVAL["1m"]  },
   { label: "5m",  interval: "5m",  limit: CANDLE_LIMIT_BY_INTERVAL["5m"]  },
@@ -78,25 +73,6 @@ const EXCHANGE_SHORT: Record<string, string> = {
 const ALL_EXCHANGES = ["bybit", "binance", "gate", "okx", "mexc"] as const;
 type ExchangeName = typeof ALL_EXCHANGES[number];
 
-type TradeMarker = {
-  t: number;
-  label: "BUY" | "SELL";
-  color: string;
-  isEntry: boolean;
-  legId: number;
-  spreadAtEntry?: number;
-  spreadAtExit?: number;
-  realizedPnlUsd?: number;
-  openedAtMs: number;
-  closedAtMs?: number;
-};
-
-type TradePair = {
-  legId: number;
-  openedAtMs: number;
-  closedAtMs: number;
-};
-
 function formatDuration(ms: number): string {
   const s = Math.floor(ms / 1000);
   if (s < 60) return `${s}s`;
@@ -108,197 +84,59 @@ function formatDuration(ms: number): string {
   return `${d}d ${h % 24}h`;
 }
 
-function TradeMarkerLabel({
-  viewBox,
-  marker,
-}: {
-  viewBox?: { x: number; y: number; width: number; height: number };
-  marker: TradeMarker;
-}) {
-  const [hovered, setHovered] = useState(false);
-  if (!viewBox) return null;
-  const { x, y, height } = viewBox;
-
-  const isClosed = marker.closedAtMs != null;
-  const duration = isClosed
-    ? formatDuration(marker.closedAtMs! - marker.openedAtMs)
-    : null;
-
-  const tooltipWidth = 188;
-  const tooltipLineCount = isClosed ? 5 : 3;
-  const tooltipHeight = 24 + tooltipLineCount * 18;
-  const tooltipX = x + 6;
-  const tooltipY = y + 18;
-
-  const fmtSpread = (v?: number) =>
-    v != null ? `${v.toFixed(4)}%` : "N/A";
-  const fmtPnl = (v?: number) =>
-    v != null
-      ? `${v >= 0 ? "+" : ""}$${v.toFixed(2)}`
-      : "N/A";
-
-  return (
-    <g>
-      <rect
-        x={x - 8}
-        y={y}
-        width={16}
-        height={height}
-        fill="transparent"
-        style={{ cursor: "pointer" }}
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
-      />
-      <text
-        x={x + 3}
-        y={y + 12}
-        fill={marker.color}
-        fontSize={9}
-        fontFamily="monospace"
-        fontWeight="bold"
-        style={{ pointerEvents: "none", userSelect: "none" }}
-      >
-        {marker.label}
-      </text>
-      {hovered && (
-        <foreignObject
-          x={tooltipX}
-          y={tooltipY}
-          width={tooltipWidth}
-          height={tooltipHeight}
-          style={{ overflow: "visible" }}
-          onMouseEnter={() => setHovered(true)}
-          onMouseLeave={() => setHovered(false)}
-        >
-          <div
-            style={{
-              background: "hsl(var(--background))",
-              border: "1px solid hsl(var(--border))",
-              borderRadius: 6,
-              padding: "6px 10px",
-              fontSize: 11,
-              lineHeight: "18px",
-              boxShadow: "0 4px 16px rgba(0,0,0,0.3)",
-              whiteSpace: "nowrap",
-              color: "hsl(var(--foreground))",
-            }}
-          >
-            <div
-              style={{
-                fontWeight: 700,
-                fontFamily: "monospace",
-                color: marker.color,
-                marginBottom: 4,
-              }}
-            >
-              {marker.isEntry
-                ? `▲ ${marker.label} (Entry)`
-                : `▼ ${marker.label} (Exit)`}
-            </div>
-            <div style={{ color: "hsl(var(--muted-foreground))" }}>
-              Entry spread:{" "}
-              <span style={{ color: "hsl(var(--foreground))", fontFamily: "monospace" }}>
-                {fmtSpread(marker.spreadAtEntry)}
-              </span>
-            </div>
-            {isClosed && (
-              <div style={{ color: "hsl(var(--muted-foreground))" }}>
-                Exit spread:{" "}
-                <span style={{ color: "hsl(var(--foreground))", fontFamily: "monospace" }}>
-                  {fmtSpread(marker.spreadAtExit)}
-                </span>
-              </div>
-            )}
-            {isClosed && (
-              <div style={{ color: "hsl(var(--muted-foreground))" }}>
-                Realized P&amp;L:{" "}
-                <span
-                  style={{
-                    color:
-                      marker.realizedPnlUsd != null
-                        ? marker.realizedPnlUsd >= 0
-                          ? "#22c55e"
-                          : "#ef4444"
-                        : "hsl(var(--foreground))",
-                    fontFamily: "monospace",
-                    fontWeight: 600,
-                  }}
-                >
-                  {fmtPnl(marker.realizedPnlUsd)}
-                </span>
-              </div>
-            )}
-            {duration != null && (
-              <div style={{ color: "hsl(var(--muted-foreground))" }}>
-                Hold duration:{" "}
-                <span style={{ color: "hsl(var(--foreground))", fontFamily: "monospace" }}>
-                  {duration}
-                </span>
-              </div>
-            )}
-            {!isClosed && (
-              <div style={{ color: "hsl(var(--muted-foreground))" }}>
-                Status:{" "}
-                <span style={{ color: "#22c55e", fontFamily: "monospace" }}>
-                  Open
-                </span>
-              </div>
-            )}
-          </div>
-        </foreignObject>
-      )}
-    </g>
-  );
-}
-
-function formatPriceAxis(price: number): string {
-  if (price >= 100000) return `${(price / 1000).toFixed(0)}K`;
-  if (price >= 10000) return `${(price / 1000).toFixed(1)}K`;
-  if (price >= 1000) return price.toLocaleString("en-US", { maximumFractionDigits: 0 });
-  if (price >= 1) return price.toFixed(3);
-  if (price >= 0.01) return price.toFixed(5);
-  return price.toFixed(7);
-}
-
-function formatPriceFull(price: number): string {
-  if (price >= 1000) return price.toLocaleString("en-US", { maximumFractionDigits: 2 });
-  if (price >= 1) return price.toFixed(4);
-  return price.toFixed(6);
-}
-
 type ChartRow = { t: number } & Partial<Record<ExchangeName, number>>;
 
-type CandlePoint = { t: number; o: number; h: number; l: number; c: number };
+const TV_SYMBOL_MAP: Record<ExchangeName, string> = {
+  bybit:   "BYBIT:{S}USDT.P",
+  binance: "BINANCE:{S}USDT.P",
+  gate:    "GATEIO:{S}USDT",
+  okx:     "OKX:{S}USDT.P",
+  mexc:    "MEXC:{S}USDT",
+};
 
-function CandlestickLayer(props: Record<string, unknown>) {
-  const xAxisMap = props.xAxisMap as Record<string, { scale: (v: number) => number }> | undefined;
-  const yAxisMap = props.yAxisMap as Record<string, { scale: (v: number) => number }> | undefined;
-  const data = props.data as CandlePoint[] | undefined;
-  const xScale = xAxisMap ? Object.values(xAxisMap)[0]?.scale : undefined;
-  const yScale = yAxisMap ? Object.values(yAxisMap)[0]?.scale : undefined;
-  if (!xScale || !yScale || !data || data.length < 2) return null;
-  const gap = Math.abs(xScale(data[1].t) - xScale(data[0].t));
-  const candleW = Math.max(2, Math.min(10, gap * 0.7));
+function getTVSymbol(symbol: string, exchange: ExchangeName): string {
+  return (TV_SYMBOL_MAP[exchange] ?? "BYBIT:{S}USDT.P").replace("{S}", symbol);
+}
+
+function TradingViewChart({ symbol, exchange }: { symbol: string; exchange: ExchangeName }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    el.innerHTML = "";
+    const isDark = document.documentElement.classList.contains("dark");
+    const widgetDiv = document.createElement("div");
+    widgetDiv.className = "tradingview-widget-container__widget";
+    widgetDiv.style.cssText = "height:100%;width:100%";
+    el.appendChild(widgetDiv);
+    const script = document.createElement("script");
+    script.type = "text/javascript";
+    script.src = "https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js";
+    script.async = true;
+    script.textContent = JSON.stringify({
+      autosize: true,
+      symbol: getTVSymbol(symbol, exchange),
+      interval: "15",
+      timezone: "Etc/UTC",
+      theme: isDark ? "dark" : "light",
+      style: "1",
+      locale: "en",
+      allow_symbol_change: false,
+      calendar: false,
+      hide_legend: false,
+      hide_volume: false,
+      support_host: "https://www.tradingview.com",
+    });
+    el.appendChild(script);
+    return () => { el.innerHTML = ""; };
+  }, [symbol, exchange]);
+
   return (
-    <g>
-      {data.map((d) => {
-        const cx = xScale(d.t);
-        const yH = yScale(d.h);
-        const yL = yScale(d.l);
-        const yO = yScale(d.o);
-        const yC = yScale(d.c);
-        const isUp = d.c >= d.o;
-        const color = isUp ? "#22c55e" : "#ef4444";
-        const bodyTop = Math.min(yO, yC);
-        const bodyH = Math.max(Math.abs(yC - yO), 1);
-        return (
-          <g key={d.t}>
-            <line x1={cx} x2={cx} y1={yH} y2={yL} stroke={color} strokeWidth={1} />
-            <rect x={cx - candleW / 2} y={bodyTop} width={candleW} height={bodyH} fill={color} />
-          </g>
-        );
-      })}
-    </g>
+    <div
+      ref={containerRef}
+      className="tradingview-widget-container"
+      style={{ height: "100%", width: "100%" }}
+    />
   );
 }
 
@@ -734,10 +572,8 @@ function OpenPositionsSection({
 
 export default function TokenDetail({ params }: { params: { symbol: string } }) {
   const symbol = params.symbol.toUpperCase();
-  const [timeRange, setTimeRange] = useState<TimeRange>(TIME_RANGES[2]); // default 15m
-  const [chartType, setChartType] = useState<"line" | "candle">("line");
-  const [candleExchange, setCandleExchange] = useState<ExchangeName | null>(null);
-  const [extraBatches, setExtraBatches] = useState(0);
+  const [timeRange, setTimeRange] = useState<TimeRange>(TIME_RANGES[2]); // default 15m for spread chart
+  const [tvExchange, setTvExchange] = useState<ExchangeName>("bybit");
   const [terminalCollapsed, setTerminalCollapsed] = useState<boolean>(() => {
     try { return localStorage.getItem("arbitrage-terminalCollapsed") === "true"; } catch { return false; }
   });
@@ -746,70 +582,18 @@ export default function TokenDetail({ params }: { params: { symbol: string } }) 
     try { localStorage.setItem("arbitrage-terminalCollapsed", String(terminalCollapsed)); } catch {}
   }, [terminalCollapsed]);
 
-  const isLiveMode = timeRange.interval === "live";
-
-  // Reset extra batches whenever the user picks a new time range
-  useEffect(() => {
-    setExtraBatches(0);
-  }, [timeRange]);
-
-  const MAX_EXTRA_BATCHES = 9; // cap at 10× the default limit per interval
-  const effectiveLimit = timeRange.limit * (1 + extraBatches);
-
   const { data: allTokens, isLoading: pricesLoading } = useGetExchangePrices({
-    query: { queryKey: getGetExchangePricesQueryKey(), refetchInterval: isLiveMode ? 2000 : 10_000 },
+    query: { queryKey: getGetExchangePricesQueryKey(), refetchInterval: 10_000 },
   });
   const token = allTokens?.find((t) => t.symbol === symbol);
   const tokenNotFound = !pricesLoading && allTokens != null && token == null;
 
-  // Live price stream (WebSocket) for real-time chart updates
+  // Live price stream (WebSocket) — used only for the sidebar live price display
   const { tokens: streamTokens, streamStatus } = usePriceStream();
   const streamToken = streamTokens.find((t) => t.symbol === symbol);
-  // Use WebSocket data if available, otherwise polling data
   const liveToken = streamStatus === "open" && streamToken ? streamToken : token;
 
-  // Rolling buffer for live short-timeframe chart
-  const liveBufferRef = useRef<ChartRow[]>([]);
-  const [liveBuffer, setLiveBuffer] = useState<ChartRow[]>([]);
-
-  // Reset buffer when timeframe changes
-  useEffect(() => {
-    liveBufferRef.current = [];
-    setLiveBuffer([]);
-  }, [timeRange.label]);
-
-  // Accumulate live price data into rolling buffer
-  useEffect(() => {
-    if (!isLiveMode || !liveToken) return;
-    const now = Date.now();
-    const windowMs = (timeRange.liveSeconds ?? 60) * 1000;
-    const point: ChartRow = { t: now };
-    const exFields: Array<[ExchangeName, keyof TokenSpread]> = [
-      ["bybit",   "bybitPrice"  ],
-      ["binance", "binancePrice"],
-      ["gate",    "gatePrice"   ],
-      ["okx",     "okxPrice"    ],
-      ["mexc",    "mexcPrice"   ],
-    ];
-    let hasData = false;
-    for (const [ex, field] of exFields) {
-      const val = liveToken[field] as number | null | undefined;
-      if (val != null && val > 0) {
-        (point as Record<string, number>)[ex] = val;
-        hasData = true;
-      }
-    }
-    if (!hasData) return;
-    const cutoff = now - windowMs;
-    liveBufferRef.current = [
-      ...liveBufferRef.current.filter((p) => p.t >= cutoff),
-      point,
-    ];
-    setLiveBuffer([...liveBufferRef.current]);
-  }, [liveToken, isLiveMode, timeRange.liveSeconds]);
-
-  const klinesInterval = timeRange.interval !== "live" ? timeRange.interval : undefined;
-  const klinesParams = { symbol, interval: klinesInterval, limit: effectiveLimit };
+  const klinesParams = { symbol, interval: timeRange.interval, limit: timeRange.limit };
   const { data: klines, isLoading: klinesLoading, isError: klinesError, isFetching: klinesIsFetching } = useGetExchangeKlines(
     klinesParams,
     {
@@ -817,7 +601,6 @@ export default function TokenDetail({ params }: { params: { symbol: string } }) 
         queryKey: getGetExchangeKlinesQueryKey(klinesParams),
         refetchInterval: 60_000,
         staleTime: 30_000,
-        enabled: !isLiveMode,
         placeholderData: keepPreviousData,
       },
     }
@@ -867,21 +650,9 @@ export default function TokenDetail({ params }: { params: { symbol: string } }) 
     return Array.from(tsMap.values()).sort((a, b) => a.t - b.t);
   }, [klines, activeExchanges]);
 
-  // Live mode: derive active exchanges from accumulated buffer
-  const liveActiveExchanges = useMemo((): ExchangeName[] => {
-    if (!isLiveMode) return [];
-    return ALL_EXCHANGES.filter((ex) =>
-      liveBuffer.some((row) => (row as Record<string, number>)[ex] != null)
-    );
-  }, [isLiveMode, liveBuffer]);
-
-  // Final data sent to the chart — live buffer or klines
-  const chartDataFinal = isLiveMode ? liveBuffer : chartData;
-  const activeExchangesFinal = isLiveMode ? liveActiveExchanges : activeExchanges;
-
   const spreadData = useMemo(() => {
-    return chartDataFinal.map((row) => {
-      const prices = activeExchangesFinal
+    return chartData.map((row) => {
+      const prices = activeExchanges
         .map((ex) => row[ex])
         .filter((p): p is number => p != null && p > 0);
       const spread =
@@ -890,103 +661,21 @@ export default function TokenDetail({ params }: { params: { symbol: string } }) 
           : 0;
       return { t: row.t, spread };
     });
-  }, [chartDataFinal, activeExchangesFinal]);
-
-  const effectiveCandleExchange: ExchangeName | null = useMemo(() => {
-    if (!klines) return null;
-    const exList = candleExchange && (klines[candleExchange]?.length ?? 0) > 0
-      ? candleExchange
-      : activeExchanges[0] ?? null;
-    return exList;
-  }, [candleExchange, activeExchanges, klines]);
-
-  const candleData = useMemo((): CandlePoint[] => {
-    if (chartType !== "candle" || !klines || !effectiveCandleExchange) return [];
-    const pts = klines[effectiveCandleExchange] ?? [];
-    return pts
-      .filter((pt) => pt.o != null && pt.h != null && pt.l != null)
-      .map((pt) => ({ t: pt.t, o: pt.o!, h: pt.h!, l: pt.l!, c: pt.c }));
-  }, [chartType, klines, effectiveCandleExchange]);
+  }, [chartData, activeExchanges]);
 
   const formatXAxis = (t: number) => {
     const d = new Date(t);
-    if (timeRange.interval === "live" && (timeRange.liveSeconds ?? 60) <= 60) {
-      return d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-    }
     if (timeRange.interval === "1d") {
       return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
     }
     if (timeRange.interval === "4h" || timeRange.interval === "1h") {
-      // These span multiple days — show abbreviated weekday + time
       return d.toLocaleString("en-US", { weekday: "short", hour: "2-digit", minute: "2-digit", hour12: false });
     }
     if (timeRange.interval === "15m") {
-      // Spans ~24h — show day + time to disambiguate yesterday vs today
       return d.toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false });
     }
     return d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
   };
-
-  // BUY markers from open legs + BUY+SELL markers from closed legs
-  const tradeMarkers = useMemo((): TradeMarker[] => {
-    const markers: TradeMarker[] = [];
-
-    for (const leg of botStatus?.openLegs ?? []) {
-      const openedAtMs = new Date(leg.openedAt).getTime();
-      const isLong = leg.bybitSide === "long";
-      markers.push({
-        t: openedAtMs,
-        label: isLong ? "BUY" : "SELL",
-        color: isLong ? "#22c55e" : "#ef4444",
-        isEntry: true,
-        legId: leg.id,
-        spreadAtEntry: leg.spreadAtEntry,
-        openedAtMs,
-      });
-    }
-
-    for (const leg of closedLegs) {
-      if (!leg.closedAt) continue;
-      const openedAtMs = new Date(leg.openedAt).getTime();
-      const closedAtMs = new Date(leg.closedAt).getTime();
-      const isLong = leg.bybitSide === "long";
-      const shared = {
-        legId: leg.id,
-        spreadAtEntry: leg.spreadAtEntry,
-        spreadAtExit: leg.spreadAtExit,
-        realizedPnlUsd: leg.realizedPnlUsd,
-        openedAtMs,
-        closedAtMs,
-      };
-      markers.push({
-        t: openedAtMs,
-        label: isLong ? "BUY" : "SELL",
-        color: isLong ? "#22c55e" : "#ef4444",
-        isEntry: true,
-        ...shared,
-      });
-      markers.push({
-        t: closedAtMs,
-        label: isLong ? "SELL" : "BUY",
-        color: isLong ? "#ef4444" : "#22c55e",
-        isEntry: false,
-        ...shared,
-      });
-    }
-
-    return markers;
-  }, [botStatus, closedLegs]);
-
-  // Pairs for shaded bands between entry and exit
-  const tradePairs = useMemo((): TradePair[] => {
-    return closedLegs
-      .filter((leg) => leg.closedAt != null)
-      .map((leg) => ({
-        legId: leg.id,
-        openedAtMs: new Date(leg.openedAt).getTime(),
-        closedAtMs: new Date(leg.closedAt!).getTime(),
-      }));
-  }, [closedLegs]);
 
   // Cumulative P&L over time — one point per closed leg, sorted by closedAt
   const pnlChartData = useMemo((): {
@@ -1046,19 +735,6 @@ export default function TokenDetail({ params }: { params: { symbol: string } }) 
     if (!visible) setHighlightedLegId(null);
   }, [filteredPnlChartData, highlightedLegId]);
 
-  // Extend X domain so markers that fall outside the klines window remain visible
-  const chartXDomain = useMemo((): [number, number] | ["dataMin", "dataMax"] => {
-    if (chartDataFinal.length === 0) return ["dataMin", "dataMax"];
-    const dataMin = Math.min(...chartDataFinal.map((d) => d.t));
-    const dataMax = Math.max(...chartDataFinal.map((d) => d.t));
-    if (tradeMarkers.length === 0) return [dataMin, dataMax];
-    const markerMin = Math.min(...tradeMarkers.map((m) => m.t));
-    const markerMax = Math.max(...tradeMarkers.map((m) => m.t));
-    return [Math.min(dataMin, markerMin), Math.max(dataMax, markerMax)];
-  }, [chartDataFinal, tradeMarkers]);
-
-  const hasOpenLegs = (botStatus?.openLegs.length ?? 0) > 0;
-
   return (
     <div className="p-4 space-y-4 max-w-full">
       {/* Breadcrumb */}
@@ -1079,44 +755,27 @@ export default function TokenDetail({ params }: { params: { symbol: string } }) 
       <div className="grid grid-cols-1 lg:grid-cols-3 xl:grid-cols-4 gap-4">
         {/* Charts */}
         <div className={`space-y-3 ${terminalCollapsed ? "col-span-full" : "lg:col-span-2 xl:col-span-3"}`}>
-          {/* Header + time range selector */}
+          {/* Header */}
           <div className="flex items-center justify-between flex-wrap gap-2">
-            <h2 className="text-base font-semibold">{symbol} — Price History</h2>
+            <h2 className="text-base font-semibold">{symbol} — Price</h2>
             <div className="flex items-center gap-2">
-              <div className="flex items-center gap-1" data-testid="time-range-selector">
-              {TIME_RANGES.map((tr) => (
-                <button
-                  key={tr.label}
-                  onClick={() => setTimeRange(tr)}
-                  data-testid={`btn-range-${tr.label}`}
-                  className={`px-2.5 py-1 text-xs rounded font-mono transition-colors ${
-                    timeRange.label === tr.label
-                      ? "bg-primary text-primary-foreground"
-                      : "text-muted-foreground hover:text-foreground hover:bg-muted"
-                  }`}
-                >
-                  {tr.label}
-                </button>
-              ))}
-              {klinesIsFetching && !klinesLoading && !isLiveMode && (
-                <span className="w-3.5 h-3.5 border-2 border-muted-foreground border-t-transparent rounded-full animate-spin ml-1 opacity-60" />
-              )}
-              </div>
+              {/* Exchange selector for TradingView */}
               <div className="flex items-center gap-0.5 bg-muted/40 rounded p-0.5">
-                <button
-                  onClick={() => setChartType("line")}
-                  title="Line chart"
-                  className={`px-2 py-0.5 text-xs rounded transition-colors ${chartType === "line" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
-                >
-                  Line
-                </button>
-                <button
-                  onClick={() => setChartType("candle")}
-                  title="Candlestick chart"
-                  className={`px-2 py-0.5 text-xs rounded transition-colors ${chartType === "candle" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
-                >
-                  Candle
-                </button>
+                {ALL_EXCHANGES.map((ex) => (
+                  <button
+                    key={ex}
+                    onClick={() => setTvExchange(ex)}
+                    title={EXCHANGE_DISPLAY[ex]}
+                    className={`px-2 py-0.5 text-xs rounded font-mono transition-colors ${
+                      tvExchange === ex
+                        ? "bg-background shadow-sm text-foreground"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                    style={tvExchange === ex ? { color: EXCHANGE_LINE_COLORS[ex] } : {}}
+                  >
+                    {EXCHANGE_SHORT[ex]}
+                  </button>
+                ))}
               </div>
               <button
                 onClick={() => setTerminalCollapsed((v) => !v)}
@@ -1135,253 +794,41 @@ export default function TokenDetail({ params }: { params: { symbol: string } }) 
             </div>
           </div>
 
-          {/* Price chart */}
-          <div className="bg-card border border-border rounded-md p-3" data-testid="price-chart">
-            <div className="flex items-center justify-between mb-2">
-              <div className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">
-                Price (USDT perpetual)
-              </div>
-              <div className="flex items-center gap-2">
-                {chartType === "candle" && activeExchanges.length > 0 && (
-                  <div className="flex items-center gap-1">
-                    {activeExchanges.map((ex) => (
-                      <button
-                        key={ex}
-                        onClick={() => setCandleExchange(ex)}
-                        className={`px-1.5 py-0.5 text-[10px] rounded font-mono transition-colors ${
-                          effectiveCandleExchange === ex
-                            ? "text-foreground border border-border bg-muted"
-                            : "text-muted-foreground hover:text-foreground"
-                        }`}
-                        style={effectiveCandleExchange === ex ? { borderColor: EXCHANGE_LINE_COLORS[ex] } : {}}
-                      >
-                        {EXCHANGE_SHORT[ex]}
-                      </button>
-                    ))}
-                  </div>
-                )}
-                {isLiveMode && (
-                  <div className="flex items-center gap-1.5 text-xs text-emerald-400 font-mono">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                    LIVE
-                  </div>
-                )}
-              </div>
-            </div>
-            {!isLiveMode && klinesLoading ? (
-              <div className="h-64 flex items-center justify-center">
-                <span className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-              </div>
-            ) : !isLiveMode && !klinesIsFetching && (klinesError || chartDataFinal.length === 0) ? (
-              <div className="h-64 flex items-center justify-center text-muted-foreground text-sm">
-                No chart data available
-              </div>
-            ) : isLiveMode && chartDataFinal.length === 0 ? (
-              <div className="h-64 flex items-center justify-center text-muted-foreground text-sm">
-                <div className="flex items-center gap-2">
-                  <span className="w-4 h-4 border-2 border-muted-foreground border-t-transparent rounded-full animate-spin" />
-                  Buffering live prices…
-                </div>
-              </div>
-            ) : (
-              <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
-                  {chartType === "candle" ? (
-                    <ComposedChart data={candleData} margin={{ top: 14, right: 8, left: 0, bottom: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" strokeOpacity={0.4} />
-                      <XAxis
-                        dataKey="t"
-                        type="number"
-                        scale="time"
-                        domain={chartXDomain}
-                        tickFormatter={formatXAxis}
-                        tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
-                        tickLine={false}
-                        axisLine={false}
-                        minTickGap={50}
-                      />
-                      <YAxis
-                        tickFormatter={formatPriceAxis}
-                        tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
-                        tickLine={false}
-                        axisLine={false}
-                        width={70}
-                        domain={["auto", "auto"]}
-                      />
-                      <Tooltip
-                        content={({ active, label }) => {
-                          if (!active || label == null) return null;
-                          const ts = label as number;
-                          const candle = candleData.find((d) => d.t === ts);
-                          if (!candle) return null;
-                          return (
-                            <div className="bg-background border border-border rounded px-2.5 py-1.5 text-xs space-y-0.5 shadow-lg">
-                              <div className="text-muted-foreground font-mono mb-1">{formatXAxis(ts)}</div>
-                              <div className="font-mono">O: {formatPriceFull(candle.o)}</div>
-                              <div className="font-mono">H: <span className="text-emerald-400">{formatPriceFull(candle.h)}</span></div>
-                              <div className="font-mono">L: <span className="text-rose-400">{formatPriceFull(candle.l)}</span></div>
-                              <div className="font-mono">C: {formatPriceFull(candle.c)}</div>
-                            </div>
-                          );
-                        }}
-                      />
-                      {/* Hidden lines to pin Y-axis domain to candle hi/lo */}
-                      <Line dataKey="h" stroke="transparent" dot={false} isAnimationActive={false} legendType="none" />
-                      <Line dataKey="l" stroke="transparent" dot={false} isAnimationActive={false} legendType="none" />
-                      <Customized component={(p: object) => (
-                        <CandlestickLayer {...(p as Record<string, unknown>)} data={candleData} />
-                      )} />
-                      {/* Open-position horizontal entry lines */}
-                      {botStatus?.openLegs.map((leg) => [
-                        leg.bybitEntry != null && (
-                          <ReferenceLine key={`ea-${leg.id}`} y={leg.bybitEntry} stroke={leg.bybitSide === "long" ? "#22c55e" : "#ef4444"} strokeDasharray="6 3" strokeWidth={1} strokeOpacity={0.7} label={{ value: leg.bybitSide === "long" ? "Long ExA" : "Short ExA", position: "insideTopRight", fontSize: 9, fill: leg.bybitSide === "long" ? "#22c55e" : "#ef4444" }} />
-                        ),
-                        leg.binanceEntry != null && (
-                          <ReferenceLine key={`eb-${leg.id}`} y={leg.binanceEntry} stroke={leg.bybitSide === "long" ? "#ef4444" : "#22c55e"} strokeDasharray="6 3" strokeWidth={1} strokeOpacity={0.7} label={{ value: leg.bybitSide === "long" ? "Short ExB" : "Long ExB", position: "insideBottomRight", fontSize: 9, fill: leg.bybitSide === "long" ? "#ef4444" : "#22c55e" }} />
-                        ),
-                      ])}
-                      {tradePairs.map((pair) => (
-                        <ReferenceArea key={`band-${pair.legId}`} x1={pair.openedAtMs} x2={pair.closedAtMs} fill="#22c55e" fillOpacity={0.06} stroke="none" />
-                      ))}
-                      {tradeMarkers.map((marker, i) => (
-                        <ReferenceLine key={`${marker.legId}-${marker.label}-${i}`} x={marker.t} stroke={marker.color} strokeDasharray="4 2" strokeWidth={1.5} label={(props) => <TradeMarkerLabel {...props} marker={marker} />} />
-                      ))}
-                    </ComposedChart>
-                  ) : (
-                    <LineChart data={chartDataFinal} margin={{ top: 14, right: 8, left: 0, bottom: 0 }}>
-                      <CartesianGrid
-                        strokeDasharray="3 3"
-                        stroke="hsl(var(--border))"
-                        strokeOpacity={0.4}
-                      />
-                      <XAxis
-                        dataKey="t"
-                        type="number"
-                        scale="time"
-                        domain={chartXDomain}
-                        tickFormatter={formatXAxis}
-                        tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
-                        tickLine={false}
-                        axisLine={false}
-                        minTickGap={50}
-                      />
-                      <YAxis
-                        tickFormatter={formatPriceAxis}
-                        tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
-                        tickLine={false}
-                        axisLine={false}
-                        width={70}
-                        domain={["auto", "auto"]}
-                      />
-                      <Tooltip
-                        content={({ active, payload, label }) => {
-                          if (!active || !payload?.length) return null;
-                          return (
-                            <div className="bg-background border border-border rounded px-2.5 py-1.5 text-xs space-y-1 shadow-lg">
-                              <div className="text-muted-foreground font-mono mb-1">
-                                {formatXAxis(label as number)}
-                              </div>
-                              {payload.map((p) => (
-                                <div key={p.dataKey} className="flex items-center gap-2">
-                                  <span
-                                    className="w-2 h-2 rounded-full shrink-0"
-                                    style={{ background: p.color }}
-                                  />
-                                  <span className="font-medium" style={{ color: p.color }}>
-                                    {EXCHANGE_DISPLAY[p.dataKey as string] ?? p.dataKey}
-                                  </span>
-                                  <span className="font-mono text-foreground ml-auto pl-4">
-                                    {formatPriceFull(p.value as number)}
-                                  </span>
-                                </div>
-                              ))}
-                            </div>
-                          );
-                        }}
-                      />
-                      {activeExchangesFinal.map((ex) => (
-                        <Line
-                          key={ex}
-                          type="monotone"
-                          dataKey={ex}
-                          stroke={EXCHANGE_LINE_COLORS[ex] ?? "#888"}
-                          strokeWidth={1.5}
-                          dot={false}
-                          isAnimationActive={false}
-                          connectNulls
-                        />
-                      ))}
-                      {/* Open-position horizontal entry lines */}
-                      {botStatus?.openLegs.map((leg) => [
-                        leg.bybitEntry != null && (
-                          <ReferenceLine key={`ea-${leg.id}`} y={leg.bybitEntry} stroke={leg.bybitSide === "long" ? "#22c55e" : "#ef4444"} strokeDasharray="6 3" strokeWidth={1} strokeOpacity={0.7} label={{ value: leg.bybitSide === "long" ? "Long ExA" : "Short ExA", position: "insideTopRight", fontSize: 9, fill: leg.bybitSide === "long" ? "#22c55e" : "#ef4444" }} />
-                        ),
-                        leg.binanceEntry != null && (
-                          <ReferenceLine key={`eb-${leg.id}`} y={leg.binanceEntry} stroke={leg.bybitSide === "long" ? "#ef4444" : "#22c55e"} strokeDasharray="6 3" strokeWidth={1} strokeOpacity={0.7} label={{ value: leg.bybitSide === "long" ? "Short ExB" : "Long ExB", position: "insideBottomRight", fontSize: 9, fill: leg.bybitSide === "long" ? "#ef4444" : "#22c55e" }} />
-                        ),
-                      ])}
-                      {tradePairs.map((pair) => (
-                        <ReferenceArea
-                          key={`band-${pair.legId}`}
-                          x1={pair.openedAtMs}
-                          x2={pair.closedAtMs}
-                          fill="#22c55e"
-                          fillOpacity={0.06}
-                          stroke="none"
-                        />
-                      ))}
-                      {tradeMarkers.map((marker, i) => (
-                        <ReferenceLine
-                          key={`${marker.legId}-${marker.label}-${i}`}
-                          x={marker.t}
-                          stroke={marker.color}
-                          strokeDasharray="4 2"
-                          strokeWidth={1.5}
-                          label={(props) => (
-                            <TradeMarkerLabel {...props} marker={marker} />
-                          )}
-                        />
-                      ))}
-                    </LineChart>
-                  )}
-                </ResponsiveContainer>
-              </div>
-            )}
-            {/* Legend */}
-            {activeExchangesFinal.length > 0 && (chartDataFinal.length > 0 || !isLiveMode) && (
-              <div className="flex flex-wrap gap-4 mt-2 pt-2 border-t border-border/40">
-                {activeExchangesFinal.map((ex) => (
-                  <div key={ex} className="flex items-center gap-1.5 text-xs">
-                    <span
-                      className="w-5 h-0.5 rounded-full shrink-0"
-                      style={{ background: EXCHANGE_LINE_COLORS[ex] }}
-                    />
-                    <span className="font-medium" style={{ color: EXCHANGE_LINE_COLORS[ex] }}>
-                      {EXCHANGE_DISPLAY[ex] ?? ex.toUpperCase()}
-                    </span>
-                  </div>
-                ))}
-                {tradeMarkers.some((m) => m.label === "BUY") && (
-                  <div className="flex items-center gap-1.5 text-xs">
-                    <span className="w-5 h-0.5 rounded-full shrink-0" style={{ borderTop: "2px dashed #22c55e" }} />
-                    <span className="font-medium text-emerald-400">BUY</span>
-                  </div>
-                )}
-                {tradeMarkers.some((m) => m.label === "SELL") && (
-                  <div className="flex items-center gap-1.5 text-xs">
-                    <span className="w-5 h-0.5 rounded-full shrink-0" style={{ borderTop: "2px dashed #ef4444" }} />
-                    <span className="font-medium text-red-400">SELL</span>
-                  </div>
-                )}
-              </div>
-            )}
+          {/* TradingView price chart */}
+          <div
+            className="bg-card border border-border rounded-md overflow-hidden"
+            style={{ height: 460 }}
+            data-testid="price-chart"
+          >
+            <TradingViewChart symbol={symbol} exchange={tvExchange} />
           </div>
 
           {/* Spread history chart */}
-          {(isLiveMode || !klinesLoading) && spreadData.length > 0 && (
+          {!klinesLoading && spreadData.length > 0 && (
             <div className="bg-card border border-border rounded-md p-3" data-testid="spread-chart">
-              <div className="text-xs text-muted-foreground mb-2 uppercase tracking-wider font-semibold">
-                Best Spread % — (max − min) / min across all exchanges
+              <div className="flex items-center justify-between mb-2">
+                <div className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">
+                  Best Spread % — (max − min) / min across all exchanges
+                </div>
+                <div className="flex items-center gap-1" data-testid="time-range-selector">
+                  {TIME_RANGES.map((tr) => (
+                    <button
+                      key={tr.label}
+                      onClick={() => setTimeRange(tr)}
+                      data-testid={`btn-range-${tr.label}`}
+                      className={`px-2 py-0.5 text-[10px] rounded font-mono transition-colors ${
+                        timeRange.label === tr.label
+                          ? "bg-primary text-primary-foreground"
+                          : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                      }`}
+                    >
+                      {tr.label}
+                    </button>
+                  ))}
+                  {klinesIsFetching && !klinesLoading && (
+                    <span className="w-3 h-3 border-2 border-muted-foreground border-t-transparent rounded-full animate-spin ml-0.5 opacity-60" />
+                  )}
+                </div>
               </div>
               <div className="h-36">
                 <ResponsiveContainer width="100%" height="100%">
@@ -1401,7 +848,7 @@ export default function TokenDetail({ params }: { params: { symbol: string } }) 
                       dataKey="t"
                       type="number"
                       scale="time"
-                      domain={chartXDomain}
+                      domain={["dataMin", "dataMax"]}
                       tickFormatter={formatXAxis}
                       tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
                       tickLine={false}
@@ -1631,39 +1078,8 @@ export default function TokenDetail({ params }: { params: { symbol: string } }) 
             </div>
           )}
 
-          {/* Load more history button — only in non-live klines mode */}
-          {!isLiveMode && !klinesLoading && !klinesError && chartDataFinal.length > 0 && (
-            <div className="flex flex-col items-center gap-1">
-              <span className="text-xs text-muted-foreground/60 font-mono">
-                Loaded: {effectiveLimit} candles
-              </span>
-              {extraBatches < MAX_EXTRA_BATCHES && (
-                <button
-                  onClick={() => setExtraBatches((n) => Math.min(n + 1, MAX_EXTRA_BATCHES))}
-                  disabled={klinesIsFetching}
-                  data-testid="btn-load-more-history"
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded font-mono text-muted-foreground hover:text-foreground hover:bg-muted transition-colors border border-border/60 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {klinesIsFetching ? (
-                    <>
-                      <span className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
-                      Loading…
-                    </>
-                  ) : (
-                    <>
-                      Load more history
-                      <span className="text-muted-foreground/60">
-                        (+{timeRange.limit} candles)
-                      </span>
-                    </>
-                  )}
-                </button>
-              )}
-            </div>
-          )}
-
           {/* Open Positions — shown when there are bot legs for this token */}
-          {hasOpenLegs && botStatus && (
+          {(botStatus?.openLegs.length ?? 0) > 0 && botStatus && (
             <OpenPositionsSection
               bot={botStatus.bot}
               openLegs={botStatus.openLegs}
