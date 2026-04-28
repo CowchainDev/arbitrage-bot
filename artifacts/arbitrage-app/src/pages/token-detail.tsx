@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { Link } from "wouter";
-import { ArrowLeft, TrendingUp, XCircle, ChevronDown, ChevronUp, PanelRight, PanelRightClose, History, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
+import { ArrowLeft, TrendingUp, XCircle, ChevronDown, ChevronUp, PanelRight, PanelRightClose, History, ArrowUpDown, ArrowUp, ArrowDown, CalendarRange } from "lucide-react";
 import {
   LineChart,
   Line,
@@ -221,6 +221,7 @@ function SortIcon({ col, sortKey, sortDir }: { col: ClosedLegsSortKey; sortKey: 
 }
 
 type ClosedLegsFilter = "all" | "winners" | "losers";
+type DateRangePreset = "all" | "today" | "7d" | "30d" | "custom";
 
 function readPersistedValue<T>(key: string, defaultValue: T): T {
   try {
@@ -273,6 +274,9 @@ function ClosedLegsSection({
   const [sortKey, setSortKey] = usePersistedState<ClosedLegsSortKey>(`${sk}:sortKey`, "date");
   const [sortDir, setSortDir] = usePersistedState<SortDir>(`${sk}:sortDir`, "desc");
   const [filter, setFilter] = usePersistedState<ClosedLegsFilter>(`${sk}:filter`, "all");
+  const [datePreset, setDatePreset] = usePersistedState<DateRangePreset>(`${sk}:datePreset`, "all");
+  const [customFrom, setCustomFrom] = usePersistedState<string>(`${sk}:customFrom`, "");
+  const [customTo, setCustomTo] = usePersistedState<string>(`${sk}:customTo`, "");
   const rowRefs = useRef<Map<number, HTMLTableRowElement>>(new Map());
 
   const handleSort = (col: ClosedLegsSortKey) => {
@@ -284,11 +288,34 @@ function ClosedLegsSection({
     }
   };
 
+  const dateRangeBounds = useMemo((): { from: number; to: number } | null => {
+    const now = Date.now();
+    if (datePreset === "today") {
+      const startOfDay = new Date();
+      startOfDay.setHours(0, 0, 0, 0);
+      return { from: startOfDay.getTime(), to: now };
+    }
+    if (datePreset === "7d") return { from: now - 7 * 24 * 60 * 60 * 1000, to: now };
+    if (datePreset === "30d") return { from: now - 30 * 24 * 60 * 60 * 1000, to: now };
+    if (datePreset === "custom") {
+      const from = customFrom ? new Date(customFrom).getTime() : -Infinity;
+      const to = customTo ? new Date(customTo + "T23:59:59").getTime() : Infinity;
+      if (!Number.isFinite(from) && !Number.isFinite(to)) return null;
+      return { from: Number.isFinite(from) ? from : -Infinity, to: Math.max(from, Number.isFinite(to) ? to : Infinity) };
+    }
+    return null;
+  }, [datePreset, customFrom, customTo]);
+
   const processedLegs = useMemo(() => {
     const filtered = legs.filter((leg) => {
       if (filter === "winners") return (leg.realizedPnlUsd ?? 0) >= 0;
       if (filter === "losers") return (leg.realizedPnlUsd ?? 0) < 0;
       return true;
+    }).filter((leg) => {
+      if (!dateRangeBounds) return true;
+      if (!leg.closedAt) return false;
+      const t = new Date(leg.closedAt).getTime();
+      return t >= dateRangeBounds.from && t <= dateRangeBounds.to;
     });
 
     const sorted = [...filtered].sort((a, b) => {
@@ -316,7 +343,7 @@ function ClosedLegsSection({
     });
 
     return sorted;
-  }, [legs, filter, sortKey, sortDir]);
+  }, [legs, filter, sortKey, sortDir, dateRangeBounds]);
 
   // Scroll to + flash the highlighted row whenever it changes
   useEffect(() => {
@@ -365,26 +392,73 @@ function ClosedLegsSection({
         <div>
           <PnlSummaryBar legs={processedLegs} />
 
-          {/* Filter buttons */}
-          <div className="flex items-center gap-1.5 px-3 py-2 border-b border-border/60 bg-muted/10">
-            {(["all", "winners", "losers"] as ClosedLegsFilter[]).map((f) => (
-              <button
-                key={f}
-                onClick={() => setFilter(f)}
-                data-testid={`filter-${f}`}
-                className={`px-2.5 py-0.5 rounded text-[11px] font-semibold uppercase tracking-wide transition-colors ${
-                  filter === f
-                    ? f === "winners"
-                      ? "bg-primary/20 text-primary ring-1 ring-primary/40"
-                      : f === "losers"
-                      ? "bg-destructive/20 text-destructive ring-1 ring-destructive/40"
-                      : "bg-muted text-foreground ring-1 ring-border"
-                    : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
-                }`}
-              >
-                {f === "all" ? `All (${legs.length})` : f === "winners" ? `Winners` : `Losers`}
-              </button>
-            ))}
+          {/* Filter toolbar */}
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-2 border-b border-border/60 bg-muted/10">
+            {/* Winners / Losers filter */}
+            <div className="flex items-center gap-1.5">
+              {(["all", "winners", "losers"] as ClosedLegsFilter[]).map((f) => (
+                <button
+                  key={f}
+                  onClick={() => setFilter(f)}
+                  data-testid={`filter-${f}`}
+                  className={`px-2.5 py-0.5 rounded text-[11px] font-semibold uppercase tracking-wide transition-colors ${
+                    filter === f
+                      ? f === "winners"
+                        ? "bg-primary/20 text-primary ring-1 ring-primary/40"
+                        : f === "losers"
+                        ? "bg-destructive/20 text-destructive ring-1 ring-destructive/40"
+                        : "bg-muted text-foreground ring-1 ring-border"
+                      : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                  }`}
+                >
+                  {f === "all" ? `All (${legs.length})` : f === "winners" ? `Winners` : `Losers`}
+                </button>
+              ))}
+            </div>
+
+            {/* Divider */}
+            <div className="h-4 w-px bg-border/60 hidden sm:block" />
+
+            {/* Date range presets */}
+            <div className="flex items-center gap-1.5">
+              <CalendarRange className="w-3 h-3 text-muted-foreground" />
+              {(["all", "today", "7d", "30d", "custom"] as DateRangePreset[]).map((p) => (
+                <button
+                  key={p}
+                  onClick={() => setDatePreset(p)}
+                  data-testid={`date-preset-${p}`}
+                  className={`px-2.5 py-0.5 rounded text-[11px] font-semibold uppercase tracking-wide transition-colors ${
+                    datePreset === p
+                      ? "bg-muted text-foreground ring-1 ring-border"
+                      : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                  }`}
+                >
+                  {p === "all" ? "All time" : p === "today" ? "Today" : p === "7d" ? "7d" : p === "30d" ? "30d" : "Custom"}
+                </button>
+              ))}
+            </div>
+
+            {/* Custom date inputs */}
+            {datePreset === "custom" && (
+              <div className="flex items-center gap-1.5">
+                <input
+                  type="date"
+                  value={customFrom}
+                  onChange={(e) => setCustomFrom(e.target.value)}
+                  data-testid="custom-date-from"
+                  className="h-6 px-1.5 rounded border border-border bg-background text-[11px] text-foreground font-mono focus:outline-none focus:ring-1 focus:ring-primary/50"
+                />
+                <span className="text-[10px] text-muted-foreground">–</span>
+                <input
+                  type="date"
+                  value={customTo}
+                  onChange={(e) => setCustomTo(e.target.value)}
+                  data-testid="custom-date-to"
+                  className="h-6 px-1.5 rounded border border-border bg-background text-[11px] text-foreground font-mono focus:outline-none focus:ring-1 focus:ring-primary/50"
+                />
+              </div>
+            )}
+
             {processedLegs.length !== legs.length && (
               <span className="ml-auto text-[10px] text-muted-foreground font-mono">
                 {processedLegs.length} shown
