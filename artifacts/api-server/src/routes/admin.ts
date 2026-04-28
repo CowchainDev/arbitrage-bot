@@ -208,7 +208,7 @@ const TAKER_RATES: Record<string, number> = {
   mexc:    0.00050,
 };
 
-// POST /api/admin/backfill-estimated-fees
+// POST /api/backfill-estimated-fees
 // Estimates fees for any closed_trades record where totalFees = 0,
 // using per-exchange taker rates applied to position quantity.
 router.post("/backfill-estimated-fees", requireBotSecret, async (req, res) => {
@@ -248,6 +248,53 @@ router.post("/backfill-estimated-fees", requireBotSecret, async (req, res) => {
     res.json({ updated: results.length, results });
   } catch (err) {
     req.log.error({ err }, "backfill-estimated-fees: fatal error");
+    res.status(500).json({ error: "backfill_failed", message: String(err) });
+  }
+});
+
+// POST /api/admin/backfill-open-fees
+// Retroactively populates open_fees on closed_trades by joining with bot_legs
+// on symbol + entryTime (≈ openedAt within 5 seconds).
+// When multiple legs could match the same closed_trade the nearest one is used
+// (deterministic tie-break: smallest time delta, then smallest leg id).
+// Rows with no matching leg or where the leg has 0 fees are left with open_fees = 0.
+router.post("/admin/backfill-open-fees", requireBotSecret, async (req, res) => {
+  try {
+    // Ensure the open_fees column exists (safe no-op if already present)
+    await db.execute(sql`
+      ALTER TABLE closed_trades
+        ADD COLUMN IF NOT EXISTS open_fees NUMERIC(20, 8) NOT NULL DEFAULT 0
+    `);
+
+    // Use a CTE that picks the single nearest matching bot_leg per closed_trade
+    // so the UPDATE is always deterministic even when multiple legs share a symbol
+    // and were opened within the 5-second window.
+    const result = await db.execute(sql`
+      WITH best_match AS (
+        SELECT DISTINCT ON (ct.id)
+               ct.id          AS trade_id,
+               bl.open_fee_a + bl.open_fee_b AS open_fees
+        FROM   closed_trades ct
+        JOIN   bot_legs bl
+               ON  bl.status = 'closed'
+               AND bl.symbol = ct.symbol
+               AND ABS(EXTRACT(EPOCH FROM (ct.entry_time - bl.opened_at))) < 5
+               AND (bl.open_fee_a + bl.open_fee_b) > 0
+        WHERE  ct.open_fees = 0
+        ORDER BY ct.id,
+                 ABS(EXTRACT(EPOCH FROM (ct.entry_time - bl.opened_at))) ASC,
+                 bl.id ASC
+      )
+      UPDATE closed_trades ct
+      SET    open_fees = bm.open_fees
+      FROM   best_match bm
+      WHERE  ct.id = bm.trade_id
+    `);
+
+    const rowsUpdated = (result as { rowCount?: number }).rowCount ?? 0;
+    res.json({ updated: rowsUpdated });
+  } catch (err) {
+    req.log.error({ err }, "backfill-open-fees: fatal error");
     res.status(500).json({ error: "backfill_failed", message: String(err) });
   }
 });
