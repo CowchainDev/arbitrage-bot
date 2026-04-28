@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { formatFee } from "@/lib/utils";
 import {
   useGetTrades,
   getGetTradesQueryKey,
@@ -243,11 +244,11 @@ function TradeTable({ trades }: { trades: ClosedTrade[] }) {
                 <td className="px-3 py-2.5 text-right text-muted-foreground">
                   {trade.openFees != null && trade.closeFees != null ? (
                     <span className="flex flex-col items-end gap-0.5">
-                      <span title="Open fees">-${trade.openFees.toFixed(4)}</span>
-                      <span title="Close fees" className="text-muted-foreground/60">-${trade.closeFees.toFixed(4)}</span>
+                      <span title="Open fees">-${formatFee(trade.openFees)}</span>
+                      <span title="Close fees" className="text-muted-foreground/60">-${formatFee(trade.closeFees)}</span>
                     </span>
                   ) : trade.totalFees > 0 ? (
-                    `-$${trade.totalFees.toFixed(4)}`
+                    `-$${formatFee(trade.totalFees)}`
                   ) : "—"}
                 </td>
                 <td className={`px-3 py-2.5 text-right ${funding != null ? (funding >= 0 ? "text-primary/80" : "text-destructive/80") : "text-muted-foreground"}`}
@@ -360,9 +361,9 @@ export default function History() {
         />
         <StatCard
           label="Total Fees"
-          value={stats && stats.totalFees > 0 ? `-$${stats.totalFees.toFixed(2)}` : "—"}
+          value={stats && stats.totalFees > 0 ? `-$${formatFee(stats.totalFees)}` : "—"}
           sub={feeBreakdown != null
-            ? `Open -$${feeBreakdown.open.toFixed(2)} / Close -$${feeBreakdown.close.toFixed(2)}`
+            ? `Open -$${formatFee(feeBreakdown.open)} / Close -$${formatFee(feeBreakdown.close)}`
             : undefined}
           positive={false}
         />

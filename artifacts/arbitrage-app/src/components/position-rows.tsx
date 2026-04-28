@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { formatFee } from "@/lib/utils";
 import { ChevronDown, ChevronUp, LineChart } from "lucide-react";
 import { Link } from "wouter";
 import {
@@ -305,7 +306,7 @@ export function BotSummaryRow({
       </span>
       <span className="font-mono">{formatPct(avgSpread)}</span>
       <span className="font-mono text-muted-foreground">
-        {totalOpenFees > 0 ? `-$${totalOpenFees.toFixed(4)}` : "—"}
+        {totalOpenFees > 0 ? `-$${formatFee(totalOpenFees)}` : "—"}
       </span>
       <span className={`font-mono font-semibold ${pnlPositive ? "text-primary" : "text-destructive"}`}>
         {formatPnlWithPct(totalPnl, netUsdSize)}
@@ -471,7 +472,7 @@ export function PositionRow({
           <span className="flex flex-col gap-0">
             <span>
               {position.openFees != null && position.openFees > 0
-                ? `-$${position.openFees.toFixed(4)}`
+                ? `-$${formatFee(position.openFees)}`
                 : "—"}
             </span>
             {(longFunding.rate != null || shortFunding.rate != null) && (
@@ -579,7 +580,7 @@ export function PositionRow({
                 <div className="flex items-center justify-between px-1 pt-1">
                   <span className="text-sm text-muted-foreground">Close Fees</span>
                   <span className="font-mono text-base text-muted-foreground">
-                    -${closeResult.closeFees.toFixed(4)}
+                    -${formatFee(closeResult.closeFees)}
                   </span>
                 </div>
               )}
