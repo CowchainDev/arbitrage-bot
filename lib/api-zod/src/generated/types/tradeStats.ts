@@ -17,4 +17,6 @@ export interface TradeStats {
   totalCloseFees?: number | null;
   bestTrade: number;
   worstTrade: number;
+  /** Sum of all fundingPaidUsd values across closed trades. Positive means net funding received. */
+  totalFunding: number;
 }

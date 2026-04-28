@@ -1156,6 +1156,9 @@ components:
           type: number
         worstTrade:
           type: number
+        totalFunding:
+          type: number
+          description: Sum of all fundingPaidUsd values across closed trades. Positive means net funding received.
       required:
         - totalTrades
         - winningTrades
@@ -1163,6 +1166,7 @@ components:
         - totalFees
         - bestTrade
         - worstTrade
+        - totalFunding
 
     TradeHistoryResponse:
       type: object

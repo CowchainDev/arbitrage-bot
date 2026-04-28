@@ -300,7 +300,7 @@ export default function History() {
         </div>
       )}
 
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-4 gap-3">
         <StatCard
           label="Total Trades"
           value={stats ? String(stats.totalTrades) : "—"}
@@ -324,6 +324,12 @@ export default function History() {
             ? `Open -$${feeBreakdown.open.toFixed(2)} / Close -$${feeBreakdown.close.toFixed(2)}`
             : undefined}
           positive={false}
+        />
+        <StatCard
+          label="Total Funding"
+          value={stats && stats.totalTrades > 0 ? formatPnl(stats.totalFunding) : "—"}
+          sub="received / paid"
+          positive={stats && stats.totalTrades > 0 ? stats.totalFunding >= 0 : null}
         />
         <StatCard
           label="Best Trade"

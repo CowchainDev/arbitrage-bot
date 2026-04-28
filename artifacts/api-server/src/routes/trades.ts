@@ -32,6 +32,7 @@ router.get("/trades", async (req: Request, res: Response) => {
           bestTrade: max(closedTradesTable.realizedPnl),
           worstTrade: min(closedTradesTable.realizedPnl),
           winningTrades: sql<number>`count(*) filter (where ${closedTradesTable.realizedPnl} > 0)`,
+          totalFunding: sql<string | null>`sum(coalesce(${closedTradesTable.fundingPaidUsd}, 0))`,
         })
         .from(closedTradesTable),
     ]);
@@ -71,6 +72,7 @@ router.get("/trades", async (req: Request, res: Response) => {
         totalCloseFees: s?.totalCloseFees != null ? Number(s.totalCloseFees) : null,
         bestTrade: Number(s?.bestTrade ?? 0),
         worstTrade: Number(s?.worstTrade ?? 0),
+        totalFunding: Number(s?.totalFunding ?? 0),
       },
       pagination: { limit, offset },
     });
