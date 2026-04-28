@@ -366,6 +366,35 @@ type SymbolPriceEntry = {
 };
 const priceCacheBySymbol = new Map<string, SymbolPriceEntry>();
 
+export type SymbolFundingEntry = {
+  bybitFundingRate: number | null;
+  binanceFundingRate: number | null;
+  gateFundingRate: number | null;
+  okxFundingRate: number | null;
+  mexcFundingRate: number | null;
+  bybitNextFunding: string | null;
+  binanceNextFunding: string | null;
+  gateNextFunding: string | null;
+  okxNextFunding: string | null;
+  mexcNextFunding: string | null;
+};
+const fundingRateCacheBySymbol = new Map<string, SymbolFundingEntry>();
+
+export function getFundingRateEntry(symbol: string): SymbolFundingEntry | null {
+  return fundingRateCacheBySymbol.get(symbol) ?? null;
+}
+
+export function getFundingRateForExchange(entry: SymbolFundingEntry, exchange: string): number {
+  switch (exchange) {
+    case "bybit":   return entry.bybitFundingRate   ?? 0;
+    case "binance": return entry.binanceFundingRate ?? 0;
+    case "gate":    return entry.gateFundingRate    ?? 0;
+    case "okx":     return entry.okxFundingRate     ?? 0;
+    case "mexc":    return entry.mexcFundingRate    ?? 0;
+    default:        return 0;
+  }
+}
+
 // EMA of bestSpreadPct per symbol. α ≈ 0.006 → ~10-minute half-life at 5s refresh.
 const SPREAD_EMA_ALPHA = 0.006;
 const spreadEmaMap = new Map<string, number>();
@@ -700,6 +729,7 @@ async function fetchAndCachePrices(): Promise<unknown[]> {
   }
 
   priceCacheBySymbol.clear();
+  fundingRateCacheBySymbol.clear();
   for (const s of spreads) {
     priceCacheBySymbol.set(s.symbol, {
       bybitPrice: s.bybitPrice as number | null,
@@ -707,6 +737,18 @@ async function fetchAndCachePrices(): Promise<unknown[]> {
       mexcPrice: s.mexcPrice as number | null,
       gatePrice: s.gatePrice as number | null,
       okxPrice: s.okxPrice as number | null,
+    });
+    fundingRateCacheBySymbol.set(s.symbol, {
+      bybitFundingRate:  (s.bybitFundingRate  as number | null) ?? null,
+      binanceFundingRate: (s.binanceFundingRate as number | null) ?? null,
+      gateFundingRate:   (s.gateFundingRate   as number | null) ?? null,
+      okxFundingRate:    (s.okxFundingRate    as number | null) ?? null,
+      mexcFundingRate:   (s.mexcFundingRate   as number | null) ?? null,
+      bybitNextFunding:  (s.bybitNextFunding  as string | null) ?? null,
+      binanceNextFunding: (s.binanceNextFunding as string | null) ?? null,
+      gateNextFunding:   (s.gateNextFunding   as string | null) ?? null,
+      okxNextFunding:    (s.okxNextFunding    as string | null) ?? null,
+      mexcNextFunding:   (s.mexcNextFunding   as string | null) ?? null,
     });
   }
 
@@ -1324,6 +1366,14 @@ router.post("/exchanges/close-position", async (req: Request, res: Response) => 
 
     if (result.bothClosed) {
       try {
+        const fundingEntry = getFundingRateEntry(symbol);
+        let estimatedFundingUsd: number | null = null;
+        if (fundingEntry && entryTime) {
+          const longRate = getFundingRateForExchange(fundingEntry, longExchange);
+          const shortRate = getFundingRateForExchange(fundingEntry, shortExchange);
+          const msHeld = Date.now() - new Date(entryTime).getTime();
+          estimatedFundingUsd = (msHeld / 28800000) * (shortRate - longRate) * quantity;
+        }
         await db.insert(closedTradesTable).values({
           symbol,
           longExchange,
@@ -1331,6 +1381,7 @@ router.post("/exchanges/close-position", async (req: Request, res: Response) => 
           spreadAtEntry: String(spreadAtEntry),
           realizedPnl: String(realizedPnl),
           quantity: String(quantity),
+          fundingPaidUsd: estimatedFundingUsd != null ? String(estimatedFundingUsd) : undefined,
           entryTime: entryTime ? new Date(entryTime) : new Date(),
           closeTime: new Date(),
         });

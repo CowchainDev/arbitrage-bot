@@ -147,6 +147,7 @@ export interface Position {
   bybitPnl?: number;
   binancePnl?: number;
   totalPnl: number;
+  /** Sum of open fees paid when entering this position (from bot legs, if applicable) */
   openFees?: number;
   spreadAtEntry?: number;
   currentSpread: number;
@@ -196,6 +197,7 @@ export interface ClosePositionResult {
   bybitResult?: OrderResult;
   binanceResult?: OrderResult;
   realizedPnl?: number;
+  /** Total fees paid to close the position (sum of both legs) */
   closeFees?: number;
 }
 
@@ -254,8 +256,12 @@ export interface ClosedTrade {
   spreadAtEntry: number;
   realizedPnl: number;
   totalFees: number;
+  /** Fees paid to open the position (from bot legs) */
   openFees?: number;
+  /** Fees paid to close the position (totalFees - openFees) */
   closeFees?: number;
+  /** Estimated net funding captured over the life of the trade (positive = received, negative = paid). Null for older trades recorded before this feature. */
+  fundingPaidUsd?: number | null;
   quantity: number;
   entryTime: string;
   closeTime: string;

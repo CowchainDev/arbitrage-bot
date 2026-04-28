@@ -222,7 +222,12 @@ export const GetPositionsResponseItem = zod.object({
   bybitPnl: zod.number().optional(),
   binancePnl: zod.number().optional(),
   totalPnl: zod.number(),
-  openFees: zod.number().optional(),
+  openFees: zod
+    .number()
+    .optional()
+    .describe(
+      "Sum of open fees paid when entering this position (from bot legs, if applicable)",
+    ),
   spreadAtEntry: zod.number().optional(),
   currentSpread: zod.number(),
   usdSize: zod.number().optional(),
@@ -350,7 +355,10 @@ export const ClosePositionResponse = zod.object({
     })
     .optional(),
   realizedPnl: zod.number().optional(),
-  closeFees: zod.number().optional(),
+  closeFees: zod
+    .number()
+    .optional()
+    .describe("Total fees paid to close the position (sum of both legs)"),
 });
 
 /**
@@ -890,8 +898,20 @@ export const GetTradesResponse = zod.object({
       spreadAtEntry: zod.number(),
       realizedPnl: zod.number(),
       totalFees: zod.number(),
-      openFees: zod.number().optional(),
-      closeFees: zod.number().optional(),
+      openFees: zod
+        .number()
+        .optional()
+        .describe("Fees paid to open the position (from bot legs)"),
+      closeFees: zod
+        .number()
+        .optional()
+        .describe("Fees paid to close the position (totalFees - openFees)"),
+      fundingPaidUsd: zod
+        .number()
+        .nullish()
+        .describe(
+          "Estimated net funding captured over the life of the trade (positive = received, negative = paid). Null for older trades recorded before this feature.",
+        ),
       quantity: zod.number(),
       entryTime: zod.string(),
       closeTime: zod.string(),

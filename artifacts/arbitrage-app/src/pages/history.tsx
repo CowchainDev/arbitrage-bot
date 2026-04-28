@@ -151,7 +151,8 @@ function TradeTable({ trades }: { trades: ClosedTrade[] }) {
             <th className="text-right px-3 py-2 font-medium">Entry Spread</th>
             <th className="text-right px-3 py-2 font-medium">Size (USD)</th>
             <th className="text-right px-3 py-2 font-medium">Open Fees / Close Fees</th>
-            <th className="text-right px-3 py-2 font-medium">Realized PnL ($)</th>
+            <th className="text-right px-3 py-2 font-medium">Funding</th>
+            <th className="text-right px-3 py-2 font-medium">Realized PnL (excl. funding)</th>
             <th className="text-right px-3 py-2 font-medium">PnL (%)</th>
             <th className="text-right px-3 py-2 font-medium">Duration</th>
             <th className="text-right px-3 py-2 font-medium">Closed At</th>
@@ -164,6 +165,7 @@ function TradeTable({ trades }: { trades: ClosedTrade[] }) {
               trade.quantity > 0
                 ? (trade.realizedPnl / (trade.quantity * 2)) * 100
                 : null;
+            const funding = trade.fundingPaidUsd;
             return (
               <tr
                 key={trade.id}
@@ -192,6 +194,12 @@ function TradeTable({ trades }: { trades: ClosedTrade[] }) {
                   ) : trade.totalFees > 0 ? (
                     `-$${trade.totalFees.toFixed(4)}`
                   ) : "—"}
+                </td>
+                <td className={`px-3 py-2.5 text-right ${funding != null ? (funding >= 0 ? "text-primary/80" : "text-destructive/80") : "text-muted-foreground"}`}
+                  title="Estimated net funding received (+) or paid (−) over the life of this trade">
+                  {funding != null
+                    ? `${funding >= 0 ? "+" : ""}$${Math.abs(funding).toFixed(4)}`
+                    : "—"}
                 </td>
                 <td
                   className={`px-3 py-2.5 text-right font-semibold ${pnlPositive ? "text-primary" : "text-destructive"}`}

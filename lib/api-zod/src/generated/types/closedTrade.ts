@@ -14,8 +14,12 @@ export interface ClosedTrade {
   spreadAtEntry: number;
   realizedPnl: number;
   totalFees: number;
+  /** Fees paid to open the position (from bot legs) */
   openFees?: number;
+  /** Fees paid to close the position (totalFees - openFees) */
   closeFees?: number;
+  /** Estimated net funding captured over the life of the trade (positive = received, negative = paid). Null for older trades recorded before this feature. */
+  fundingPaidUsd?: number | null;
   quantity: number;
   entryTime: string;
   closeTime: string;

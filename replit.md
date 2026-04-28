@@ -37,3 +37,18 @@ A background watcher (`artifacts/api-server/src/services/bot-watcher.ts`) runs e
 Bot CRUD API: `GET/POST /bots`, `PUT/DELETE /bots/:id`, `POST /bots/:id/start`, `POST /bots/:id/stop`, `GET /bots/:id/legs`
 
 Tables: `bot_configs` (config per token), `bot_legs` (one row per open DCA leg), `credentials` (server-side API keys)
+
+## Funding Rate Feature (Task #164)
+
+Funding rates are fetched alongside price data in `fetchAndCachePrices()` (exchanges.ts) and cached per-symbol in `fundingRateCacheBySymbol`. Two helpers are exported: `getFundingRateEntry(symbol)` and `getFundingRateForExchange(entry, exchange)`.
+
+**DB schema**: both `closed_trades` and `bot_legs` tables have a nullable `fundingPaidUsd` column (added via `pnpm --filter @workspace/db push`).
+
+**Funding formula**: `(msHeld / 28800000) × (shortRate − longRate) × usdSize`
+- Positive = net funding received (short leg rate > long leg rate)
+- Applied in `closeLeg()` (bot-watcher.ts) and `/exchanges/close-position` HTTP handler
+
+**Frontend**:
+- **History page**: "Funding" column shows `fundingPaidUsd` (+ = green / − = red, null = "—")
+- **Open Positions rows**: per-leg funding rates, accrued funding, funding-adj P&L, and next-funding countdown
+- **Dashboard FR Δ column**: delta + cheap-leg rate in tiny text + live countdown

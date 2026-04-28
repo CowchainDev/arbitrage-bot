@@ -99,15 +99,33 @@ function formatUsd(v: number | null | undefined): string {
   return `${v.toFixed(0)}`;
 }
 
-function getExchangeFields(token: TokenSpread, ex: string) {
+function getExchangeFields(token: TokenSpread, ex: string): { ask: number | undefined; bid: number | undefined; funding: number | undefined; nextFunding: string | undefined } {
   switch (ex) {
-    case "bybit":   return { ask: token.bybitAsk,   bid: token.bybitBid,   funding: token.bybitFundingRate };
-    case "binance": return { ask: token.binanceAsk, bid: token.binanceBid, funding: token.binanceFundingRate };
-    case "gate":    return { ask: token.gateAsk,    bid: token.gateBid,    funding: token.gateFundingRate };
-    case "okx":     return { ask: token.okxAsk,     bid: token.okxBid,     funding: token.okxFundingRate };
-    case "mexc":    return { ask: token.mexcAsk,    bid: token.mexcBid,    funding: token.mexcFundingRate };
-    default:        return { ask: undefined, bid: undefined, funding: undefined };
+    case "bybit":   return { ask: token.bybitAsk,   bid: token.bybitBid,   funding: token.bybitFundingRate,   nextFunding: token.bybitNextFunding };
+    case "binance": return { ask: token.binanceAsk, bid: token.binanceBid, funding: token.binanceFundingRate, nextFunding: token.binanceNextFunding };
+    case "gate":    return { ask: token.gateAsk,    bid: token.gateBid,    funding: token.gateFundingRate,    nextFunding: token.gateNextFunding };
+    case "okx":     return { ask: token.okxAsk,     bid: token.okxBid,     funding: token.okxFundingRate,     nextFunding: token.okxNextFunding };
+    case "mexc":    return { ask: token.mexcAsk,    bid: token.mexcBid,    funding: token.mexcFundingRate,    nextFunding: token.mexcNextFunding };
+    default:        return { ask: undefined, bid: undefined, funding: undefined, nextFunding: undefined };
   }
+}
+
+function useFundingCountdown(nextFundingA: string | undefined | null, nextFundingB: string | undefined | null): string {
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  const msA = nextFundingA ? new Date(nextFundingA).getTime() - now : null;
+  const msB = nextFundingB ? new Date(nextFundingB).getTime() - now : null;
+  const ms = [msA, msB].filter((m): m is number => m != null && m > 0).sort((a, b) => a - b)[0] ?? null;
+  if (ms == null) return "";
+  const totalSec = Math.floor(ms / 1000);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  if (h > 0) return `${h}h ${String(m).padStart(2, "0")}m`;
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
 
@@ -242,8 +260,8 @@ function TokenRow({
 
   // bestSpreadLeg is "expensive/cheap" from the backend (higher-price exchange first)
   const [expensiveEx, cheapEx] = (token.bestSpreadLeg ?? "").split("/");
-  const cheapData  = cheapEx     ? getExchangeFields(token, cheapEx)     : { ask: undefined, bid: undefined, funding: undefined };
-  const expData    = expensiveEx ? getExchangeFields(token, expensiveEx) : { ask: undefined, bid: undefined, funding: undefined };
+  const cheapData  = cheapEx     ? getExchangeFields(token, cheapEx)     : { ask: undefined, bid: undefined, funding: undefined, nextFunding: undefined };
+  const expData    = expensiveEx ? getExchangeFields(token, expensiveEx) : { ask: undefined, bid: undefined, funding: undefined, nextFunding: undefined };
   const rawSpread  = token.bestSpreadPct != null ? token.bestSpreadPct : Math.abs(token.spreadPct);
   const effSpread  = cheapData.ask != null && expData.bid != null && cheapData.ask > 0
     ? (expData.bid - cheapData.ask) / cheapData.ask * 100
@@ -262,6 +280,7 @@ function TokenRow({
   const frColor = frDelta != null
     ? frDelta > 0 ? "text-primary/70" : frDelta < 0 ? "text-destructive/70" : "text-muted-foreground/50"
     : "text-muted-foreground/50";
+  const frCountdown = useFundingCountdown(cheapData.nextFunding, expData.nextFunding);
 
   const rowBg = isSelected
     ? "bg-primary/8 border-l-2 border-l-primary"
@@ -352,8 +371,25 @@ function TokenRow({
       </div>
 
       {/* Funding rate delta */}
-      <div className={`font-mono text-[10px] text-right pr-3 tabular-nums ${frColor}`}>
-        {frDelta != null ? `${frDelta >= 0 ? "+" : ""}${frDelta.toFixed(4)}%` : "-"}
+      <div className={`font-mono text-[10px] text-right pr-3 tabular-nums leading-tight ${frColor}`}>
+        {frDelta != null ? (
+          <div className="flex flex-col items-end gap-0">
+            <span>{frDelta >= 0 ? "+" : ""}{frDelta.toFixed(4)}%</span>
+            {cheapData.funding != null && (
+              <span className="text-muted-foreground/40 text-[9px]">
+                {getExchangeName(cheapEx)} {(cheapData.funding * 100).toFixed(4)}%
+              </span>
+            )}
+            {expData.funding != null && (
+              <span className="text-muted-foreground/40 text-[9px]">
+                {getExchangeName(expensiveEx)} {(expData.funding * 100).toFixed(4)}%
+              </span>
+            )}
+            {frCountdown && (
+              <span className="text-muted-foreground/40 text-[9px]">⏱ {frCountdown}</span>
+            )}
+          </div>
+        ) : "-"}
       </div>
 
       {/* Volume 24h */}
@@ -413,8 +449,8 @@ function TokenCard({
 
   // bestSpreadLeg is "expensive/cheap" from the backend (higher-price exchange first)
   const [expensiveEx, cheapEx] = (token.bestSpreadLeg ?? "").split("/");
-  const cheapData  = cheapEx     ? getExchangeFields(token, cheapEx)     : { ask: undefined, bid: undefined, funding: undefined };
-  const expData    = expensiveEx ? getExchangeFields(token, expensiveEx) : { ask: undefined, bid: undefined, funding: undefined };
+  const cheapData  = cheapEx     ? getExchangeFields(token, cheapEx)     : { ask: undefined, bid: undefined, funding: undefined, nextFunding: undefined };
+  const expData    = expensiveEx ? getExchangeFields(token, expensiveEx) : { ask: undefined, bid: undefined, funding: undefined, nextFunding: undefined };
   const rawSpread  = token.bestSpreadPct != null ? token.bestSpreadPct : Math.abs(token.spreadPct);
   const effSpread  = cheapData.ask != null && expData.bid != null && cheapData.ask > 0
     ? (expData.bid - cheapData.ask) / cheapData.ask * 100
@@ -430,6 +466,7 @@ function TokenCard({
   const frColor = frDelta != null
     ? frDelta > 0 ? "text-primary/70" : frDelta < 0 ? "text-destructive/70" : "text-muted-foreground/40"
     : "text-muted-foreground/40";
+  const frCountdown = useFundingCountdown(cheapData.nextFunding, expData.nextFunding);
 
   const ema = token.emaSpreadPct;
   const emaColor = ema == null
@@ -493,7 +530,7 @@ function TokenCard({
       </div>
 
       {/* Exchange pair + FR delta */}
-      <div className="flex items-center gap-1.5 mb-2">
+      <div className="flex items-start gap-1.5 mb-2">
         {cheapEx && expensiveEx ? (
           <span className="text-[10px] font-mono">
             <span className="text-muted-foreground">{getExchangeName(cheapEx)}</span>
@@ -504,9 +541,22 @@ function TokenCard({
           <span className="text-muted-foreground/30 text-[10px]">-/-</span>
         )}
         {frDelta != null && (
-          <span className={`font-mono text-[10px] tabular-nums ml-auto ${frColor}`}>
-            {frDelta >= 0 ? "+" : ""}{frDelta.toFixed(4)}%
-          </span>
+          <div className={`font-mono text-[10px] tabular-nums ml-auto text-right leading-tight ${frColor}`}>
+            <div>{frDelta >= 0 ? "+" : ""}{frDelta.toFixed(4)}%</div>
+            {cheapData.funding != null && (
+              <div className="text-muted-foreground/40 text-[9px]">
+                {getExchangeName(cheapEx)} {(cheapData.funding * 100).toFixed(4)}%
+              </div>
+            )}
+            {expData.funding != null && (
+              <div className="text-muted-foreground/40 text-[9px]">
+                {getExchangeName(expensiveEx)} {(expData.funding * 100).toFixed(4)}%
+              </div>
+            )}
+            {frCountdown && (
+              <div className="text-muted-foreground/40 text-[9px]">⏱ {frCountdown}</div>
+            )}
+          </div>
         )}
       </div>
 
@@ -963,6 +1013,7 @@ export default function Dashboard() {
                                   requestHeaders={allExchangeRequestHeaders}
                                   exchangeA={exchInfo?.exchangeA}
                                   exchangeB={exchInfo?.exchangeB}
+                                  token={tokens.find((t) => t.symbol === legPos.symbol)}
                                 />
                               </div>
                             );
@@ -983,6 +1034,7 @@ export default function Dashboard() {
                         requestHeaders={allExchangeRequestHeaders}
                         exchangeA={exchInfo?.exchangeA}
                         exchangeB={exchInfo?.exchangeB}
+                        token={tokens.find((t) => t.symbol === pos.symbol)}
                       />
                     );
                   }

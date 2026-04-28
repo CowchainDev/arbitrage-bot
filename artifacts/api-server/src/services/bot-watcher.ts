@@ -11,6 +11,8 @@ import { logger } from "../lib/logger";
 import {
   fetchPriceSpreads,
   getPriceCacheEntry,
+  getFundingRateEntry,
+  getFundingRateForExchange,
   createExchangeForName,
   placeOrderInternal,
   closePositionInternal,
@@ -235,7 +237,7 @@ async function closeLeg(
   const pair = await getExchangePairForBot(config);
   if (!pair) return false;
   const { exA, exB } = pair;
-  const { exchangeA } = botExchangeNames(config);
+  const { exchangeA, exchangeB } = botExchangeNames(config);
 
   const result = await closePositionInternal({
     exA,
@@ -248,8 +250,8 @@ async function closeLeg(
     // Pass stored contractSizeB so the close order qty is correctly converted back to contracts.
     // null = legacy leg (qty already in contracts, no conversion needed).
     contractSizeB: leg.contractSizeB != null ? Number(leg.contractSizeB) : null,
-    longExchange: leg.bybitSide === "long" ? exchangeA : config.exchangeB ?? "binance",
-    shortExchange: leg.bybitSide === "short" ? exchangeA : config.exchangeB ?? "binance",
+    longExchange: leg.bybitSide === "long" ? exchangeA : exchangeB,
+    shortExchange: leg.bybitSide === "short" ? exchangeA : exchangeB,
   });
 
   if (!result.bothClosed) {
@@ -270,6 +272,20 @@ async function closeLeg(
   const spreadAtExit = getSpreadPct(closePriceA, closePriceB);
   const closedAt = new Date();
 
+  const longExchangeName = leg.bybitSide === "long" ? exchangeA : exchangeB;
+  const shortExchangeName = leg.bybitSide === "short" ? exchangeA : exchangeB;
+  const usdSize = Number(leg.bybitQty) * Number(leg.bybitEntry) + Number(leg.binanceQty) * Number(leg.binanceEntry);
+
+  // Estimate net funding accrued over the life of this leg
+  let estimatedFundingUsd: number | null = null;
+  const fundingEntry = getFundingRateEntry(leg.symbol);
+  if (fundingEntry) {
+    const longRate = getFundingRateForExchange(fundingEntry, longExchangeName);
+    const shortRate = getFundingRateForExchange(fundingEntry, shortExchangeName);
+    const msHeld = closedAt.getTime() - leg.openedAt.getTime();
+    estimatedFundingUsd = (msHeld / 28800000) * (shortRate - longRate) * usdSize;
+  }
+
   // Retry the DB write — a transient connection drop here silently orphans the P&L
   // (the position stays "open" in the DB while already closed on the exchange).
   await withDbRetry(
@@ -281,6 +297,7 @@ async function closeLeg(
           closedAt,
           spreadAtExit: spreadAtExit != null ? String(spreadAtExit) : undefined,
           realizedPnlUsd: String(realizedPnl),
+          fundingPaidUsd: estimatedFundingUsd != null ? String(estimatedFundingUsd) : undefined,
         })
         .where(eq(botLegsTable.id, leg.id)),
     `closeLeg update leg=${leg.id}`,
@@ -290,12 +307,13 @@ async function closeLeg(
     () =>
       db.insert(closedTradesTable).values({
         symbol: leg.symbol,
-        longExchange: leg.bybitSide === "long" ? (config.exchangeA ?? "bybit") : (config.exchangeB ?? "binance"),
-        shortExchange: leg.bybitSide === "short" ? (config.exchangeA ?? "bybit") : (config.exchangeB ?? "binance"),
+        longExchange: longExchangeName,
+        shortExchange: shortExchangeName,
         spreadAtEntry: String(leg.spreadAtEntry),
         realizedPnl: String(realizedPnl),
         totalFees: String(totalFees),
-        quantity: String((Number(leg.bybitQty) * Number(leg.bybitEntry) + Number(leg.binanceQty) * Number(leg.binanceEntry)) / 2),
+        fundingPaidUsd: estimatedFundingUsd != null ? String(estimatedFundingUsd) : undefined,
+        quantity: String(usdSize / 2),
         entryTime: leg.openedAt,
         closeTime: closedAt,
       }),

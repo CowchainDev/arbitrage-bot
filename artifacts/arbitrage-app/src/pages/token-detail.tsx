@@ -658,6 +658,7 @@ function OpenPositionsSection({
                     requestHeaders={allExchangeRequestHeaders}
                     exchangeA={bot.exchangeA}
                     exchangeB={bot.exchangeB}
+                    token={tokens.find((t) => t.symbol === pos.symbol)}
                   />
                 </div>
               ))}
@@ -672,6 +673,7 @@ function OpenPositionsSection({
                 requestHeaders={allExchangeRequestHeaders}
                 exchangeA={bot.exchangeA}
                 exchangeB={bot.exchangeB}
+                token={tokens.find((t) => t.symbol === pos.symbol)}
               />
             ))
           )}

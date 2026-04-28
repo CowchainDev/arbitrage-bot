@@ -21,6 +21,10 @@ export interface BotLeg {
   binanceEntry?: number;
   bybitSide: BotLegBybitSide;
   binanceSide: BotLegBinanceSide;
+  /** Opening fee paid on exchange A (USD) */
+  openFeeA?: number;
+  /** Opening fee paid on exchange B (USD) */
+  openFeeB?: number;
   spreadAtEntry?: number;
   /** Spread percentage when the leg was closed */
   spreadAtExit?: number;

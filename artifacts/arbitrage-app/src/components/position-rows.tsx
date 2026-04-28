@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { ChevronDown, ChevronUp, LineChart } from "lucide-react";
 import { Link } from "wouter";
 import {
@@ -53,6 +53,56 @@ function getTokenPriceForExchange(token: TokenSpread | undefined, exchange: stri
     case "mexc":    return token.mexcPrice    ?? fb;
     default:        return fb;
   }
+}
+
+function getTokenFundingForExchange(token: TokenSpread | undefined, exchange: string): { rate: number | null; nextFunding: string | null } {
+  if (!token) return { rate: null, nextFunding: null };
+  switch (exchange) {
+    case "bybit":   return { rate: token.bybitFundingRate   ?? null, nextFunding: token.bybitNextFunding   ?? null };
+    case "binance": return { rate: token.binanceFundingRate ?? null, nextFunding: token.binanceNextFunding ?? null };
+    case "gate":    return { rate: token.gateFundingRate    ?? null, nextFunding: token.gateNextFunding    ?? null };
+    case "okx":     return { rate: token.okxFundingRate     ?? null, nextFunding: token.okxNextFunding     ?? null };
+    case "mexc":    return { rate: token.mexcFundingRate    ?? null, nextFunding: token.mexcNextFunding    ?? null };
+    default:        return { rate: null, nextFunding: null };
+  }
+}
+
+const EXCHANGE_ABBREV: Record<string, string> = {
+  bybit: "BY", binance: "BN", gate: "GT", okx: "OX", mexc: "MX",
+};
+
+function fmtFundingRate(rate: number | null): string {
+  if (rate == null) return "-";
+  const pct = rate * 100;
+  return `${pct >= 0 ? "+" : ""}${pct.toFixed(4)}%`;
+}
+
+function msToCountdown(ms: number | null): string | null {
+  if (ms == null || ms <= 0) return null;
+  const totalSec = Math.floor(ms / 1000);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  return h > 0 ? `${h}h ${String(m).padStart(2, "0")}m` : `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
+function FundingCountdownDisplay({
+  nextFundingA, nextFundingB, labelA, labelB,
+}: { nextFundingA: string | null; nextFundingB: string | null; labelA: string; labelB: string }) {
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  const cdA = msToCountdown(nextFundingA ? new Date(nextFundingA).getTime() - now : null);
+  const cdB = msToCountdown(nextFundingB ? new Date(nextFundingB).getTime() - now : null);
+  if (!cdA && !cdB) return null;
+  return (
+    <span className="flex flex-col gap-0">
+      {cdA && <span className="text-[9px] text-muted-foreground/50">⏱ {labelA} {cdA}</span>}
+      {cdB && <span className="text-[9px] text-muted-foreground/50">⏱ {labelB} {cdB}</span>}
+    </span>
+  );
 }
 
 export function botLegToPosition(leg: BotLeg, tokens: TokenSpread[], bot?: BotConfig): Position {
@@ -240,6 +290,7 @@ export function PositionRow({
   requestHeaders,
   exchangeA,
   exchangeB,
+  token,
 }: {
   position: Position;
   onCloseSuccess: (symbol: string) => void;
@@ -248,6 +299,7 @@ export function PositionRow({
   requestHeaders: RequestInit | undefined;
   exchangeA?: string;
   exchangeB?: string;
+  token?: TokenSpread;
 }) {
   const [isClosing, setIsClosing] = useState(false);
   const [closeResult, setCloseResult] = useState<ClosePositionResult | null>(null);
@@ -259,6 +311,23 @@ export function PositionRow({
   const exB = exchangeB ?? "binance";
   const longExchange = position.bybitSide === "long" ? exA : exB;
   const shortExchange = position.bybitSide === "short" ? exA : exB;
+
+  const longFunding  = getTokenFundingForExchange(token, longExchange);
+  const shortFunding = getTokenFundingForExchange(token, shortExchange);
+  const longAbbrev   = EXCHANGE_ABBREV[longExchange]  ?? longExchange.slice(0, 2).toUpperCase();
+  const shortAbbrev  = EXCHANGE_ABBREV[shortExchange] ?? shortExchange.slice(0, 2).toUpperCase();
+
+  const accruedFunding: number | null = (() => {
+    if (longFunding.rate == null || shortFunding.rate == null) return null;
+    if (!position.openedAt || !position.usdSize) return null;
+    const msHeld = Date.now() - new Date(position.openedAt).getTime();
+    return (msHeld / 28800000) * (shortFunding.rate - longFunding.rate) * position.usdSize;
+  })();
+
+  const adjPnl: number | null =
+    accruedFunding != null && position.totalPnl != null
+      ? position.totalPnl + accruedFunding
+      : null;
 
   const handleClose = async () => {
     if (isClosing) return;
@@ -342,16 +411,45 @@ export function PositionRow({
           </span>
         </span>
         <span className="font-mono">{formatPct(position.currentSpread)}</span>
-        <span className="font-mono text-muted-foreground">
-          {position.openFees != null && position.openFees > 0
-            ? `-$${position.openFees.toFixed(4)}`
-            : "—"}
+        <span className="font-mono text-muted-foreground leading-tight">
+          <span className="flex flex-col gap-0">
+            <span>
+              {position.openFees != null && position.openFees > 0
+                ? `-$${position.openFees.toFixed(4)}`
+                : "—"}
+            </span>
+            {(longFunding.rate != null || shortFunding.rate != null) && (
+              <span className="text-[9px] text-muted-foreground/50">
+                {longAbbrev} {fmtFundingRate(longFunding.rate)} / {shortAbbrev} {fmtFundingRate(shortFunding.rate)}
+              </span>
+            )}
+          </span>
         </span>
-        <span className={`font-mono font-semibold ${pnlPositive ? "text-primary" : "text-destructive"}`}>
-          {formatPnlWithPct(position.totalPnl, position.usdSize)}
+        <span className={`font-mono font-semibold leading-tight ${pnlPositive ? "text-primary" : "text-destructive"}`}>
+          <span className="flex flex-col gap-0">
+            <span>{formatPnlWithPct(position.totalPnl, position.usdSize)}</span>
+            {accruedFunding != null && (
+              <span className={`text-[9px] font-normal ${accruedFunding >= 0 ? "text-primary/60" : "text-destructive/60"}`}>
+                {accruedFunding >= 0 ? "+" : ""}${accruedFunding.toFixed(4)} FR
+              </span>
+            )}
+            {adjPnl != null && (
+              <span className={`text-[9px] font-normal ${adjPnl >= 0 ? "text-primary/70" : "text-destructive/70"}`}>
+                adj {adjPnl >= 0 ? "+" : ""}${adjPnl.toFixed(4)}
+              </span>
+            )}
+          </span>
         </span>
-        <span className="font-mono text-muted-foreground">
-          {position.openedAt ? new Date(position.openedAt).toLocaleTimeString() : "-"}
+        <span className="font-mono text-muted-foreground leading-tight">
+          <span className="flex flex-col gap-0">
+            <span>{position.openedAt ? new Date(position.openedAt).toLocaleTimeString() : "-"}</span>
+            <FundingCountdownDisplay
+              nextFundingA={longFunding.nextFunding}
+              nextFundingB={shortFunding.nextFunding}
+              labelA={longAbbrev}
+              labelB={shortAbbrev}
+            />
+          </span>
         </span>
         {isLocalOnly ? (
           <button

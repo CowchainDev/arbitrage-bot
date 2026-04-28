@@ -37,6 +37,7 @@ export const closedTradesTable = pgTable(
       .notNull()
       .default("0"),
     totalFees: numeric("total_fees", { precision: 20, scale: 8 }).notNull().default("0"),
+    fundingPaidUsd: numeric("funding_paid_usd", { precision: 20, scale: 8 }),
     entryTime: timestamp("entry_time").notNull().defaultNow(),
     closeTime: timestamp("close_time").notNull().defaultNow(),
   },
@@ -86,6 +87,7 @@ export const botLegsTable = pgTable(
     spreadAtEntry: numeric("spread_at_entry", { precision: 20, scale: 8 }).notNull().default("0"),
     spreadAtExit: numeric("spread_at_exit", { precision: 20, scale: 8 }),
     realizedPnlUsd: numeric("realized_pnl_usd", { precision: 20, scale: 8 }),
+    fundingPaidUsd: numeric("funding_paid_usd", { precision: 20, scale: 8 }),
     openFeeA: numeric("open_fee_a", { precision: 20, scale: 8 }).notNull().default("0"),
     openFeeB: numeric("open_fee_b", { precision: 20, scale: 8 }).notNull().default("0"),
     contractSizeB: numeric("contract_size_b", { precision: 20, scale: 8 }),

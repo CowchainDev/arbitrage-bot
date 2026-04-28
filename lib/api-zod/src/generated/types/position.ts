@@ -22,6 +22,7 @@ export interface Position {
   bybitPnl?: number;
   binancePnl?: number;
   totalPnl: number;
+  /** Sum of open fees paid when entering this position (from bot legs, if applicable) */
   openFees?: number;
   spreadAtEntry?: number;
   currentSpread: number;

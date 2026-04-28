@@ -1111,6 +1111,10 @@ components:
         closeFees:
           type: number
           description: Fees paid to close the position (totalFees - openFees)
+        fundingPaidUsd:
+          type: number
+          nullable: true
+          description: Estimated net funding captured over the life of the trade (positive = received, negative = paid). Null for older trades recorded before this feature.
         quantity:
           type: number
         entryTime:

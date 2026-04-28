@@ -12,5 +12,6 @@ export interface ClosePositionResult {
   bybitResult?: OrderResult;
   binanceResult?: OrderResult;
   realizedPnl?: number;
+  /** Total fees paid to close the position (sum of both legs) */
   closeFees?: number;
 }
