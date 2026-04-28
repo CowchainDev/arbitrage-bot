@@ -353,8 +353,14 @@ export function PositionRow({
   const [isClosing, setIsClosing] = useState(false);
   const [closeResult, setCloseResult] = useState<ClosePositionResult | null>(null);
   const [closeError, setCloseError] = useState<string | null>(null);
+  const [now, setNow] = useState(Date.now);
   const closePosition = useClosePosition({ request: requestHeaders });
   const queryClient = useQueryClient();
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
 
   const exA = exchangeA ?? "bybit";
   const exB = exchangeB ?? "binance";
@@ -371,18 +377,17 @@ export function PositionRow({
     if (!position.openedAt || !position.usdSize) return null;
     const intervals = countSettledFundingIntervals(
       new Date(position.openedAt).getTime(),
-      Date.now(),
+      now,
     );
     return intervals * (shortFunding.rate - longFunding.rate) * position.usdSize;
   })();
 
   const nextFundingTooltip = (() => {
-    const nowMs = Date.now();
-    const nextMs = nextFundingBoundaryMs(nowMs);
+    const nextMs = nextFundingBoundaryMs(now);
     const nextDate = new Date(nextMs);
     const hh = String(nextDate.getUTCHours()).padStart(2, "0");
     const mm = String(nextDate.getUTCMinutes()).padStart(2, "0");
-    const cd = msToCountdown(nextMs - nowMs);
+    const cd = msToCountdown(nextMs - now);
     return `Next 8h funding settlement: ${hh}:${mm} UTC${cd ? ` (in ${cd})` : ""}`;
   })();
 
