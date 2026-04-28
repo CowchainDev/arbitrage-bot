@@ -77,6 +77,22 @@ function fmtFundingRate(rate: number | null): string {
   return `${pct >= 0 ? "+" : ""}${pct.toFixed(4)}%`;
 }
 
+/**
+ * Counts how many 8-hour UTC settlement boundaries (00:00, 08:00, 16:00 UTC)
+ * have passed strictly after openedAt and up to (including) now.
+ */
+export function countSettledFundingIntervals(openedAtMs: number, nowMs: number): number {
+  const INTERVAL_MS = 28_800_000;
+  const kFirst = Math.floor(openedAtMs / INTERVAL_MS) + 1;
+  const kLast  = Math.floor(nowMs / INTERVAL_MS);
+  return Math.max(0, kLast - kFirst + 1);
+}
+
+function nextFundingBoundaryMs(nowMs: number): number {
+  const INTERVAL_MS = 28_800_000;
+  return (Math.floor(nowMs / INTERVAL_MS) + 1) * INTERVAL_MS;
+}
+
 function msToCountdown(ms: number | null): string | null {
   if (ms == null || ms <= 0) return null;
   const totalSec = Math.floor(ms / 1000);
@@ -320,8 +336,21 @@ export function PositionRow({
   const accruedFunding: number | null = (() => {
     if (longFunding.rate == null || shortFunding.rate == null) return null;
     if (!position.openedAt || !position.usdSize) return null;
-    const msHeld = Date.now() - new Date(position.openedAt).getTime();
-    return (msHeld / 28800000) * (shortFunding.rate - longFunding.rate) * position.usdSize;
+    const intervals = countSettledFundingIntervals(
+      new Date(position.openedAt).getTime(),
+      Date.now(),
+    );
+    return intervals * (shortFunding.rate - longFunding.rate) * position.usdSize;
+  })();
+
+  const nextFundingTooltip = (() => {
+    const nowMs = Date.now();
+    const nextMs = nextFundingBoundaryMs(nowMs);
+    const nextDate = new Date(nextMs);
+    const hh = String(nextDate.getUTCHours()).padStart(2, "0");
+    const mm = String(nextDate.getUTCMinutes()).padStart(2, "0");
+    const cd = msToCountdown(nextMs - nowMs);
+    return `Next 8h funding settlement: ${hh}:${mm} UTC${cd ? ` (in ${cd})` : ""}`;
   })();
 
   const adjPnl: number | null =
@@ -429,7 +458,10 @@ export function PositionRow({
           <span className="flex flex-col gap-0">
             <span>{formatPnlWithPct(position.totalPnl, position.usdSize)}</span>
             {accruedFunding != null && (
-              <span className={`text-[9px] font-normal ${accruedFunding >= 0 ? "text-primary/60" : "text-destructive/60"}`}>
+              <span
+                title={nextFundingTooltip}
+                className={`text-[9px] font-normal cursor-help ${accruedFunding >= 0 ? "text-primary/60" : "text-destructive/60"}`}
+              >
                 {accruedFunding >= 0 ? "+" : ""}${accruedFunding.toFixed(4)} FR
               </span>
             )}

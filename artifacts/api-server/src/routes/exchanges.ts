@@ -384,6 +384,17 @@ export function getFundingRateEntry(symbol: string): SymbolFundingEntry | null {
   return fundingRateCacheBySymbol.get(symbol) ?? null;
 }
 
+/**
+ * Counts how many 8-hour UTC settlement boundaries (00:00, 08:00, 16:00 UTC)
+ * have passed strictly after openedAt and up to (including) now.
+ */
+function countSettledFundingIntervals(openedAtMs: number, nowMs: number): number {
+  const INTERVAL_MS = 28_800_000;
+  const kFirst = Math.floor(openedAtMs / INTERVAL_MS) + 1;
+  const kLast  = Math.floor(nowMs / INTERVAL_MS);
+  return Math.max(0, kLast - kFirst + 1);
+}
+
 export function getFundingRateForExchange(entry: SymbolFundingEntry, exchange: string): number {
   switch (exchange) {
     case "bybit":   return entry.bybitFundingRate   ?? 0;
@@ -1371,8 +1382,8 @@ router.post("/exchanges/close-position", async (req: Request, res: Response) => 
         if (fundingEntry && entryTime) {
           const longRate = getFundingRateForExchange(fundingEntry, longExchange);
           const shortRate = getFundingRateForExchange(fundingEntry, shortExchange);
-          const msHeld = Date.now() - new Date(entryTime).getTime();
-          estimatedFundingUsd = (msHeld / 28800000) * (shortRate - longRate) * quantity;
+          const intervals = countSettledFundingIntervals(new Date(entryTime).getTime(), Date.now());
+          estimatedFundingUsd = intervals * (shortRate - longRate) * quantity;
         }
         const exitSpread = result.closePriceA != null && result.closePriceB != null
           ? ((result.closePriceA - result.closePriceB) / result.closePriceB) * 100

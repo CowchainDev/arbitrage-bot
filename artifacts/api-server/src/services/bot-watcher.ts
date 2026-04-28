@@ -63,6 +63,17 @@ function invalidateCredCache(exchange?: string) {
   }
 }
 
+/**
+ * Counts how many 8-hour UTC settlement boundaries (00:00, 08:00, 16:00 UTC)
+ * have passed strictly after openedAt and up to (including) now.
+ */
+function countSettledFundingIntervals(openedAtMs: number, nowMs: number): number {
+  const INTERVAL_MS = 28_800_000;
+  const kFirst = Math.floor(openedAtMs / INTERVAL_MS) + 1;
+  const kLast  = Math.floor(nowMs / INTERVAL_MS);
+  return Math.max(0, kLast - kFirst + 1);
+}
+
 function getSpreadPct(priceA: number | null, priceB: number | null): number | null {
   if (!priceA || !priceB) return null;
   return ((priceA - priceB) / priceB) * 100;
@@ -283,8 +294,8 @@ async function closeLeg(
   if (fundingEntry) {
     const longRate = getFundingRateForExchange(fundingEntry, longExchangeName);
     const shortRate = getFundingRateForExchange(fundingEntry, shortExchangeName);
-    const msHeld = closedAt.getTime() - leg.openedAt.getTime();
-    estimatedFundingUsd = (msHeld / 28800000) * (shortRate - longRate) * usdSize;
+    const intervals = countSettledFundingIntervals(leg.openedAt.getTime(), closedAt.getTime());
+    estimatedFundingUsd = intervals * (shortRate - longRate) * usdSize;
   }
 
   // Retry the DB write — a transient connection drop here silently orphans the P&L
