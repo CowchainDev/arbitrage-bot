@@ -228,8 +228,8 @@ function TableHeader({ sort, onSort }: { sort: SortOption; onSort: (col: SortCol
       <span className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground/60 text-right">Ask</span>
       <span className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground/60 text-right">Bid</span>
       <span className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground/60 text-right">FR Δ</span>
-      {th("FR Cheap", "fr_cheap")}
-      {th("FR Exp", "fr_exp")}
+      {th("FR ↓", "fr_cheap")}
+      {th("FR ↑", "fr_exp")}
       <span className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground/60 text-right">Next FR</span>
       {th("Vol 24h", "volume")}
       {th("OI", "oi")}
