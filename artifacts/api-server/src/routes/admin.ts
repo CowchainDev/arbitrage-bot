@@ -299,4 +299,122 @@ router.post("/admin/backfill-open-fees", requireBotSecret, async (req, res) => {
   }
 });
 
+// POST /api/admin/backfill-funding
+// Recomputes funding_paid_usd for bot_legs and closed_trades written before
+// the Task-179 interval-snap fix (2026-04-28 10:40:03 UTC).  Those rows used a
+// continuous-time ratio (durationMs / 28_800_000) instead of counting discrete
+// 8-hour UTC settlement boundaries.  We back-calculate the implicit spread·size
+// value from the stored figure and re-apply with the correct discrete count.
+//
+// Idempotency: a funding_corrected_at column is added to each table on first
+// call; only rows where that column is NULL are processed.  Subsequent calls
+// skip already-corrected rows.
+//
+// Atomicity: both table updates run inside a single DB transaction so a partial
+// failure leaves the database unchanged.
+router.post("/admin/backfill-funding", requireBotSecret, async (req, res) => {
+  // Cutoff = moment Task 179 landed in production.
+  // Records closed BEFORE this timestamp used the old continuous formula.
+  const CUTOFF = new Date("2026-04-28T10:40:03Z");
+
+  try {
+    // ── Step 1: Ensure tracking columns exist (idempotent DDL) ─────────────
+    await db.execute(sql`
+      ALTER TABLE bot_legs
+        ADD COLUMN IF NOT EXISTS funding_corrected_at TIMESTAMP
+    `);
+    await db.execute(sql`
+      ALTER TABLE closed_trades
+        ADD COLUMN IF NOT EXISTS funding_corrected_at TIMESTAMP
+    `);
+
+    // ── Step 2: Run both updates inside a single transaction ────────────────
+    const { legsUpdated, tradesUpdated } = await db.transaction(async (tx) => {
+      // bot_legs: only rows not yet corrected
+      const legsResult = await tx.execute(sql`
+        WITH corrected AS (
+          SELECT
+            id,
+            CASE
+              WHEN EXTRACT(EPOCH FROM (closed_at - opened_at)) = 0
+                THEN funding_paid_usd
+              ELSE
+                funding_paid_usd::numeric
+                * GREATEST(
+                    0,
+                    FLOOR(EXTRACT(EPOCH FROM closed_at AT TIME ZONE 'UTC') / 28800)
+                    - FLOOR(EXTRACT(EPOCH FROM opened_at AT TIME ZONE 'UTC') / 28800)
+                  )
+                / (EXTRACT(EPOCH FROM (closed_at - opened_at)) / 28800)
+            END AS new_funding
+          FROM bot_legs
+          WHERE status              = 'closed'
+            AND funding_paid_usd   IS NOT NULL
+            AND closed_at          IS NOT NULL
+            AND closed_at           < ${CUTOFF}
+            AND funding_corrected_at IS NULL
+        )
+        UPDATE bot_legs bl
+        SET    funding_paid_usd    = c.new_funding,
+               funding_corrected_at = NOW()
+        FROM   corrected c
+        WHERE  bl.id = c.id
+      `);
+
+      // closed_trades: only rows not yet corrected
+      const tradesResult = await tx.execute(sql`
+        WITH corrected AS (
+          SELECT
+            id,
+            CASE
+              WHEN EXTRACT(EPOCH FROM (close_time - entry_time)) = 0
+                THEN funding_paid_usd
+              ELSE
+                funding_paid_usd::numeric
+                * GREATEST(
+                    0,
+                    FLOOR(EXTRACT(EPOCH FROM close_time AT TIME ZONE 'UTC') / 28800)
+                    - FLOOR(EXTRACT(EPOCH FROM entry_time AT TIME ZONE 'UTC') / 28800)
+                  )
+                / (EXTRACT(EPOCH FROM (close_time - entry_time)) / 28800)
+            END AS new_funding
+          FROM closed_trades
+          WHERE funding_paid_usd    IS NOT NULL
+            AND close_time           < ${CUTOFF}
+            AND funding_corrected_at IS NULL
+        )
+        UPDATE closed_trades ct
+        SET    funding_paid_usd    = c.new_funding,
+               funding_corrected_at = NOW()
+        FROM   corrected c
+        WHERE  ct.id = c.id
+      `);
+
+      return {
+        legsUpdated:   (legsResult   as { rowCount?: number }).rowCount ?? 0,
+        tradesUpdated: (tradesResult as { rowCount?: number }).rowCount ?? 0,
+      };
+    });
+
+    req.log.info(
+      { legsUpdated, tradesUpdated, cutoff: CUTOFF.toISOString() },
+      "backfill-funding: complete",
+    );
+
+    res.json({
+      cutoff: CUTOFF.toISOString(),
+      legsUpdated,
+      tradesUpdated,
+      // Next steps once legsUpdated + tradesUpdated both reach 0 on a re-run
+      // (meaning all pre-fix rows have been corrected):
+      //   1. Remove the funding-estimate caveat from history.tsx (Info icon,
+      //      cell tooltip, and "older trades may be estimates" stat-card sub).
+      //   2. Optionally drop the funding_corrected_at columns if no longer needed.
+    });
+  } catch (err) {
+    req.log.error({ err }, "backfill-funding: fatal error");
+    res.status(500).json({ error: "backfill_failed", message: String(err) });
+  }
+});
+
 export default router;
