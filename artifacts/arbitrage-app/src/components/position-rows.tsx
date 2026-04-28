@@ -176,10 +176,16 @@ export function BotSummaryRow({
   positions,
   isExpanded,
   onToggle,
+  token,
+  exchangeA,
+  exchangeB,
 }: {
   positions: Position[];
   isExpanded: boolean;
   onToggle: () => void;
+  token?: TokenSpread;
+  exchangeA?: string;
+  exchangeB?: string;
 }) {
   const symbol = positions[0].symbol;
   const totalPnl = positions.reduce((s, p) => s + (p.totalPnl ?? 0), 0);
@@ -237,10 +243,31 @@ export function BotSummaryRow({
 
   const totalOpenFees = positions.reduce((s, p) => s + (p.openFees ?? 0), 0);
 
+  const exA = exchangeA ?? "bybit";
+  const exB = exchangeB ?? "binance";
+
+  const totalAccruedFunding: number | null = (() => {
+    if (!token) return null;
+    let total = 0;
+    let hasAny = false;
+    for (const p of positions) {
+      const longEx = p.bybitSide === "long" ? exA : exB;
+      const shortEx = p.bybitSide === "short" ? exA : exB;
+      const longFunding = getTokenFundingForExchange(token, longEx);
+      const shortFunding = getTokenFundingForExchange(token, shortEx);
+      if (longFunding.rate == null || shortFunding.rate == null) continue;
+      if (!p.openedAt || !p.usdSize) continue;
+      const intervals = countSettledFundingIntervals(new Date(p.openedAt).getTime(), Date.now());
+      total += intervals * (shortFunding.rate - longFunding.rate) * p.usdSize;
+      hasAny = true;
+    }
+    return hasAny ? total : null;
+  })();
+
   return (
     <div
       data-testid={`position-summary-${symbol}`}
-      className="grid grid-cols-10 gap-2 px-3 py-2.5 text-xs border-b border-border/50 bg-muted/20 hover:bg-muted/40 transition-colors items-center cursor-pointer"
+      className="grid grid-cols-11 gap-2 px-3 py-2.5 text-xs border-b border-border/50 bg-muted/20 hover:bg-muted/40 transition-colors items-center cursor-pointer"
       onClick={onToggle}
     >
       <span className="font-semibold flex items-center gap-1 min-w-0">
@@ -282,6 +309,11 @@ export function BotSummaryRow({
       </span>
       <span className={`font-mono font-semibold ${pnlPositive ? "text-primary" : "text-destructive"}`}>
         {formatPnlWithPct(totalPnl, netUsdSize)}
+      </span>
+      <span className={`font-mono text-xs ${totalAccruedFunding == null ? "text-muted-foreground/40" : totalAccruedFunding >= 0 ? "text-primary/80" : "text-destructive/80"}`}>
+        {totalAccruedFunding != null
+          ? `${totalAccruedFunding >= 0 ? "+" : ""}$${Math.abs(totalAccruedFunding).toFixed(4)}`
+          : "—"}
       </span>
       <span className="font-mono text-muted-foreground">
         {earliestOpenedAt ? new Date(earliestOpenedAt).toLocaleTimeString() : "-"}
@@ -353,11 +385,6 @@ export function PositionRow({
     return `Next 8h funding settlement: ${hh}:${mm} UTC${cd ? ` (in ${cd})` : ""}`;
   })();
 
-  const adjPnl: number | null =
-    accruedFunding != null && position.totalPnl != null
-      ? position.totalPnl + accruedFunding
-      : null;
-
   const handleClose = async () => {
     if (isClosing) return;
     setIsClosing(true);
@@ -406,7 +433,7 @@ export function PositionRow({
     <>
       <div
         data-testid={`position-row-${position.symbol}`}
-        className={`grid grid-cols-10 gap-2 px-3 py-2.5 text-xs border-b border-border/50 hover:bg-muted/30 transition-colors items-center`}
+        className={`grid grid-cols-11 gap-2 px-3 py-2.5 text-xs border-b border-border/50 hover:bg-muted/30 transition-colors items-center`}
       >
         <span className="font-semibold">{position.symbol}</span>
         <span>
@@ -454,23 +481,16 @@ export function PositionRow({
             )}
           </span>
         </span>
-        <span className={`font-mono font-semibold leading-tight ${pnlPositive ? "text-primary" : "text-destructive"}`}>
-          <span className="flex flex-col gap-0">
-            <span>{formatPnlWithPct(position.totalPnl, position.usdSize)}</span>
-            {accruedFunding != null && (
-              <span
-                title={nextFundingTooltip}
-                className={`text-[9px] font-normal cursor-help ${accruedFunding >= 0 ? "text-primary/60" : "text-destructive/60"}`}
-              >
-                {accruedFunding >= 0 ? "+" : ""}${accruedFunding.toFixed(4)} FR
-              </span>
-            )}
-            {adjPnl != null && (
-              <span className={`text-[9px] font-normal ${adjPnl >= 0 ? "text-primary/70" : "text-destructive/70"}`}>
-                adj {adjPnl >= 0 ? "+" : ""}${adjPnl.toFixed(4)}
-              </span>
-            )}
-          </span>
+        <span className={`font-mono font-semibold ${pnlPositive ? "text-primary" : "text-destructive"}`}>
+          {formatPnlWithPct(position.totalPnl, position.usdSize)}
+        </span>
+        <span
+          className={`font-mono text-xs ${accruedFunding == null ? "text-muted-foreground/40" : accruedFunding >= 0 ? "text-primary/80" : "text-destructive/80"}`}
+          title={accruedFunding != null ? nextFundingTooltip : undefined}
+        >
+          {accruedFunding != null
+            ? `${accruedFunding >= 0 ? "+" : ""}$${Math.abs(accruedFunding).toFixed(4)}`
+            : "—"}
         </span>
         <span className="font-mono text-muted-foreground leading-tight">
           <span className="flex flex-col gap-0">

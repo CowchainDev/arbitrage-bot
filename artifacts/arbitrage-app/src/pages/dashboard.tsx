@@ -31,6 +31,8 @@ const VALID_SORT_OPTIONS = [
   "ema_desc",    "ema_asc",
   "alpha",       "alpha_desc",
   "fav",         "fav_desc",
+  "fr_cheap_desc", "fr_cheap_asc",
+  "fr_exp_desc",   "fr_exp_asc",
 ] as const;
 
 type SortOption = typeof VALID_SORT_OPTIONS[number];
@@ -129,9 +131,9 @@ function useFundingCountdown(nextFundingA: string | undefined | null, nextFundin
 }
 
 
-const ROW_COLS = "grid grid-cols-[24px_120px_82px_72px_72px_130px_90px_90px_68px_70px_70px_64px_28px] items-center gap-0";
+const ROW_COLS = "grid grid-cols-[24px_120px_82px_72px_72px_130px_90px_90px_62px_62px_62px_62px_70px_70px_64px_28px] items-center gap-0";
 
-type SortColKey = "alpha" | "spread" | "eff" | "volume" | "oi" | "depth" | "ema" | "fav";
+type SortColKey = "alpha" | "spread" | "eff" | "volume" | "oi" | "depth" | "ema" | "fav" | "fr_cheap" | "fr_exp";
 
 function sortColFromOption(sort: SortOption): SortColKey | null {
   if (sort === "alpha" || sort === "alpha_desc") return "alpha";
@@ -142,6 +144,8 @@ function sortColFromOption(sort: SortOption): SortColKey | null {
   if (sort === "depth_desc" || sort === "depth_asc") return "depth";
   if (sort === "ema_desc" || sort === "ema_asc") return "ema";
   if (sort === "fav" || sort === "fav_desc") return "fav";
+  if (sort === "fr_cheap_desc" || sort === "fr_cheap_asc") return "fr_cheap";
+  if (sort === "fr_exp_desc" || sort === "fr_exp_asc") return "fr_exp";
   return null;
 }
 
@@ -162,17 +166,21 @@ function toggleSort(current: SortOption, col: SortColKey): SortOption {
     if (col === "oi")     return currentDir === "desc" ? "oi_asc"     : "oi_desc";
     if (col === "depth")  return currentDir === "desc" ? "depth_asc"  : "depth_desc";
     if (col === "ema")    return currentDir === "desc" ? "ema_asc"    : "ema_desc";
-    if (col === "fav")    return currentDir === "asc"  ? "fav_desc"   : "fav";
+    if (col === "fav")      return currentDir === "asc"  ? "fav_desc"      : "fav";
+    if (col === "fr_cheap") return currentDir === "desc" ? "fr_cheap_asc"  : "fr_cheap_desc";
+    if (col === "fr_exp")   return currentDir === "desc" ? "fr_exp_asc"    : "fr_exp_desc";
   }
   // First click → default direction (desc for numbers, asc for alpha/fav)
-  if (col === "alpha")  return "alpha";
-  if (col === "spread") return "spread_desc";
-  if (col === "eff")    return "eff_desc";
-  if (col === "volume") return "volume_desc";
-  if (col === "oi")     return "oi_desc";
-  if (col === "depth")  return "depth_desc";
-  if (col === "ema")    return "ema_desc";
-  if (col === "fav")    return "fav";
+  if (col === "alpha")    return "alpha";
+  if (col === "spread")   return "spread_desc";
+  if (col === "eff")      return "eff_desc";
+  if (col === "volume")   return "volume_desc";
+  if (col === "oi")       return "oi_desc";
+  if (col === "depth")    return "depth_desc";
+  if (col === "ema")      return "ema_desc";
+  if (col === "fav")      return "fav";
+  if (col === "fr_cheap") return "fr_cheap_desc";
+  if (col === "fr_exp")   return "fr_exp_desc";
   return current;
 }
 
@@ -220,6 +228,9 @@ function TableHeader({ sort, onSort }: { sort: SortOption; onSort: (col: SortCol
       <span className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground/60 text-right">Ask</span>
       <span className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground/60 text-right">Bid</span>
       <span className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground/60 text-right">FR Δ</span>
+      {th("FR Cheap", "fr_cheap")}
+      {th("FR Exp", "fr_exp")}
+      <span className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground/60 text-right">Next FR</span>
       {th("Vol 24h", "volume")}
       {th("OI", "oi")}
       {th("Depth", "depth")}
@@ -280,7 +291,7 @@ function TokenRow({
   const frColor = frDelta != null
     ? frDelta > 0 ? "text-primary/70" : frDelta < 0 ? "text-destructive/70" : "text-muted-foreground/50"
     : "text-muted-foreground/50";
-  const frCountdown = useFundingCountdown(cheapData.nextFunding, expData.nextFunding);
+  const frCountdown = useFundingCountdown(cheapData.nextFunding, null);
 
   const rowBg = isSelected
     ? "bg-primary/8 border-l-2 border-l-primary"
@@ -371,25 +382,41 @@ function TokenRow({
       </div>
 
       {/* Funding rate delta */}
-      <div className={`font-mono text-[10px] text-right pr-3 tabular-nums leading-tight ${frColor}`}>
-        {frDelta != null ? (
-          <div className="flex flex-col items-end gap-0">
-            <span>{frDelta >= 0 ? "+" : ""}{frDelta.toFixed(4)}%</span>
-            {cheapData.funding != null && (
-              <span className="text-muted-foreground/40 text-[9px]">
-                {getExchangeName(cheapEx)} {(cheapData.funding * 100).toFixed(4)}%
-              </span>
-            )}
-            {expData.funding != null && (
-              <span className="text-muted-foreground/40 text-[9px]">
-                {getExchangeName(expensiveEx)} {(expData.funding * 100).toFixed(4)}%
-              </span>
-            )}
-            {frCountdown && (
-              <span className="text-muted-foreground/40 text-[9px]">⏱ {frCountdown}</span>
-            )}
+      <div className={`font-mono text-[10px] text-right pr-2 tabular-nums ${frColor}`}>
+        {frDelta != null ? `${frDelta >= 0 ? "+" : ""}${frDelta.toFixed(4)}%` : <span className="text-muted-foreground/30">-</span>}
+      </div>
+
+      {/* FR Cheap (cheap-side funding rate) */}
+      {(() => {
+        const rate = cheapData.funding;
+        const color = rate == null ? "text-muted-foreground/30"
+          : rate > 0 ? "text-primary/70"
+          : rate < 0 ? "text-destructive/70"
+          : "text-muted-foreground/50";
+        return (
+          <div className={`font-mono text-[10px] text-right pr-2 tabular-nums ${color}`}>
+            {rate != null ? `${rate >= 0 ? "+" : ""}${(rate * 100).toFixed(4)}%` : <span className="text-muted-foreground/30">-</span>}
           </div>
-        ) : "-"}
+        );
+      })()}
+
+      {/* FR Exp (expensive-side funding rate) */}
+      {(() => {
+        const rate = expData.funding;
+        const color = rate == null ? "text-muted-foreground/30"
+          : rate > 0 ? "text-primary/70"
+          : rate < 0 ? "text-destructive/70"
+          : "text-muted-foreground/50";
+        return (
+          <div className={`font-mono text-[10px] text-right pr-2 tabular-nums ${color}`}>
+            {rate != null ? `${rate >= 0 ? "+" : ""}${(rate * 100).toFixed(4)}%` : <span className="text-muted-foreground/30">-</span>}
+          </div>
+        );
+      })()}
+
+      {/* Next FR countdown (cheap-side exchange) */}
+      <div className="font-mono text-[10px] text-right pr-2 tabular-nums text-muted-foreground/60">
+        {frCountdown || <span className="text-muted-foreground/30">-</span>}
       </div>
 
       {/* Volume 24h */}
@@ -885,6 +912,16 @@ export default function Dashboard() {
       const e = ex ? getExchangeFields(t, ex)  : { ask: undefined, bid: undefined, funding: undefined };
       return c.ask != null && e.bid != null && c.ask > 0 ? (e.bid - c.ask) / c.ask * 100 : -Infinity;
     };
+    const frCheapOf = (t: TokenSpread) => {
+      const [, cx] = (t.bestSpreadLeg ?? "").split("/");
+      const c = cx ? getExchangeFields(t, cx) : { ask: undefined, bid: undefined, funding: undefined };
+      return c.funding ?? -Infinity;
+    };
+    const frExpOf = (t: TokenSpread) => {
+      const [ex] = (t.bestSpreadLeg ?? "").split("/");
+      const e = ex ? getExchangeFields(t, ex) : { ask: undefined, bid: undefined, funding: undefined };
+      return e.funding ?? -Infinity;
+    };
     const alphaCmp = (a: TokenSpread, b: TokenSpread) => a.symbol.localeCompare(b.symbol);
     const favGroup = (t: TokenSpread) => (isFavourite(t.symbol) ? 0 : 1);
 
@@ -902,11 +939,15 @@ export default function Dashboard() {
       case "depth_asc":    primaryCmp = (a, b) => (a.spreadDepthUsd ?? 0) - (b.spreadDepthUsd ?? 0); break;
       case "ema_desc":     primaryCmp = (a, b) => (b.emaSpreadPct ?? -Infinity) - (a.emaSpreadPct ?? -Infinity); break;
       case "ema_asc":      primaryCmp = (a, b) => (a.emaSpreadPct ?? Infinity) - (b.emaSpreadPct ?? Infinity); break;
-      case "alpha":        primaryCmp = alphaCmp; break;
-      case "alpha_desc":   primaryCmp = (a, b) => b.symbol.localeCompare(a.symbol); break;
-      case "fav":          primaryCmp = alphaCmp; break;
-      case "fav_desc":     primaryCmp = alphaCmp; break;
-      default:             primaryCmp = () => 0;
+      case "alpha":          primaryCmp = alphaCmp; break;
+      case "alpha_desc":     primaryCmp = (a, b) => b.symbol.localeCompare(a.symbol); break;
+      case "fav":            primaryCmp = alphaCmp; break;
+      case "fav_desc":       primaryCmp = alphaCmp; break;
+      case "fr_cheap_desc":  primaryCmp = (a, b) => frCheapOf(b) - frCheapOf(a); break;
+      case "fr_cheap_asc":   primaryCmp = (a, b) => frCheapOf(a) - frCheapOf(b); break;
+      case "fr_exp_desc":    primaryCmp = (a, b) => frExpOf(b) - frExpOf(a); break;
+      case "fr_exp_asc":     primaryCmp = (a, b) => frExpOf(a) - frExpOf(b); break;
+      default:               primaryCmp = () => 0;
     }
 
     if (sort === "fav" || sort === "fav_desc") {
@@ -1009,7 +1050,7 @@ export default function Dashboard() {
           </button>
           {showPositions && (
             <div>
-              <div className="grid grid-cols-10 gap-2 px-3 py-1.5 text-[10px] text-muted-foreground uppercase tracking-wider bg-muted/30 font-semibold border-t border-border/40">
+              <div className="grid grid-cols-11 gap-2 px-3 py-1.5 text-[10px] text-muted-foreground uppercase tracking-wider bg-muted/30 font-semibold border-t border-border/40">
                 <span>Symbol</span>
                 <span>Side</span>
                 <span>Size</span>
@@ -1018,6 +1059,7 @@ export default function Dashboard() {
                 <span>Spread</span>
                 <span>Open Fees</span>
                 <span>P/L</span>
+                <span>Fund. P&L</span>
                 <span>Opened</span>
                 <span />
               </div>
@@ -1036,6 +1078,9 @@ export default function Dashboard() {
                             positions={group}
                             isExpanded={isExpanded}
                             onToggle={() => toggleBotSymbol(pos.symbol)}
+                            token={tokens.find((t) => t.symbol === pos.symbol)}
+                            exchangeA={botExchangeByPositionId.get(group[0]?.id)?.exchangeA}
+                            exchangeB={botExchangeByPositionId.get(group[0]?.id)?.exchangeB}
                           />
                           {isExpanded && group.map((legPos) => {
                             const exchInfo = botExchangeByPositionId.get(legPos.id);
