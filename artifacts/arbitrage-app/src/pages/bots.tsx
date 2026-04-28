@@ -254,6 +254,7 @@ function BotCard({ bot, openLegs }: { bot: BotConfig; openLegs: BotLeg[] }) {
     prevOpenLegsCount.current = openLegs.length;
     if (openLegs.length < prev) {
       queryClient.invalidateQueries({ queryKey: getGetBotStatsQueryKey(bot.id) });
+      queryClient.invalidateQueries({ queryKey: getGetBotLegHistoryQueryKey(bot.id) });
     }
   }, [openLegs.length, queryClient, bot.id]);
 
