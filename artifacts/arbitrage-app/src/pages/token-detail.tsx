@@ -222,19 +222,31 @@ function SortIcon({ col, sortKey, sortDir }: { col: ClosedLegsSortKey; sortKey: 
 
 type ClosedLegsFilter = "all" | "winners" | "losers";
 
-function useSessionState<T>(key: string, defaultValue: T): [T, (v: T | ((prev: T) => T)) => void] {
-  const [state, setStateRaw] = useState<T>(() => {
-    try {
-      const stored = sessionStorage.getItem(key);
-      if (stored != null) return JSON.parse(stored) as T;
-    } catch {}
-    return defaultValue;
-  });
+function readPersistedValue<T>(key: string, defaultValue: T): T {
+  try {
+    const stored = localStorage.getItem(key);
+    if (stored != null) return JSON.parse(stored) as T;
+  } catch {}
+  return defaultValue;
+}
+
+function usePersistedState<T>(key: string, defaultValue: T): [T, (v: T | ((prev: T) => T)) => void] {
+  const [state, setStateRaw] = useState<T>(() => readPersistedValue(key, defaultValue));
+
+  // When the key changes (e.g. symbol changes without full remount), reload from storage
+  const prevKeyRef = useRef(key);
+  useEffect(() => {
+    if (prevKeyRef.current !== key) {
+      prevKeyRef.current = key;
+      setStateRaw(readPersistedValue(key, defaultValue));
+    }
+  }, [key, defaultValue]);
+
   const setState = useCallback(
     (v: T | ((prev: T) => T)) => {
       setStateRaw((prev) => {
         const next = typeof v === "function" ? (v as (p: T) => T)(prev) : v;
-        try { sessionStorage.setItem(key, JSON.stringify(next)); } catch {}
+        try { localStorage.setItem(key, JSON.stringify(next)); } catch {}
         return next;
       });
     },
@@ -258,9 +270,9 @@ function ClosedLegsSection({
 }) {
   const sk = storageKey ?? "closed-legs";
   const [expanded, setExpanded] = useState(true);
-  const [sortKey, setSortKey] = useSessionState<ClosedLegsSortKey>(`${sk}:sortKey`, "date");
-  const [sortDir, setSortDir] = useSessionState<SortDir>(`${sk}:sortDir`, "desc");
-  const [filter, setFilter] = useSessionState<ClosedLegsFilter>(`${sk}:filter`, "all");
+  const [sortKey, setSortKey] = usePersistedState<ClosedLegsSortKey>(`${sk}:sortKey`, "date");
+  const [sortDir, setSortDir] = usePersistedState<SortDir>(`${sk}:sortDir`, "desc");
+  const [filter, setFilter] = usePersistedState<ClosedLegsFilter>(`${sk}:filter`, "all");
   const rowRefs = useRef<Map<number, HTMLTableRowElement>>(new Map());
 
   const handleSort = (col: ClosedLegsSortKey) => {
@@ -1231,6 +1243,7 @@ export default function TokenDetail({ params }: { params: { symbol: string } }) 
           {/* Closed Trades — summary bar + table of closed bot legs */}
           {botId != null && (
             <ClosedLegsSection
+              key={symbol}
               legs={closedLegs}
               loading={closedLegsQuery.isLoading}
               highlightedLegId={highlightedLegId}
