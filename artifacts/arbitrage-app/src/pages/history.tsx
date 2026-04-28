@@ -17,7 +17,7 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { format } from "date-fns";
-import { TrendingUp, BarChart2, Activity } from "lucide-react";
+import { TrendingUp, BarChart2, Activity, Info } from "lucide-react";
 
 function StatCard({
   label,
@@ -153,7 +153,17 @@ function TradeTable({ trades }: { trades: ClosedTrade[] }) {
             <th className="text-right px-3 py-2 font-medium">Close</th>
             <th className="text-right px-3 py-2 font-medium">Size (USD)</th>
             <th className="text-right px-3 py-2 font-medium">Open Fees / Close Fees</th>
-            <th className="text-right px-3 py-2 font-medium">Funding</th>
+            <th className="text-right px-3 py-2 font-medium">
+              <span className="inline-flex items-center gap-1">
+                Funding
+                <Info
+                  className="w-3 h-3 text-muted-foreground/60 cursor-help"
+                  aria-label="Net funding received (+) or paid (−) over the life of this trade. Figures for trades closed before the 8-hour interval snap fix may be continuous-ratio estimates rather than settled-interval counts."
+                  role="img"
+                  title="Net funding received (+) or paid (−) over the life of this trade. Figures for trades closed before the 8-hour interval snap fix may be continuous-ratio estimates rather than settled-interval counts."
+                />
+              </span>
+            </th>
             <th className="text-right px-3 py-2 font-medium">Realized PnL (excl. funding)</th>
             <th className="text-right px-3 py-2 font-medium">PnL (%)</th>
             <th className="text-right px-3 py-2 font-medium">Duration</th>
@@ -252,7 +262,7 @@ function TradeTable({ trades }: { trades: ClosedTrade[] }) {
                   ) : "—"}
                 </td>
                 <td className={`px-3 py-2.5 text-right ${funding != null ? (funding >= 0 ? "text-primary/80" : "text-destructive/80") : "text-muted-foreground"}`}
-                  title="Estimated net funding received (+) or paid (−) over the life of this trade">
+                  title="Estimated net funding received (+) or paid (−) over the life of this trade. Older records may reflect continuous-ratio estimates rather than discrete 8-hour settled intervals.">
                   {funding != null
                     ? `${funding >= 0 ? "+" : ""}$${Math.abs(funding).toFixed(4)}`
                     : "—"}
@@ -370,7 +380,7 @@ export default function History() {
         <StatCard
           label="Total Funding"
           value={stats && stats.totalTrades > 0 ? formatPnl(stats.totalFunding) : "—"}
-          sub="received / paid"
+          sub="received / paid · older trades may be estimates"
           positive={stats && stats.totalTrades > 0 ? stats.totalFunding >= 0 : null}
         />
         <StatCard
