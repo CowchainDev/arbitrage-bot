@@ -137,6 +137,40 @@ async function patchOrphanedLegs() {
   }
 }
 
+async function backfillLegExchanges() {
+  try {
+    const result = await db.execute(sql`
+      UPDATE bot_legs
+      SET leg_exchange_a = bc.exchange_a,
+          leg_exchange_b = bc.exchange_b
+      FROM bot_configs bc
+      WHERE bot_legs.bot_config_id = bc.id
+        AND bot_legs.leg_exchange_a IS NULL
+        AND bot_legs.leg_exchange_b IS NULL
+    `);
+    const updated = (result as { rowCount?: number }).rowCount ?? 0;
+    if (updated > 0) {
+      logger.info({ updated }, "Backfilled leg_exchange_a/b for historical bot_legs rows");
+    } else {
+      logger.info("No bot_legs rows needed leg_exchange_a/b backfill");
+    }
+
+    const remaining = await db.execute(sql`
+      SELECT COUNT(*) AS cnt FROM bot_legs
+      WHERE leg_exchange_a IS NULL OR leg_exchange_b IS NULL
+    `);
+    const remainingCount = Number((remaining as { rows?: { cnt: string }[] }).rows?.[0]?.cnt ?? 0);
+    if (remainingCount > 0) {
+      logger.warn(
+        { remainingCount },
+        "bot_legs rows still have NULL leg_exchange_a/b after backfill — likely orphaned legs with no matching bot config",
+      );
+    }
+  } catch (err) {
+    logger.error({ err }, "backfillLegExchanges failed — historical rows may still have NULL exchanges");
+  }
+}
+
 async function runMigrations() {
   try {
     await db.execute(sql`
@@ -190,6 +224,7 @@ server.listen(port, (err?: Error) => {
   (async () => {
     await runMigrations();
     await patchOrphanedLegs();
+    await backfillLegExchanges();
     startBotWatcher();
   })().catch((e) => logger.error({ err: e }, "Startup failed during migration or bot watcher init"));
 

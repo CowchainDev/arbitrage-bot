@@ -249,7 +249,7 @@ router.get("/bots/:id/stats", async (req: Request, res: Response) => {
 
   try {
     const [bot] = await db
-      .select({ id: botConfigsTable.id, exchangeA: botConfigsTable.exchangeA, exchangeB: botConfigsTable.exchangeB })
+      .select({ id: botConfigsTable.id })
       .from(botConfigsTable)
       .where(eq(botConfigsTable.id, id));
     if (!bot) {
@@ -293,13 +293,12 @@ router.get("/bots/:id/stats", async (req: Request, res: Response) => {
       mexc: "MEXC",
     };
     const displayExchange = (name: string) => EXCHANGE_DISPLAY[name.toLowerCase()] ?? name;
-    const fallbackLabel = `${displayExchange(bot.exchangeA)}/${displayExchange(bot.exchangeB)}`;
     const closedLegsByPair: Record<string, number> = {};
     for (const leg of closedLegs) {
       const label =
         leg.legExchangeA && leg.legExchangeB
           ? `${displayExchange(leg.legExchangeA)}/${displayExchange(leg.legExchangeB)}`
-          : fallbackLabel;
+          : "Unknown/Unknown";
       closedLegsByPair[label] = (closedLegsByPair[label] ?? 0) + 1;
     }
 
