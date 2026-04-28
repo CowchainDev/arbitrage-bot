@@ -51,6 +51,7 @@ router.get("/trades", async (req: Request, res: Response) => {
           longExchange: t.longExchange,
           shortExchange: t.shortExchange,
           spreadAtEntry: Number(t.spreadAtEntry),
+          enterSpreadThresholdPct: t.enterSpreadThresholdPct != null ? Number(t.enterSpreadThresholdPct) : undefined,
           realizedPnl: Number(t.realizedPnl),
           totalFees,
           openFees: isBotTrade ? openFees : undefined,

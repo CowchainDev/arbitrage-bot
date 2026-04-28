@@ -12,6 +12,8 @@ export interface ClosedTrade {
   longExchange: string;
   shortExchange: string;
   spreadAtEntry: number;
+  /** The enterSpreadPct threshold that was active when the trade was opened. Null for historical trades recorded before this field was added. */
+  enterSpreadThresholdPct?: number | null;
   realizedPnl: number;
   totalFees: number;
   /** Fees paid to open the position (from bot legs) */

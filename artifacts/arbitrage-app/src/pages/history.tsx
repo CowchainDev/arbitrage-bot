@@ -149,6 +149,7 @@ function TradeTable({ trades }: { trades: ClosedTrade[] }) {
             <th className="text-left px-3 py-2 font-medium">Symbol</th>
             <th className="text-left px-3 py-2 font-medium">Long / Short</th>
             <th className="text-right px-3 py-2 font-medium">Entry Spread</th>
+            <th className="text-right px-3 py-2 font-medium">Condition</th>
             <th className="text-right px-3 py-2 font-medium">Exit Spread</th>
             <th className="text-right px-3 py-2 font-medium">Close</th>
             <th className="text-right px-3 py-2 font-medium">Size (USD)</th>
@@ -180,8 +181,35 @@ function TradeTable({ trades }: { trades: ClosedTrade[] }) {
                   <span className="capitalize text-destructive">{trade.shortExchange}</span>
                 </td>
                 <td className="px-3 py-2.5 text-right">
-                  {trade.spreadAtEntry !== 0
-                    ? `${trade.spreadAtEntry >= 0 ? "+" : ""}${trade.spreadAtEntry.toFixed(3)}%`
+                  <span
+                    className={
+                      trade.enterSpreadThresholdPct != null &&
+                      Math.abs(trade.spreadAtEntry) < trade.enterSpreadThresholdPct
+                        ? "text-amber-500"
+                        : undefined
+                    }
+                  >
+                    {trade.spreadAtEntry !== 0
+                      ? `${trade.spreadAtEntry >= 0 ? "+" : ""}${trade.spreadAtEntry.toFixed(3)}%`
+                      : "—"}
+                  </span>
+                </td>
+                <td
+                  className={`px-3 py-2.5 text-right ${
+                    trade.enterSpreadThresholdPct != null &&
+                    Math.abs(trade.spreadAtEntry) < trade.enterSpreadThresholdPct
+                      ? "text-amber-500"
+                      : "text-muted-foreground"
+                  }`}
+                  title={
+                    trade.enterSpreadThresholdPct != null &&
+                    Math.abs(trade.spreadAtEntry) < trade.enterSpreadThresholdPct
+                      ? "Entry spread was below the configured threshold"
+                      : undefined
+                  }
+                >
+                  {trade.enterSpreadThresholdPct != null
+                    ? `≥${trade.enterSpreadThresholdPct.toFixed(3)}%`
                     : "—"}
                 </td>
                 <td className="px-3 py-2.5 text-right text-muted-foreground">

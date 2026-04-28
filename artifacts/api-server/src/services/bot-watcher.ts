@@ -213,6 +213,7 @@ async function openLeg(config: BotConfig, spreadPct: number): Promise<boolean> {
       bybitSide: sideA,
       binanceSide: sideB,
       spreadAtEntry: String(spreadPct),
+      enterSpreadThresholdPct: String(config.enterSpreadPct),
       openFeeA: String(resultA.feeCost),
       openFeeB: String(resultB.feeCost),
       // Store ExB contractSize so closeOnExchange can convert base-unit qty back to contracts.
@@ -322,6 +323,7 @@ async function closeLeg(
         longExchange: longExchangeName,
         shortExchange: shortExchangeName,
         spreadAtEntry: String(leg.spreadAtEntry),
+        enterSpreadThresholdPct: leg.enterSpreadThresholdPct != null ? String(leg.enterSpreadThresholdPct) : undefined,
         spreadAtExit: spreadAtExit != null ? String(spreadAtExit) : undefined,
         closeReason,
         realizedPnl: String(realizedPnl),
@@ -492,6 +494,7 @@ export async function closeAllLegsForBot(botId: number): Promise<{ closed: numbe
           longExchange: leg.bybitSide === "long" ? exchangeA : exchangeB,
           shortExchange: leg.bybitSide === "short" ? exchangeA : exchangeB,
           spreadAtEntry: String(leg.spreadAtEntry),
+          enterSpreadThresholdPct: leg.enterSpreadThresholdPct != null ? String(leg.enterSpreadThresholdPct) : undefined,
           spreadAtExit: spreadAtExit != null ? String(spreadAtExit) : undefined,
           closeReason: "manual",
           realizedPnl: String(realizedPnl),

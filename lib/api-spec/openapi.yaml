@@ -1101,6 +1101,10 @@ components:
           type: string
         spreadAtEntry:
           type: number
+        enterSpreadThresholdPct:
+          type: number
+          nullable: true
+          description: The enterSpreadPct threshold that was active when the trade was opened. Null for historical trades recorded before this field was added.
         realizedPnl:
           type: number
         totalFees:

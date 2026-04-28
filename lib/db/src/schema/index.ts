@@ -30,6 +30,7 @@ export const closedTradesTable = pgTable(
     spreadAtEntry: numeric("spread_at_entry", { precision: 20, scale: 8 })
       .notNull()
       .default("0"),
+    enterSpreadThresholdPct: numeric("enter_spread_threshold_pct", { precision: 20, scale: 8 }),
     realizedPnl: numeric("realized_pnl", { precision: 20, scale: 8 })
       .notNull()
       .default("0"),
@@ -88,6 +89,7 @@ export const botLegsTable = pgTable(
     bybitSide: text("bybit_side").notNull().default("long"),
     binanceSide: text("binance_side").notNull().default("short"),
     spreadAtEntry: numeric("spread_at_entry", { precision: 20, scale: 8 }).notNull().default("0"),
+    enterSpreadThresholdPct: numeric("enter_spread_threshold_pct", { precision: 20, scale: 8 }),
     spreadAtExit: numeric("spread_at_exit", { precision: 20, scale: 8 }),
     realizedPnlUsd: numeric("realized_pnl_usd", { precision: 20, scale: 8 }),
     fundingPaidUsd: numeric("funding_paid_usd", { precision: 20, scale: 8 }),
