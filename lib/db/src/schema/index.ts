@@ -37,6 +37,7 @@ export const closedTradesTable = pgTable(
       .notNull()
       .default("0"),
     totalFees: numeric("total_fees", { precision: 20, scale: 8 }).notNull().default("0"),
+    openFees: numeric("open_fees", { precision: 20, scale: 8 }).notNull().default("0"),
     fundingPaidUsd: numeric("funding_paid_usd", { precision: 20, scale: 8 }),
     entryTime: timestamp("entry_time").notNull().defaultNow(),
     closeTime: timestamp("close_time").notNull().defaultNow(),

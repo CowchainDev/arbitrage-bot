@@ -1,7 +1,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db } from "@workspace/db";
-import { closedTradesTable, botLegsTable } from "@workspace/db";
-import { desc, sql, count, sum, max, min, eq } from "drizzle-orm";
+import { closedTradesTable } from "@workspace/db";
+import { desc, sql, count, sum, max, min } from "drizzle-orm";
 
 const router: IRouter = Router();
 
@@ -15,7 +15,7 @@ router.get("/trades", async (req: Request, res: Response) => {
   const offset = Math.max(0, isNaN(rawOffset) ? 0 : rawOffset);
 
   try {
-    const [trades, statsRows, closedBotLegs] = await Promise.all([
+    const [trades, statsRows] = await Promise.all([
       db
         .select()
         .from(closedTradesTable)
@@ -32,35 +32,16 @@ router.get("/trades", async (req: Request, res: Response) => {
           winningTrades: sql<number>`count(*) filter (where ${closedTradesTable.realizedPnl} > 0)`,
         })
         .from(closedTradesTable),
-      db
-        .select({
-          symbol: botLegsTable.symbol,
-          openedAt: botLegsTable.openedAt,
-          openFeeA: botLegsTable.openFeeA,
-          openFeeB: botLegsTable.openFeeB,
-        })
-        .from(botLegsTable)
-        .where(eq(botLegsTable.status, "closed")),
     ]);
-
-    // Build a lookup map: "symbol_entryTimeMs" -> openFees total
-    // closed_trades.entryTime === bot_legs.openedAt (set by bot-watcher when recording the close)
-    const openFeesMap = new Map<string, number>();
-    for (const leg of closedBotLegs) {
-      const key = `${leg.symbol}_${leg.openedAt.getTime()}`;
-      const prev = openFeesMap.get(key) ?? 0;
-      openFeesMap.set(key, prev + Number(leg.openFeeA ?? 0) + Number(leg.openFeeB ?? 0));
-    }
 
     const s = statsRows[0];
 
     res.json({
       trades: trades.map((t) => {
         const totalFees = Number(t.totalFees);
-        const key = `${t.symbol}_${t.entryTime.getTime()}`;
-        const isBotTrade = openFeesMap.has(key);
-        const openFees = openFeesMap.get(key) ?? 0;
-        const closeFees = Math.max(0, totalFees - openFees);
+        const openFees = Number(t.openFees ?? 0);
+        const isBotTrade = openFees > 0;
+        const closeFees = isBotTrade ? Math.max(0, totalFees - openFees) : undefined;
         return {
           id: t.id,
           symbol: t.symbol,
@@ -70,7 +51,7 @@ router.get("/trades", async (req: Request, res: Response) => {
           realizedPnl: Number(t.realizedPnl),
           totalFees,
           openFees: isBotTrade ? openFees : undefined,
-          closeFees: isBotTrade ? closeFees : undefined,
+          closeFees,
           fundingPaidUsd: t.fundingPaidUsd != null ? Number(t.fundingPaidUsd) : undefined,
           quantity: Number(t.quantity),
           entryTime: t.entryTime.toISOString(),

@@ -1381,6 +1381,7 @@ router.post("/exchanges/close-position", async (req: Request, res: Response) => 
           spreadAtEntry: String(spreadAtEntry),
           realizedPnl: String(realizedPnl),
           quantity: String(quantity),
+          openFees: "0",
           fundingPaidUsd: estimatedFundingUsd != null ? String(estimatedFundingUsd) : undefined,
           entryTime: entryTime ? new Date(entryTime) : new Date(),
           closeTime: new Date(),
