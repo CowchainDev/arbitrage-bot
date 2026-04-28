@@ -959,6 +959,11 @@ export const GetTradesResponse = zod.object({
       .describe(
         "Sum of all fundingPaidUsd values across closed trades. Positive means net funding received.",
       ),
+    netPnl: zod
+      .number()
+      .describe(
+        "totalPnl + totalFunding — the true bottom-line performance including funding.",
+      ),
   }),
 });
 

@@ -74,6 +74,7 @@ router.get("/trades", async (req: Request, res: Response) => {
         bestTrade: Number(s?.bestTrade ?? 0),
         worstTrade: Number(s?.worstTrade ?? 0),
         totalFunding: Number(s?.totalFunding ?? 0),
+        netPnl: Number(s?.totalPnl ?? 0) + Number(s?.totalFunding ?? 0),
       },
       pagination: { limit, offset },
     });

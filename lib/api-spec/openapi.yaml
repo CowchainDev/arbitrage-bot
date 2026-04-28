@@ -1191,6 +1191,9 @@ components:
         totalFunding:
           type: number
           description: Sum of all fundingPaidUsd values across closed trades. Positive means net funding received.
+        netPnl:
+          type: number
+          description: totalPnl + totalFunding — the true bottom-line performance including funding.
       required:
         - totalTrades
         - winningTrades
@@ -1199,6 +1202,7 @@ components:
         - bestTrade
         - worstTrade
         - totalFunding
+        - netPnl
 
     TradeHistoryResponse:
       type: object

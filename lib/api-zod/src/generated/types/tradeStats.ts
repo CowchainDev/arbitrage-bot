@@ -19,4 +19,6 @@ export interface TradeStats {
   worstTrade: number;
   /** Sum of all fundingPaidUsd values across closed trades. Positive means net funding received. */
   totalFunding: number;
+  /** totalPnl + totalFunding — the true bottom-line performance including funding. */
+  netPnl: number;
 }

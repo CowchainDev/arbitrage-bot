@@ -349,7 +349,14 @@ export default function History() {
         <StatCard
           label="Total PnL"
           value={stats ? formatPnl(stats.totalPnl) : "—"}
+          sub="excl. funding"
           positive={stats ? stats.totalPnl >= 0 : null}
+        />
+        <StatCard
+          label="Net PnL"
+          value={stats ? formatPnl(stats.netPnl) : "—"}
+          sub="incl. funding"
+          positive={stats ? stats.netPnl >= 0 : null}
         />
         <StatCard
           label="Total Fees"
