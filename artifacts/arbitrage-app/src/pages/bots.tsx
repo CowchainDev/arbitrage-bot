@@ -24,8 +24,6 @@ import {
 } from "@workspace/api-client-react";
 import type { BotConfig, BotLeg, LegBucket } from "@workspace/api-client-react";
 import {
-  AreaChart,
-  Area,
   Bar,
   Line,
   ComposedChart,
@@ -33,7 +31,6 @@ import {
   YAxis,
   ResponsiveContainer,
   Tooltip,
-  ReferenceLine,
 } from "recharts";
 
 function StatusBadge({ bot, legsCount }: { bot: BotConfig; legsCount: number }) {
@@ -58,79 +55,30 @@ function StatusBadge({ bot, legsCount }: { bot: BotConfig; legsCount: number }) 
   );
 }
 
-interface PnlPoint {
-  t: number;
-  pnl: number;
-}
-
 function PnlChart({
-  points,
   latestPnl,
   legBuckets,
 }: {
-  points: PnlPoint[];
-  latestPnl: number;
+  latestPnl: number | null;
   legBuckets?: LegBucket[];
 }) {
-  const isPositive = latestPnl >= 0;
-  const color = isPositive ? "#10b981" : "#ef4444";
-
-  const formatted =
-    latestPnl === 0
-      ? "$0.00"
-      : `${latestPnl >= 0 ? "+" : ""}$${latestPnl.toFixed(4)}`;
-
   const showLegTrend = legBuckets && legBuckets.length > 0;
   const latestCumulative = showLegTrend ? legBuckets![legBuckets!.length - 1].cumulative : 0;
-  const showPnl = points.length > 1;
 
   return (
     <div className="mt-1">
-      {showPnl && (
-        <>
-          <div className="flex items-baseline justify-between mb-1">
-            <span className="text-xs text-muted-foreground">Unrealized P&L</span>
-            <span
-              className="text-sm font-mono font-bold"
-              style={{ color }}
-            >
-              {formatted}
-            </span>
-          </div>
-          <div className="h-20">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={points} margin={{ top: 4, right: 0, left: 0, bottom: 0 }}>
-                <defs>
-                  <linearGradient id={`pnlGrad-${isPositive}`} x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor={color} stopOpacity={0.3} />
-                    <stop offset="95%" stopColor={color} stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <ReferenceLine y={0} stroke="#555" strokeDasharray="3 3" />
-                <Tooltip
-                  content={({ active, payload }) => {
-                    if (!active || !payload?.length) return null;
-                    const val: number = payload[0].value as number;
-                    return (
-                      <div className="bg-background border border-border rounded px-2 py-1 text-xs font-mono">
-                        {val >= 0 ? "+" : ""}${val.toFixed(4)}
-                      </div>
-                    );
-                  }}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="pnl"
-                  stroke={color}
-                  strokeWidth={1.5}
-                  fill={`url(#pnlGrad-${isPositive})`}
-                  dot={false}
-                  isAnimationActive={false}
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        </>
+      {latestPnl !== null && (
+        <div className="flex items-baseline justify-between mb-1">
+          <span className="text-xs text-muted-foreground">Unrealized P&L</span>
+          <span
+            className="text-sm font-mono font-bold"
+            style={{ color: latestPnl >= 0 ? "#10b981" : "#ef4444" }}
+          >
+            {latestPnl === 0
+              ? "$0.00"
+              : `${latestPnl >= 0 ? "+" : ""}$${latestPnl.toFixed(4)}`}
+          </span>
+        </div>
       )}
 
       {showLegTrend && (
@@ -273,7 +221,7 @@ function BotCard({ bot, openLegs }: { bot: BotConfig; openLegs: BotLeg[] }) {
   };
 
   const statsQuery = useGetBotStats(bot.id, {
-    query: { refetchInterval: 5000, queryKey: getGetBotStatsQueryKey(bot.id) },
+    query: { refetchInterval: 2000, staleTime: 0, queryKey: getGetBotStatsQueryKey(bot.id) },
     request: requestOptions,
   });
   const stats = statsQuery.data;
@@ -285,19 +233,13 @@ function BotCard({ bot, openLegs }: { bot: BotConfig; openLegs: BotLeg[] }) {
   const legBuckets = legHistoryQuery.data?.buckets ?? [];
 
   const pricesQuery = useGetExchangePrices({
-    query: { refetchInterval: 2000, queryKey: getGetExchangePricesQueryKey() },
+    query: { refetchInterval: 2000, staleTime: 0, queryKey: getGetExchangePricesQueryKey() },
     request: requestOptions,
   });
   const priceData = pricesQuery.data?.find((p) => p.symbol === bot.symbol);
 
-  const pnlHistoryRef = useRef<PnlPoint[]>([]);
-  const [pnlPoints, setPnlPoints] = useState<PnlPoint[]>([]);
-
-  const computePnl = () => {
-    if (!priceData) return null;
-    // leg.bybitEntry/bybitQty/bybitSide = ExA fields (legacy naming)
-    // leg.binanceEntry/binanceQty/binanceSide = ExB fields (legacy naming)
-    // Must look up live prices by the actual configured exchanges, not assume bybit/binance.
+  const latestPnl = (() => {
+    if (!bot.enabled || openLegs.length === 0 || !priceData) return null;
     const prices = priceData as unknown as Record<string, number | null>;
     const exaPrice = prices[`${bot.exchangeA}Price`];
     const exbPrice = prices[`${bot.exchangeB}Price`];
@@ -315,22 +257,7 @@ function BotCard({ bot, openLegs }: { bot: BotConfig; openLegs: BotLeg[] }) {
       total += pnlA + pnlB;
     }
     return total;
-  };
-
-  useEffect(() => {
-    if (!bot.enabled || openLegs.length === 0) {
-      pnlHistoryRef.current = [];
-      setPnlPoints([]);
-      return;
-    }
-    const pnl = computePnl();
-    if (pnl === null) return;
-    const now = Date.now();
-    const updated = [...pnlHistoryRef.current, { t: now, pnl }].slice(-120);
-    pnlHistoryRef.current = updated;
-    setPnlPoints(updated);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [priceData, openLegs.length, bot.enabled]);
+  })();
 
   const prevOpenLegsCount = useRef(openLegs.length);
 
@@ -403,9 +330,7 @@ function BotCard({ bot, openLegs }: { bot: BotConfig; openLegs: BotLeg[] }) {
     }
   };
 
-  const latestPnl = pnlPoints.length > 0 ? pnlPoints[pnlPoints.length - 1].pnl : 0;
-  const hasPnlPoints = bot.enabled && openLegs.length > 0 && pnlPoints.length > 1;
-  const showChart = hasPnlPoints || legBuckets.length > 0;
+  const showChart = latestPnl !== null || legBuckets.length > 0;
 
   return (
     <div className="bg-card border border-border rounded-lg p-4 flex flex-col gap-3">
@@ -657,17 +582,9 @@ function BotCard({ bot, openLegs }: { bot: BotConfig; openLegs: BotLeg[] }) {
 
       {showChart && (
         <PnlChart
-          points={pnlPoints}
           latestPnl={latestPnl}
           legBuckets={legBuckets.length > 0 ? legBuckets : undefined}
         />
-      )}
-
-      {bot.enabled && openLegs.length > 0 && !hasPnlPoints && legBuckets.length === 0 && (
-        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
-          Tracking P&L…
-        </div>
       )}
 
       {bot.enabled ? (
