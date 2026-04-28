@@ -487,12 +487,6 @@ function TokenCard({
     : rawSpread >= 0.3
     ? "text-amber-400 font-semibold"
     : "text-muted-foreground";
-  const frDelta = cheapData.funding != null && expData.funding != null
-    ? (expData.funding - cheapData.funding) * 100
-    : null;
-  const frColor = frDelta != null
-    ? frDelta > 0 ? "text-primary/70" : frDelta < 0 ? "text-destructive/70" : "text-muted-foreground/40"
-    : "text-muted-foreground/40";
   const frCountdown = useFundingCountdown(cheapData.nextFunding, expData.nextFunding);
 
   const ema = token.emaSpreadPct;
@@ -556,8 +550,8 @@ function TokenCard({
         )}
       </div>
 
-      {/* Exchange pair + FR delta */}
-      <div className="flex items-start gap-1.5 mb-2">
+      {/* Exchange pair */}
+      <div className="flex items-center gap-1.5 mb-1.5">
         {cheapEx && expensiveEx ? (
           <span className="text-[10px] font-mono">
             <span className="text-muted-foreground">{getExchangeName(cheapEx)}</span>
@@ -567,24 +561,51 @@ function TokenCard({
         ) : (
           <span className="text-muted-foreground/30 text-[10px]">-/-</span>
         )}
-        {frDelta != null && (
-          <div className={`font-mono text-[10px] tabular-nums ml-auto text-right leading-tight ${frColor}`}>
-            <div>{frDelta >= 0 ? "+" : ""}{frDelta.toFixed(4)}%</div>
-            {cheapData.funding != null && (
-              <div className="text-muted-foreground/40 text-[9px]">
-                {getExchangeName(cheapEx)} {(cheapData.funding * 100).toFixed(4)}%
-              </div>
-            )}
-            {expData.funding != null && (
-              <div className="text-muted-foreground/40 text-[9px]">
-                {getExchangeName(expensiveEx)} {(expData.funding * 100).toFixed(4)}%
-              </div>
-            )}
-            {frCountdown && (
-              <div className="text-muted-foreground/40 text-[9px]">⏱ {frCountdown}</div>
-            )}
-          </div>
-        )}
+      </div>
+
+      {/* FR row: FR ↓, FR ↑, Next FR */}
+      <div className="grid grid-cols-3 gap-x-2 text-[10px] font-mono mb-2">
+        {/* FR ↓ cheap-side */}
+        {(() => {
+          const rate = cheapData.funding;
+          const color = rate == null
+            ? "text-muted-foreground/30"
+            : rate > 0 ? "text-primary/70"
+            : rate < 0 ? "text-destructive/70"
+            : "text-muted-foreground/50";
+          return (
+            <div>
+              <span className="text-muted-foreground/40">FR ↓ </span>
+              <span className={`tabular-nums ${color}`}>
+                {rate != null ? `${rate >= 0 ? "+" : ""}${(rate * 100).toFixed(4)}%` : "-"}
+              </span>
+            </div>
+          );
+        })()}
+        {/* FR ↑ expensive-side */}
+        {(() => {
+          const rate = expData.funding;
+          const color = rate == null
+            ? "text-muted-foreground/30"
+            : rate > 0 ? "text-primary/70"
+            : rate < 0 ? "text-destructive/70"
+            : "text-muted-foreground/50";
+          return (
+            <div>
+              <span className="text-muted-foreground/40">FR ↑ </span>
+              <span className={`tabular-nums ${color}`}>
+                {rate != null ? `${rate >= 0 ? "+" : ""}${(rate * 100).toFixed(4)}%` : "-"}
+              </span>
+            </div>
+          );
+        })()}
+        {/* Next FR countdown */}
+        <div>
+          <span className="text-muted-foreground/40">Next FR </span>
+          <span className="tabular-nums text-muted-foreground/60">
+            {frCountdown || "-"}
+          </span>
+        </div>
       </div>
 
       {/* Stats grid */}
