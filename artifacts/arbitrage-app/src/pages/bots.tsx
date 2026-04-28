@@ -15,23 +15,12 @@ import {
   useUpdateBot,
   useGetExchangePrices,
   useGetBotStats,
-  useGetBotLegHistory,
   getGetExchangePricesQueryKey,
   getGetBotStatsQueryKey,
-  getGetBotLegHistoryQueryKey,
   getListBotsQueryKey,
   getGetBotLegsQueryKey,
 } from "@workspace/api-client-react";
-import type { BotConfig, BotLeg, LegBucket } from "@workspace/api-client-react";
-import {
-  Bar,
-  Line,
-  ComposedChart,
-  XAxis,
-  YAxis,
-  ResponsiveContainer,
-  Tooltip,
-} from "recharts";
+import type { BotConfig, BotLeg } from "@workspace/api-client-react";
 
 function StatusBadge({ bot, legsCount }: { bot: BotConfig; legsCount: number }) {
   if (!bot.enabled) {
@@ -55,83 +44,19 @@ function StatusBadge({ bot, legsCount }: { bot: BotConfig; legsCount: number }) 
   );
 }
 
-function PnlChart({
-  latestPnl,
-  legBuckets,
-}: {
-  latestPnl: number | null;
-  legBuckets?: LegBucket[];
-}) {
-  const showLegTrend = legBuckets && legBuckets.length > 0;
-  const latestCumulative = showLegTrend ? legBuckets![legBuckets!.length - 1].cumulative : 0;
-
+function PnlChart({ latestPnl }: { latestPnl: number | null }) {
+  if (latestPnl === null) return null;
   return (
-    <div className="mt-1">
-      {latestPnl !== null && (
-        <div className="flex items-baseline justify-between mb-1">
-          <span className="text-xs text-muted-foreground">Unrealized P&L</span>
-          <span
-            className="text-sm font-mono font-bold"
-            style={{ color: latestPnl >= 0 ? "#10b981" : "#ef4444" }}
-          >
-            {latestPnl === 0
-              ? "$0.00"
-              : `${latestPnl >= 0 ? "+" : ""}$${latestPnl.toFixed(4)}`}
-          </span>
-        </div>
-      )}
-
-      {showLegTrend && (
-        <>
-          <div className="flex items-baseline justify-between mt-2 mb-1">
-            <span className="text-xs text-muted-foreground">Legs closed (by day)</span>
-            <span className="text-xs font-mono font-bold text-violet-400">
-              {latestCumulative} total
-            </span>
-          </div>
-          <div className="h-16">
-            <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={legBuckets} margin={{ top: 2, right: 0, left: 0, bottom: 0 }}>
-                <XAxis dataKey="date" hide />
-                <YAxis yAxisId="count" hide />
-                <YAxis yAxisId="cum" orientation="right" hide />
-                <Tooltip
-                  content={({ active, payload }) => {
-                    if (!active || !payload?.length) return null;
-                    const bucket = payload[0]?.payload as LegBucket;
-                    return (
-                      <div className="bg-background border border-border rounded px-2 py-1 text-xs font-mono space-y-0.5">
-                        <div className="text-muted-foreground">{bucket.date}</div>
-                        <div className="text-violet-400">{bucket.count} closed</div>
-                        <div className="text-violet-300">{bucket.cumulative} cumulative</div>
-                      </div>
-                    );
-                  }}
-                />
-                <Bar
-                  yAxisId="count"
-                  dataKey="count"
-                  fill="#7c3aed"
-                  opacity={0.7}
-                  radius={[2, 2, 0, 0]}
-                  isAnimationActive={false}
-                />
-                {legBuckets!.length > 1 && (
-                  <Line
-                    yAxisId="cum"
-                    type="monotone"
-                    dataKey="cumulative"
-                    stroke="#a78bfa"
-                    strokeWidth={1.5}
-                    dot={false}
-                    isAnimationActive={false}
-                  />
-                )}
-              </ComposedChart>
-            </ResponsiveContainer>
-          </div>
-        </>
-      )}
+    <div className="flex items-center justify-between py-1">
+      <span className="text-xs text-muted-foreground">Unrealized P&L</span>
+      <span
+        className="text-[13px] font-mono font-bold"
+        style={{ color: latestPnl >= 0 ? "#10b981" : "#ef4444" }}
+      >
+        {latestPnl === 0
+          ? "$0.00"
+          : `${latestPnl >= 0 ? "+" : ""}$${latestPnl.toFixed(4)}`}
+      </span>
     </div>
   );
 }
@@ -226,12 +151,6 @@ function BotCard({ bot, openLegs }: { bot: BotConfig; openLegs: BotLeg[] }) {
   });
   const stats = statsQuery.data;
 
-  const legHistoryQuery = useGetBotLegHistory(bot.id, {
-    query: { refetchInterval: 30000, queryKey: getGetBotLegHistoryQueryKey(bot.id) },
-    request: requestOptions,
-  });
-  const legBuckets = legHistoryQuery.data?.buckets ?? [];
-
   const pricesQuery = useGetExchangePrices({
     query: { refetchInterval: 2000, staleTime: 0, queryKey: getGetExchangePricesQueryKey() },
     request: requestOptions,
@@ -273,7 +192,6 @@ function BotCard({ bot, openLegs }: { bot: BotConfig; openLegs: BotLeg[] }) {
     await queryClient.invalidateQueries({ queryKey: getListBotsQueryKey() });
     await queryClient.invalidateQueries({ queryKey: getGetBotLegsQueryKey(bot.id) });
     await queryClient.invalidateQueries({ queryKey: getGetBotStatsQueryKey(bot.id) });
-    await queryClient.invalidateQueries({ queryKey: getGetBotLegHistoryQueryKey(bot.id) });
   };
 
   const handleStart = async () => {
@@ -330,7 +248,7 @@ function BotCard({ bot, openLegs }: { bot: BotConfig; openLegs: BotLeg[] }) {
     }
   };
 
-  const showChart = latestPnl !== null || legBuckets.length > 0;
+  const showChart = latestPnl !== null;
 
   return (
     <div className="bg-card border border-border rounded-lg p-4 flex flex-col gap-3">
@@ -478,14 +396,14 @@ function BotCard({ bot, openLegs }: { bot: BotConfig; openLegs: BotLeg[] }) {
           </div>
         </div>
       ) : (
-      <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+      <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
         <div className="flex items-center justify-between col-span-2">
           <span className="text-muted-foreground">Exchanges</span>
-          <span className="font-mono">{capitalize(bot.exchangeA)} ↔ {capitalize(bot.exchangeB)}</span>
+          <span className="text-[13px] font-mono">{capitalize(bot.exchangeA)} ↔ {capitalize(bot.exchangeB)}</span>
         </div>
         <div className="flex items-center justify-between">
           <span className="text-muted-foreground">Leverage</span>
-          <span className="font-mono">
+          <span className="text-[13px] font-mono">
             {bot.leverageA === bot.leverageB
               ? `${bot.leverageA}x`
               : `${capitalize(bot.exchangeA)} ${bot.leverageA}x / ${capitalize(bot.exchangeB)} ${bot.leverageB}x`}
@@ -493,43 +411,43 @@ function BotCard({ bot, openLegs }: { bot: BotConfig; openLegs: BotLeg[] }) {
         </div>
         <div className="flex items-center justify-between">
           <span className="text-muted-foreground">Open legs</span>
-          <span className="font-mono">{openLegs.length}</span>
+          <span className="text-[13px] font-mono">{openLegs.length}</span>
         </div>
         <div className="flex items-center justify-between">
           <span className="text-muted-foreground">Enter spread</span>
-          <span className="font-mono">{bot.enterSpreadPct}%</span>
+          <span className="text-[13px] font-mono">{bot.enterSpreadPct}%</span>
         </div>
         <div className="flex items-center justify-between">
           <span className="text-muted-foreground">Take profit</span>
-          <span className="font-mono">{bot.closeSpreadPct}%</span>
+          <span className="text-[13px] font-mono">{bot.closeSpreadPct}%</span>
         </div>
         <div className="flex items-center justify-between">
           <span className="text-muted-foreground">Stop loss</span>
-          <span className="font-mono">
+          <span className="text-[13px] font-mono">
             {bot.stopLossSpreadPct > 0 ? `${bot.stopLossSpreadPct}%` : <span className="text-muted-foreground/50">off</span>}
           </span>
         </div>
         <div className="flex items-center justify-between">
           <span className="text-muted-foreground">Order size</span>
-          <span className="font-mono">${bot.orderSizeUsd}</span>
+          <span className="text-[13px] font-mono">${bot.orderSizeUsd}</span>
         </div>
         <div className="flex items-center justify-between">
           <span className="text-muted-foreground">Max orders</span>
-          <span className="font-mono">{bot.maxOrders}</span>
+          <span className="text-[13px] font-mono">{bot.maxOrders}</span>
         </div>
         <div className="flex items-center justify-between">
           <span className="text-muted-foreground">Force stop</span>
-          <span className="font-mono">${bot.forceStopUsd}</span>
+          <span className="text-[13px] font-mono">${bot.forceStopUsd}</span>
         </div>
       </div>
       )}
 
-      <div className="border-t border-border pt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-        <div className="flex items-center justify-between col-span-2">
+      <div className="border-t border-border pt-2 flex flex-col gap-1.5 text-xs">
+        <div className="flex items-center justify-between">
           <span className="text-muted-foreground">Realized P&L</span>
           {stats ? (
             <span
-              className="font-mono font-bold"
+              className="text-[13px] font-mono font-bold"
               style={{ color: stats.totalRealizedPnlUsd >= 0 ? "#10b981" : "#ef4444" }}
             >
               {stats.totalRealizedPnlUsd >= 0 ? "+" : ""}${stats.totalRealizedPnlUsd.toFixed(2)}
@@ -538,21 +456,23 @@ function BotCard({ bot, openLegs }: { bot: BotConfig; openLegs: BotLeg[] }) {
             <span className="text-muted-foreground/40 font-mono">—</span>
           )}
         </div>
-        <div className="flex items-center justify-between">
-          <span className="text-muted-foreground">Avg entry spread</span>
-          <span className="font-mono">
-            {stats ? `${stats.avgEntrySpread.toFixed(4)}%` : <span className="text-muted-foreground/40">—</span>}
-          </span>
+        <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
+          <div className="flex items-center justify-between">
+            <span className="text-muted-foreground">Avg entry</span>
+            <span className="text-[13px] font-mono">
+              {stats ? `${stats.avgEntrySpread.toFixed(4)}%` : <span className="text-muted-foreground/40">—</span>}
+            </span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-muted-foreground">Avg exit</span>
+            <span className="text-[13px] font-mono">
+              {stats ? `${stats.avgExitSpread.toFixed(4)}%` : <span className="text-muted-foreground/40">—</span>}
+            </span>
+          </div>
         </div>
         <div className="flex items-center justify-between">
-          <span className="text-muted-foreground">Avg exit spread</span>
-          <span className="font-mono">
-            {stats ? `${stats.avgExitSpread.toFixed(4)}%` : <span className="text-muted-foreground/40">—</span>}
-          </span>
-        </div>
-        <div className="flex items-center justify-between col-span-2">
           <span className="text-muted-foreground">Volume traded</span>
-          <span className="font-mono">
+          <span className="text-[13px] font-mono">
             {stats
               ? stats.totalVolumeUsd >= 1000
                 ? `$${(stats.totalVolumeUsd / 1000).toFixed(2)}k`
@@ -560,17 +480,17 @@ function BotCard({ bot, openLegs }: { bot: BotConfig; openLegs: BotLeg[] }) {
               : <span className="text-muted-foreground/40">—</span>}
           </span>
         </div>
-        <div className="col-span-2">
+        <div>
           <div className="flex items-center justify-between">
             <span className="text-muted-foreground">Closed legs</span>
-            <span className="font-mono">
+            <span className="text-[13px] font-mono">
               {stats ? stats.closedLegCount : <span className="text-muted-foreground/40">—</span>}
             </span>
           </div>
           {stats && Object.keys(stats.closedLegsByPair).length > 0 && (
-            <div className="mt-0.5 flex flex-col gap-0.5">
+            <div className="mt-1 flex flex-col gap-0.5">
               {Object.entries(stats.closedLegsByPair).map(([pair, count]) => (
-                <div key={pair} className="flex items-center justify-between pl-2 text-[11px]">
+                <div key={pair} className="flex items-center justify-between pl-3 text-[11px]">
                   <span className="text-muted-foreground/70">{pair}</span>
                   <span className="font-mono text-muted-foreground/70">{count}</span>
                 </div>
@@ -580,12 +500,7 @@ function BotCard({ bot, openLegs }: { bot: BotConfig; openLegs: BotLeg[] }) {
         </div>
       </div>
 
-      {showChart && (
-        <PnlChart
-          latestPnl={latestPnl}
-          legBuckets={legBuckets.length > 0 ? legBuckets : undefined}
-        />
-      )}
+      {showChart && <PnlChart latestPnl={latestPnl} />}
 
       {bot.enabled ? (
         <div className="flex flex-col gap-1.5">
