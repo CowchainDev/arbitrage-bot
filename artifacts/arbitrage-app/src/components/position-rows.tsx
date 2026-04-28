@@ -188,6 +188,12 @@ export function BotSummaryRow({
   exchangeA?: string;
   exchangeB?: string;
 }) {
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
   const symbol = positions[0].symbol;
   const totalPnl = positions.reduce((s, p) => s + (p.totalPnl ?? 0), 0);
   const pnlPositive = totalPnl >= 0;
@@ -258,7 +264,7 @@ export function BotSummaryRow({
       const shortFunding = getTokenFundingForExchange(token, shortEx);
       if (longFunding.rate == null || shortFunding.rate == null) continue;
       if (!p.openedAt || !p.usdSize) continue;
-      const intervals = countSettledFundingIntervals(new Date(p.openedAt).getTime(), Date.now());
+      const intervals = countSettledFundingIntervals(new Date(p.openedAt).getTime(), now);
       total += intervals * (shortFunding.rate - longFunding.rate) * p.usdSize;
       hasAny = true;
     }
