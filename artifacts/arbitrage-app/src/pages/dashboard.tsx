@@ -459,6 +459,7 @@ function TokenCard({
   onToggleWatch,
   bot,
   botOpenLegsCount,
+  sort,
 }: {
   token: TokenSpread;
   isSelected: boolean;
@@ -469,6 +470,7 @@ function TokenCard({
   onToggleWatch: (e: React.MouseEvent) => void;
   bot?: BotConfig;
   botOpenLegsCount?: number;
+  sort?: SortOption;
 }) {
   const legsCount = botOpenLegsCount ?? 0;
   const showDot = bot != null;
@@ -495,6 +497,10 @@ function TokenCard({
     : ema >= 1   ? "text-primary/70 font-semibold"
     : ema >= 0.3 ? "text-amber-400/70"
     : "text-muted-foreground/50";
+
+  const sortCol = sort ? sortColFromOption(sort) : null;
+  const frCheapActive = sortCol === "fr_cheap";
+  const frExpActive = sortCol === "fr_exp";
 
   const cardBorder = isSelected
     ? "border-primary bg-primary/8"
@@ -574,9 +580,9 @@ function TokenCard({
             : rate < 0 ? "text-destructive/70"
             : "text-muted-foreground/50";
           return (
-            <div>
-              <span className="text-muted-foreground/40">FR ↓ </span>
-              <span className={`tabular-nums ${color}`}>
+            <div className={frCheapActive ? "rounded px-0.5 -mx-0.5 bg-primary/10" : ""}>
+              <span className={frCheapActive ? "text-primary font-semibold" : "text-muted-foreground/40"}>FR ↓ </span>
+              <span className={`tabular-nums ${frCheapActive ? "text-primary font-semibold" : color}`}>
                 {rate != null ? `${rate >= 0 ? "+" : ""}${(rate * 100).toFixed(4)}%` : "-"}
               </span>
             </div>
@@ -591,9 +597,9 @@ function TokenCard({
             : rate < 0 ? "text-destructive/70"
             : "text-muted-foreground/50";
           return (
-            <div>
-              <span className="text-muted-foreground/40">FR ↑ </span>
-              <span className={`tabular-nums ${color}`}>
+            <div className={frExpActive ? "rounded px-0.5 -mx-0.5 bg-primary/10" : ""}>
+              <span className={frExpActive ? "text-primary font-semibold" : "text-muted-foreground/40"}>FR ↑ </span>
+              <span className={`tabular-nums ${frExpActive ? "text-primary font-semibold" : color}`}>
                 {rate != null ? `${rate >= 0 ? "+" : ""}${(rate * 100).toFixed(4)}%` : "-"}
               </span>
             </div>
@@ -1346,6 +1352,7 @@ export default function Dashboard() {
                       onToggleWatch={(e) => { e.stopPropagation(); toggleWatch(token.symbol, getThreshold(token.symbol)); }}
                       bot={botStatus?.bot}
                       botOpenLegsCount={botStatus?.openLegsCount ?? 0}
+                      sort={sort}
                     />
                   );
                 })}
