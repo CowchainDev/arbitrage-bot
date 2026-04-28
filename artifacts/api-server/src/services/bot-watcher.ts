@@ -233,6 +233,7 @@ async function closeLeg(
   leg: BotLeg,
   priceA: number,
   priceB: number,
+  closeReason: string = "manual",
 ): Promise<boolean> {
   const pair = await getExchangePairForBot(config);
   if (!pair) return false;
@@ -310,6 +311,8 @@ async function closeLeg(
         longExchange: longExchangeName,
         shortExchange: shortExchangeName,
         spreadAtEntry: String(leg.spreadAtEntry),
+        spreadAtExit: spreadAtExit != null ? String(spreadAtExit) : undefined,
+        closeReason,
         realizedPnl: String(realizedPnl),
         totalFees: String(totalFees),
         openFees: String(Number(leg.openFeeA ?? 0) + Number(leg.openFeeB ?? 0)),
@@ -376,7 +379,7 @@ async function processBotConfig(config: BotConfig, canOpen: boolean): Promise<vo
     if (close || forceStopTriggered) {
       const trigger = forceStopTriggered ? "force_stop" : reason;
       logger.info({ legId: leg.id, symbol: leg.symbol, trigger, spreadPct }, "Bot: close trigger fired");
-      const closed = await closeLeg(config, leg, priceA, priceB);
+      const closed = await closeLeg(config, leg, priceA, priceB, trigger);
       if (closed) confirmedClosedCount++;
       if (forceStopTriggered) anyForceStop = true;
     }
@@ -478,6 +481,8 @@ export async function closeAllLegsForBot(botId: number): Promise<{ closed: numbe
           longExchange: leg.bybitSide === "long" ? exchangeA : exchangeB,
           shortExchange: leg.bybitSide === "short" ? exchangeA : exchangeB,
           spreadAtEntry: String(leg.spreadAtEntry),
+          spreadAtExit: spreadAtExit != null ? String(spreadAtExit) : undefined,
+          closeReason: "manual",
           realizedPnl: String(realizedPnl),
           totalFees: String(totalFees),
           openFees: String(Number(leg.openFeeA ?? 0) + Number(leg.openFeeB ?? 0)),

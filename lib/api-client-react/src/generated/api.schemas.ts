@@ -262,6 +262,10 @@ export interface ClosedTrade {
   closeFees?: number;
   /** Estimated net funding captured over the life of the trade (positive = received, negative = paid). Null for older trades recorded before this feature. */
   fundingPaidUsd?: number | null;
+  /** Spread % at the time the position was closed */
+  spreadAtExit?: number;
+  /** Why the trade closed: take_profit | stop_loss | force_stop | manual */
+  closeReason?: string;
   quantity: number;
   entryTime: string;
   closeTime: string;

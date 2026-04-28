@@ -1374,11 +1374,16 @@ router.post("/exchanges/close-position", async (req: Request, res: Response) => 
           const msHeld = Date.now() - new Date(entryTime).getTime();
           estimatedFundingUsd = (msHeld / 28800000) * (shortRate - longRate) * quantity;
         }
+        const exitSpread = result.closePriceA != null && result.closePriceB != null
+          ? ((result.closePriceA - result.closePriceB) / result.closePriceB) * 100
+          : undefined;
         await db.insert(closedTradesTable).values({
           symbol,
           longExchange,
           shortExchange,
           spreadAtEntry: String(spreadAtEntry),
+          spreadAtExit: exitSpread != null ? String(exitSpread) : undefined,
+          closeReason: "manual",
           realizedPnl: String(realizedPnl),
           quantity: String(quantity),
           openFees: "0",

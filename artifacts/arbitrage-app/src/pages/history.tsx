@@ -149,6 +149,8 @@ function TradeTable({ trades }: { trades: ClosedTrade[] }) {
             <th className="text-left px-3 py-2 font-medium">Symbol</th>
             <th className="text-left px-3 py-2 font-medium">Long / Short</th>
             <th className="text-right px-3 py-2 font-medium">Entry Spread</th>
+            <th className="text-right px-3 py-2 font-medium">Exit Spread</th>
+            <th className="text-right px-3 py-2 font-medium">Close</th>
             <th className="text-right px-3 py-2 font-medium">Size (USD)</th>
             <th className="text-right px-3 py-2 font-medium">Open Fees / Close Fees</th>
             <th className="text-right px-3 py-2 font-medium">Funding</th>
@@ -181,6 +183,33 @@ function TradeTable({ trades }: { trades: ClosedTrade[] }) {
                   {trade.spreadAtEntry !== 0
                     ? `${trade.spreadAtEntry >= 0 ? "+" : ""}${trade.spreadAtEntry.toFixed(3)}%`
                     : "—"}
+                </td>
+                <td className="px-3 py-2.5 text-right text-muted-foreground">
+                  {trade.spreadAtExit != null
+                    ? `${trade.spreadAtExit >= 0 ? "+" : ""}${trade.spreadAtExit.toFixed(3)}%`
+                    : "—"}
+                </td>
+                <td className="px-3 py-2.5 text-right">
+                  {trade.closeReason ? (
+                    <span
+                      title={trade.closeReason}
+                      className={
+                        trade.closeReason === "take_profit"
+                          ? "text-primary"
+                          : trade.closeReason === "stop_loss" || trade.closeReason === "force_stop"
+                            ? "text-destructive"
+                            : "text-muted-foreground"
+                      }
+                    >
+                      {trade.closeReason === "take_profit"
+                        ? "TP"
+                        : trade.closeReason === "stop_loss"
+                          ? "SL"
+                          : trade.closeReason === "force_stop"
+                            ? "FS"
+                            : trade.closeReason}
+                    </span>
+                  ) : "—"}
                 </td>
                 <td className="px-3 py-2.5 text-right">
                   {trade.quantity > 0 ? `$${trade.quantity.toFixed(2)}` : "—"}
