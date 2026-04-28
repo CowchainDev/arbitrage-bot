@@ -165,6 +165,7 @@ function TradeTable({ trades }: { trades: ClosedTrade[] }) {
               </span>
             </th>
             <th className="text-right px-3 py-2 font-medium">Realized PnL (excl. funding)</th>
+            <th className="text-right px-3 py-2 font-medium">Net PnL (incl. funding)</th>
             <th className="text-right px-3 py-2 font-medium">PnL (%)</th>
             <th className="text-right px-3 py-2 font-medium">Duration</th>
             <th className="text-right px-3 py-2 font-medium">Closed At</th>
@@ -178,6 +179,8 @@ function TradeTable({ trades }: { trades: ClosedTrade[] }) {
                 ? (trade.realizedPnl / (trade.quantity * 2)) * 100
                 : null;
             const funding = trade.fundingPaidUsd;
+            const netPnl = funding != null ? trade.realizedPnl + funding : null;
+            const netPnlPositive = netPnl != null ? netPnl >= 0 : null;
             return (
               <tr
                 key={trade.id}
@@ -271,6 +274,12 @@ function TradeTable({ trades }: { trades: ClosedTrade[] }) {
                   className={`px-3 py-2.5 text-right font-semibold ${pnlPositive ? "text-primary" : "text-destructive"}`}
                 >
                   {formatPnl(trade.realizedPnl)}
+                </td>
+                <td
+                  className={`px-3 py-2.5 text-right font-semibold ${netPnlPositive === true ? "text-primary" : netPnlPositive === false ? "text-destructive" : "text-muted-foreground"}`}
+                  title={netPnl == null ? "Funding data unavailable for this trade; net PnL cannot be calculated" : undefined}
+                >
+                  {netPnl != null ? formatPnl(netPnl) : "—"}
                 </td>
                 <td
                   className={`px-3 py-2.5 text-right ${pnlPositive ? "text-primary" : "text-destructive"}`}
