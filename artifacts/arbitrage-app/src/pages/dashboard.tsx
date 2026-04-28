@@ -818,6 +818,32 @@ export default function Dashboard() {
     return multiLegSymbols.size + nonGrouped.length;
   }, [positions, botLegGroupsBySymbol]);
 
+  const totalUnrealizedPnl = useMemo(() => {
+    if (allOpenLegsWithBot.length === 0 || tokens.length === 0) return null;
+    let total = 0;
+    let hasAny = false;
+    for (const { leg, bot } of allOpenLegsWithBot) {
+      if (!bot.enabled) continue;
+      const tokenData = tokens.find((t) => t.symbol === bot.symbol);
+      if (!tokenData) continue;
+      const prices = tokenData as unknown as Record<string, number | null>;
+      const exaPrice = prices[`${bot.exchangeA}Price`];
+      const exbPrice = prices[`${bot.exchangeB}Price`];
+      if (!exaPrice || !exbPrice) continue;
+      const pnlA =
+        leg.bybitSide === "long"
+          ? (exaPrice - (leg.bybitEntry ?? exaPrice)) * (leg.bybitQty ?? 0)
+          : ((leg.bybitEntry ?? exaPrice) - exaPrice) * (leg.bybitQty ?? 0);
+      const pnlB =
+        leg.binanceSide === "long"
+          ? (exbPrice - (leg.binanceEntry ?? exbPrice)) * (leg.binanceQty ?? 0)
+          : ((leg.binanceEntry ?? exbPrice) - exbPrice) * (leg.binanceQty ?? 0);
+      total += pnlA + pnlB;
+      hasAny = true;
+    }
+    return hasAny ? total : null;
+  }, [allOpenLegsWithBot, tokens]);
+
   const filteredTokens = useMemo(() => {
     let list = [...tokens];
     if (favsOnly) list = list.filter((t) => isFavourite(t.symbol));
@@ -969,7 +995,17 @@ export default function Dashboard() {
                 </span>
               )}
             </div>
-            {showPositions ? <ChevronUp className="w-3.5 h-3.5 text-muted-foreground" /> : <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />}
+            <div className="flex items-center gap-2">
+              {totalUnrealizedPnl !== null && (
+                <span className="flex items-center gap-1" title="Total unrealized P&L across all open bot legs">
+                  <span className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground/60">Unrealized</span>
+                  <span className={`text-xs font-mono font-semibold ${totalUnrealizedPnl >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                    {totalUnrealizedPnl >= 0 ? "+" : ""}{totalUnrealizedPnl.toFixed(2)} USDT
+                  </span>
+                </span>
+              )}
+              {showPositions ? <ChevronUp className="w-3.5 h-3.5 text-muted-foreground" /> : <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />}
+            </div>
           </button>
           {showPositions && (
             <div>
