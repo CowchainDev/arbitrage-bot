@@ -33,6 +33,7 @@ const VALID_SORT_OPTIONS = [
   "fav",         "fav_desc",
   "fr_cheap_desc", "fr_cheap_asc",
   "fr_exp_desc",   "fr_exp_asc",
+  "fr_delta_desc", "fr_delta_asc",
 ] as const;
 
 type SortOption = typeof VALID_SORT_OPTIONS[number];
@@ -133,7 +134,7 @@ function useFundingCountdown(nextFundingA: string | undefined | null, nextFundin
 
 const ROW_COLS = "grid grid-cols-[24px_120px_82px_72px_72px_130px_90px_90px_62px_62px_62px_62px_70px_70px_64px_28px] items-center gap-0";
 
-type SortColKey = "alpha" | "spread" | "eff" | "volume" | "oi" | "depth" | "ema" | "fav" | "fr_cheap" | "fr_exp";
+type SortColKey = "alpha" | "spread" | "eff" | "volume" | "oi" | "depth" | "ema" | "fav" | "fr_cheap" | "fr_exp" | "fr_delta";
 
 function sortColFromOption(sort: SortOption): SortColKey | null {
   if (sort === "alpha" || sort === "alpha_desc") return "alpha";
@@ -146,6 +147,7 @@ function sortColFromOption(sort: SortOption): SortColKey | null {
   if (sort === "fav" || sort === "fav_desc") return "fav";
   if (sort === "fr_cheap_desc" || sort === "fr_cheap_asc") return "fr_cheap";
   if (sort === "fr_exp_desc" || sort === "fr_exp_asc") return "fr_exp";
+  if (sort === "fr_delta_desc" || sort === "fr_delta_asc") return "fr_delta";
   return null;
 }
 
@@ -169,6 +171,7 @@ function toggleSort(current: SortOption, col: SortColKey): SortOption {
     if (col === "fav")      return currentDir === "asc"  ? "fav_desc"      : "fav";
     if (col === "fr_cheap") return currentDir === "desc" ? "fr_cheap_asc"  : "fr_cheap_desc";
     if (col === "fr_exp")   return currentDir === "desc" ? "fr_exp_asc"    : "fr_exp_desc";
+    if (col === "fr_delta") return currentDir === "desc" ? "fr_delta_asc"  : "fr_delta_desc";
   }
   // First click → default direction (desc for numbers, asc for alpha/fav)
   if (col === "alpha")    return "alpha";
@@ -181,6 +184,7 @@ function toggleSort(current: SortOption, col: SortColKey): SortOption {
   if (col === "fav")      return "fav";
   if (col === "fr_cheap") return "fr_cheap_desc";
   if (col === "fr_exp")   return "fr_exp_desc";
+  if (col === "fr_delta") return "fr_delta_desc";
   return current;
 }
 
@@ -227,7 +231,7 @@ function TableHeader({ sort, onSort }: { sort: SortOption; onSort: (col: SortCol
       <span className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground/60 text-right">Pair</span>
       <span className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground/60 text-right">Ask</span>
       <span className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground/60 text-right">Bid</span>
-      <span className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground/60 text-right">FR Δ</span>
+      {th("FR Δ", "fr_delta")}
       {th("FR ↓", "fr_cheap")}
       {th("FR ↑", "fr_exp")}
       <span className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground/60 text-right">Next FR</span>
@@ -949,6 +953,12 @@ export default function Dashboard() {
       const e = ex ? getExchangeFields(t, ex) : { ask: undefined, bid: undefined, funding: undefined };
       return e.funding ?? -Infinity;
     };
+    const frDeltaOf = (t: TokenSpread) => {
+      const [ex, cx] = (t.bestSpreadLeg ?? "").split("/");
+      const c = cx ? getExchangeFields(t, cx) : { ask: undefined, bid: undefined, funding: undefined };
+      const e = ex ? getExchangeFields(t, ex)  : { ask: undefined, bid: undefined, funding: undefined };
+      return c.funding != null && e.funding != null ? (e.funding - c.funding) : -Infinity;
+    };
     const alphaCmp = (a: TokenSpread, b: TokenSpread) => a.symbol.localeCompare(b.symbol);
     const favGroup = (t: TokenSpread) => (isFavourite(t.symbol) ? 0 : 1);
 
@@ -974,6 +984,8 @@ export default function Dashboard() {
       case "fr_cheap_asc":   primaryCmp = (a, b) => frCheapOf(a) - frCheapOf(b); break;
       case "fr_exp_desc":    primaryCmp = (a, b) => frExpOf(b) - frExpOf(a); break;
       case "fr_exp_asc":     primaryCmp = (a, b) => frExpOf(a) - frExpOf(b); break;
+      case "fr_delta_desc":  primaryCmp = (a, b) => frDeltaOf(b) - frDeltaOf(a); break;
+      case "fr_delta_asc":   primaryCmp = (a, b) => frDeltaOf(a) - frDeltaOf(b); break;
       default:               primaryCmp = () => 0;
     }
 
