@@ -158,6 +158,15 @@ async function runMigrations() {
   } catch (err) {
     logger.warn({ err }, "DB migration warning (leg_exchange_a/b) — columns may already exist");
   }
+  try {
+    await db.execute(sql`
+      ALTER TABLE closed_trades
+        ADD COLUMN IF NOT EXISTS open_fees NUMERIC(20, 8) NOT NULL DEFAULT '0'
+    `);
+    logger.info("DB migrations applied (closed_trades: open_fees)");
+  } catch (err) {
+    logger.warn({ err }, "DB migration warning (closed_trades: open_fees) — column may already exist");
+  }
 }
 
 server.listen(port, (err?: Error) => {

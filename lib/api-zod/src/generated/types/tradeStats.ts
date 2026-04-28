@@ -11,6 +11,10 @@ export interface TradeStats {
   winningTrades: number;
   totalPnl: number;
   totalFees: number;
+  /** Sum of open-leg fees across all bot trades. Null if no bot trades have fee data. */
+  totalOpenFees?: number | null;
+  /** Sum of close-leg fees across all bot trades. Null if no bot trades have fee data. */
+  totalCloseFees?: number | null;
   bestTrade: number;
   worstTrade: number;
 }

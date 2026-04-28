@@ -922,6 +922,14 @@ export const GetTradesResponse = zod.object({
     winningTrades: zod.number(),
     totalPnl: zod.number(),
     totalFees: zod.number(),
+    totalOpenFees: zod
+      .number()
+      .nullish()
+      .describe("Sum of open-leg fees across all bot trades. Null if no bot trades have fee data."),
+    totalCloseFees: zod
+      .number()
+      .nullish()
+      .describe("Sum of close-leg fees across all bot trades. Null if no bot trades have fee data."),
     bestTrade: zod.number(),
     worstTrade: zod.number(),
   }),

@@ -1144,6 +1144,14 @@ components:
           type: number
         totalFees:
           type: number
+        totalOpenFees:
+          type: number
+          nullable: true
+          description: Sum of open-leg fees across all bot trades. Null if no bot trades have fee data.
+        totalCloseFees:
+          type: number
+          nullable: true
+          description: Sum of close-leg fees across all bot trades. Null if no bot trades have fee data.
         bestTrade:
           type: number
         worstTrade:

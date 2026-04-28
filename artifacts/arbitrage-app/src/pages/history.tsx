@@ -250,15 +250,10 @@ export default function History() {
       ? stats.totalPnl / stats.totalTrades
       : 0;
 
-  const feeBreakdown = useMemo(() => {
-    const tradesWithBreakdown = trades.filter(
-      (t) => t.openFees != null && t.closeFees != null
-    );
-    if (tradesWithBreakdown.length === 0) return null;
-    const totalOpen = tradesWithBreakdown.reduce((s, t) => s + (t.openFees ?? 0), 0);
-    const totalClose = tradesWithBreakdown.reduce((s, t) => s + (t.closeFees ?? 0), 0);
-    return { open: totalOpen, close: totalClose };
-  }, [trades]);
+  const feeBreakdown =
+    stats?.totalOpenFees != null && stats?.totalCloseFees != null
+      ? { open: stats.totalOpenFees, close: stats.totalCloseFees }
+      : null;
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
