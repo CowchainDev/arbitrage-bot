@@ -90,19 +90,29 @@ router.get("/trades/pnl-chart", async (req: Request, res: Response) => {
       .select({
         closeTime: closedTradesTable.closeTime,
         realizedPnl: closedTradesTable.realizedPnl,
+        fundingPaidUsd: closedTradesTable.fundingPaidUsd,
         symbol: closedTradesTable.symbol,
       })
       .from(closedTradesTable)
       .orderBy(closedTradesTable.closeTime);
 
     let cumPnl = 0;
+    let cumNetPnl: number | null = 0;
     const points = rows.map((r) => {
       const pnl = Number(r.realizedPnl);
       cumPnl = parseFloat((cumPnl + pnl).toFixed(6));
+      const funding = r.fundingPaidUsd != null ? Number(r.fundingPaidUsd) : null;
+      if (cumNetPnl !== null && funding !== null) {
+        cumNetPnl = parseFloat((cumNetPnl + pnl + funding).toFixed(6));
+      } else {
+        cumNetPnl = null;
+      }
       return {
         closeTime: r.closeTime.toISOString(),
         pnl: parseFloat(pnl.toFixed(6)),
         cumPnl: parseFloat(cumPnl.toFixed(2)),
+        funding,
+        cumNetPnl: cumNetPnl !== null ? parseFloat(cumNetPnl.toFixed(2)) : null,
         symbol: r.symbol,
       };
     });

@@ -14,6 +14,7 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
+  Legend,
   ResponsiveContainer,
 } from "recharts";
 import { format } from "date-fns";
@@ -63,6 +64,7 @@ function formatDuration(entryTime: string, closeTime: string) {
 interface CumulativePoint {
   closeTime: string;
   cumPnl: number;
+  cumNetPnl: number | null;
   pnl: number;
   symbol: string;
 }
@@ -72,6 +74,7 @@ function CumulativePnlChart({ points }: { points: PnlChartPoint[] }) {
     return points.map((p) => ({
       closeTime: format(new Date(p.closeTime), "MM/dd HH:mm"),
       cumPnl: p.cumPnl,
+      cumNetPnl: p.cumNetPnl,
       pnl: p.pnl,
       symbol: p.symbol,
     }));
@@ -86,10 +89,18 @@ function CumulativePnlChart({ points }: { points: PnlChartPoint[] }) {
   }
 
   const finalPnl = chartData[chartData.length - 1]?.cumPnl ?? 0;
-  const lineColor = finalPnl >= 0 ? "hsl(var(--primary))" : "hsl(var(--destructive))";
+  const finalNetPnl = chartData[chartData.length - 1]?.cumNetPnl;
+  const hasNetPnl = chartData.some((p) => p.cumNetPnl !== null);
+  const pnlColor = finalPnl >= 0 ? "hsl(var(--primary))" : "hsl(var(--destructive))";
+  const netColor =
+    finalNetPnl != null
+      ? finalNetPnl >= 0
+        ? "hsl(142 71% 45%)"
+        : "hsl(var(--destructive))"
+      : "hsl(142 71% 45%)";
 
   return (
-    <ResponsiveContainer width="100%" height={200}>
+    <ResponsiveContainer width="100%" height={220}>
       <LineChart data={chartData} margin={{ top: 4, right: 16, left: 4, bottom: 4 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
         <XAxis
@@ -112,20 +123,44 @@ function CumulativePnlChart({ points }: { points: PnlChartPoint[] }) {
             fontSize: "12px",
             fontFamily: "monospace",
           }}
-          formatter={(value: number, _name: string, props: { payload?: CumulativePoint }) => [
-            `$${value.toFixed(2)}`,
-            `Cumulative PnL (${props.payload?.symbol ?? ""})`,
-          ]}
+          formatter={(value: number, name: string, props: { payload?: CumulativePoint }) => {
+            const symbol = props.payload?.symbol ?? "";
+            if (name === "cumPnl") return [`$${value.toFixed(2)}`, `Realized PnL excl. funding (${symbol})`];
+            if (name === "cumNetPnl") return [`$${value.toFixed(2)}`, `Net PnL incl. funding (${symbol})`];
+            return [`$${value.toFixed(2)}`, name];
+          }}
           labelStyle={{ color: "hsl(var(--muted-foreground))" }}
+        />
+        <Legend
+          wrapperStyle={{ fontSize: "11px", paddingTop: "8px" }}
+          formatter={(value) => {
+            if (value === "cumPnl") return "Realized PnL (excl. funding)";
+            if (value === "cumNetPnl") return "Net PnL (incl. funding)";
+            return value;
+          }}
         />
         <Line
           type="monotone"
           dataKey="cumPnl"
-          stroke={lineColor}
+          name="cumPnl"
+          stroke={pnlColor}
           strokeWidth={2}
-          dot={{ r: 3, fill: lineColor }}
+          dot={{ r: 3, fill: pnlColor }}
           activeDot={{ r: 5 }}
         />
+        {hasNetPnl && (
+          <Line
+            type="monotone"
+            dataKey="cumNetPnl"
+            name="cumNetPnl"
+            stroke={netColor}
+            strokeWidth={2}
+            strokeDasharray="5 3"
+            dot={{ r: 3, fill: netColor }}
+            activeDot={{ r: 5 }}
+            connectNulls={false}
+          />
+        )}
       </LineChart>
     </ResponsiveContainer>
   );
@@ -413,7 +448,7 @@ export default function History() {
       <div className="bg-card border border-border rounded-lg p-4">
         <div className="flex items-center gap-2 mb-4">
           <TrendingUp className="w-4 h-4 text-primary" />
-          <h2 className="text-sm font-semibold">Cumulative Realized PnL</h2>
+          <h2 className="text-sm font-semibold">Cumulative PnL Equity Curve</h2>
           {pnlChartQuery.isFetching && (
             <span className="ml-auto text-xs text-muted-foreground animate-pulse">Refreshing…</span>
           )}

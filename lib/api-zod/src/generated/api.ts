@@ -980,7 +980,21 @@ export const GetTradesPnlChartResponse = zod.object({
       pnl: zod.number().describe("Realized PnL for this individual trade"),
       cumPnl: zod
         .number()
-        .describe("Running cumulative PnL up to and including this trade"),
+        .describe(
+          "Running cumulative realized PnL up to and including this trade (excl. funding)",
+        ),
+      funding: zod
+        .number()
+        .nullable()
+        .describe(
+          "Funding paid\/received for this individual trade (null if unavailable)",
+        ),
+      cumNetPnl: zod
+        .number()
+        .nullable()
+        .describe(
+          "Running cumulative net PnL (realizedPnl + funding) up to and including this trade; null if any preceding trade has no funding data",
+        ),
       symbol: zod.string().describe("Trading pair symbol"),
     }),
   ),

@@ -11,8 +11,12 @@ export interface PnlChartPoint {
   closeTime: string;
   /** Realized PnL for this individual trade */
   pnl: number;
-  /** Running cumulative PnL up to and including this trade */
+  /** Running cumulative realized PnL up to and including this trade (excl. funding) */
   cumPnl: number;
+  /** Funding paid/received for this individual trade (null if unavailable) */
+  funding: number | null;
+  /** Running cumulative net PnL (realizedPnl + funding) up to and including this trade; null if any preceding trade has no funding data */
+  cumNetPnl: number | null;
   /** Trading pair symbol */
   symbol: string;
 }
