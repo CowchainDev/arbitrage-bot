@@ -15,12 +15,22 @@ import {
   useUpdateBot,
   useGetExchangePrices,
   useGetBotStats,
+  useGetBotLegHistory,
   getGetExchangePricesQueryKey,
   getGetBotStatsQueryKey,
   getListBotsQueryKey,
   getGetBotLegsQueryKey,
+  getGetBotLegHistoryQueryKey,
 } from "@workspace/api-client-react";
 import type { BotConfig, BotLeg } from "@workspace/api-client-react";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+} from "recharts";
 
 function StatusBadge({ bot, legsCount }: { bot: BotConfig; legsCount: number }) {
   if (!bot.enabled) {
@@ -57,6 +67,65 @@ function PnlChart({ latestPnl }: { latestPnl: number | null }) {
           ? "$0.00"
           : `${latestPnl >= 0 ? "+" : ""}$${latestPnl.toFixed(4)}`}
       </span>
+    </div>
+  );
+}
+
+function LegHistoryChart({ botId, request }: { botId: number; request?: NonNullable<Parameters<typeof useGetBotLegHistory>[1]>["request"] }) {
+  const legHistoryQuery = useGetBotLegHistory(botId, {
+    query: {
+      refetchInterval: 5000,
+      staleTime: 0,
+      queryKey: getGetBotLegHistoryQueryKey(botId),
+    },
+    request,
+  });
+
+  const buckets = legHistoryQuery.data?.buckets ?? [];
+  if (buckets.length === 0) return null;
+
+  const chartData = buckets.slice(-14).map((b) => ({
+    date: b.date.slice(5),
+    count: b.count,
+  }));
+
+  return (
+    <div className="mt-1">
+      <span className="text-[11px] text-muted-foreground uppercase tracking-wider">Legs closed (by day)</span>
+      <div className="mt-1 h-20">
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={chartData} margin={{ top: 2, right: 0, left: -28, bottom: 0 }}>
+            <XAxis
+              dataKey="date"
+              tick={{ fontSize: 9, fill: "var(--muted-foreground)" }}
+              tickLine={false}
+              axisLine={false}
+              interval="preserveStartEnd"
+            />
+            <YAxis
+              allowDecimals={false}
+              tick={{ fontSize: 9, fill: "var(--muted-foreground)" }}
+              tickLine={false}
+              axisLine={false}
+              width={28}
+            />
+            <Tooltip
+              contentStyle={{
+                background: "var(--card)",
+                border: "1px solid var(--border)",
+                borderRadius: 6,
+                fontSize: 11,
+                padding: "4px 8px",
+              }}
+              itemStyle={{ color: "var(--foreground)" }}
+              labelStyle={{ color: "var(--muted-foreground)", marginBottom: 2 }}
+              formatter={(value: number) => [value, "legs"]}
+              labelFormatter={(label: string) => label}
+            />
+            <Bar dataKey="count" fill="#10b981" radius={[2, 2, 0, 0]} maxBarSize={20} />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
     </div>
   );
 }
@@ -501,6 +570,8 @@ function BotCard({ bot, openLegs }: { bot: BotConfig; openLegs: BotLeg[] }) {
       </div>
 
       {showChart && <PnlChart latestPnl={latestPnl} />}
+
+      <LegHistoryChart botId={bot.id} request={requestOptions} />
 
       {bot.enabled ? (
         <div className="flex flex-col gap-1.5">
