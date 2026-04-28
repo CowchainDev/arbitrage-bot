@@ -896,6 +896,12 @@ export const GetTradesResponse = zod.object({
       longExchange: zod.string(),
       shortExchange: zod.string(),
       spreadAtEntry: zod.number(),
+      enterSpreadThresholdPct: zod
+        .number()
+        .nullish()
+        .describe(
+          "The enterSpreadPct threshold that was active when the trade was opened. Null for historical trades recorded before this field was added.",
+        ),
       realizedPnl: zod.number(),
       totalFees: zod.number(),
       openFees: zod
@@ -912,6 +918,18 @@ export const GetTradesResponse = zod.object({
         .describe(
           "Estimated net funding captured over the life of the trade (positive = received, negative = paid). Null for older trades recorded before this feature.",
         ),
+      spreadAtExit: zod
+        .number()
+        .nullish()
+        .describe(
+          "The spread percentage at the time the trade was closed. Null for older trades.",
+        ),
+      closeReason: zod
+        .string()
+        .nullish()
+        .describe(
+          "Why the trade was closed (e.g. take_profit, stop_loss, force_stop, manual). Null for older trades.",
+        ),
       quantity: zod.number(),
       entryTime: zod.string(),
       closeTime: zod.string(),
@@ -925,12 +943,40 @@ export const GetTradesResponse = zod.object({
     totalOpenFees: zod
       .number()
       .nullish()
-      .describe("Sum of open-leg fees across all bot trades. Null if no bot trades have fee data."),
+      .describe(
+        "Sum of open-leg fees across all bot trades. Null if no bot trades have fee data.",
+      ),
     totalCloseFees: zod
       .number()
       .nullish()
-      .describe("Sum of close-leg fees across all bot trades. Null if no bot trades have fee data."),
+      .describe(
+        "Sum of close-leg fees across all bot trades. Null if no bot trades have fee data.",
+      ),
     bestTrade: zod.number(),
     worstTrade: zod.number(),
+    totalFunding: zod
+      .number()
+      .describe(
+        "Sum of all fundingPaidUsd values across closed trades. Positive means net funding received.",
+      ),
   }),
+});
+
+/**
+ * Returns cumulative PnL data points for every closed trade ordered chronologically. Used for the all-time equity curve chart.
+ * @summary Get all-time cumulative PnL chart data
+ */
+export const GetTradesPnlChartResponse = zod.object({
+  points: zod.array(
+    zod.object({
+      closeTime: zod
+        .string()
+        .describe("ISO 8601 timestamp of when the trade closed"),
+      pnl: zod.number().describe("Realized PnL for this individual trade"),
+      cumPnl: zod
+        .number()
+        .describe("Running cumulative PnL up to and including this trade"),
+      symbol: zod.string().describe("Trading pair symbol"),
+    }),
+  ),
 });

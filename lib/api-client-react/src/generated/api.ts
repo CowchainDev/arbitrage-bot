@@ -37,6 +37,7 @@ import type {
   JumpInResult,
   OrderRequest,
   OrderResult,
+  PnlChartResponse,
   Position,
   StopAndCloseBot200,
   StoreCredentialRequest,
@@ -1857,6 +1858,82 @@ export function useGetTrades<
   request?: SecondParameter<typeof customFetch>;
 }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getGetTradesQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * Returns cumulative PnL data points for every closed trade ordered chronologically. Used for the all-time equity curve chart.
+ * @summary Get all-time cumulative PnL chart data
+ */
+export const getGetTradesPnlChartUrl = () => {
+  return `/api/trades/pnl-chart`;
+};
+
+export const getTradesPnlChart = async (
+  options?: RequestInit,
+): Promise<PnlChartResponse> => {
+  return customFetch<PnlChartResponse>(getGetTradesPnlChartUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetTradesPnlChartQueryKey = () => {
+  return [`/api/trades/pnl-chart`] as const;
+};
+
+export const getGetTradesPnlChartQueryOptions = <
+  TData = Awaited<ReturnType<typeof getTradesPnlChart>>,
+  TError = ErrorType<ApiError>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getTradesPnlChart>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetTradesPnlChartQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getTradesPnlChart>>
+  > = ({ signal }) => getTradesPnlChart({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getTradesPnlChart>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetTradesPnlChartQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getTradesPnlChart>>
+>;
+export type GetTradesPnlChartQueryError = ErrorType<ApiError>;
+
+/**
+ * @summary Get all-time cumulative PnL chart data
+ */
+
+export function useGetTradesPnlChart<
+  TData = Awaited<ReturnType<typeof getTradesPnlChart>>,
+  TError = ErrorType<ApiError>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getTradesPnlChart>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetTradesPnlChartQueryOptions(options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

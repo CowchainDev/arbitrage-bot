@@ -751,6 +751,26 @@ paths:
               schema:
                 $ref: "#/components/schemas/ApiError"
 
+  /trades/pnl-chart:
+    get:
+      operationId: getTradesPnlChart
+      tags: [trades]
+      summary: Get all-time cumulative PnL chart data
+      description: Returns cumulative PnL data points for every closed trade ordered chronologically. Used for the all-time equity curve chart.
+      responses:
+        "200":
+          description: Cumulative PnL chart data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PnlChartResponse"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
 components:
   schemas:
     HealthStatus:
@@ -1119,6 +1139,14 @@ components:
           type: number
           nullable: true
           description: Estimated net funding captured over the life of the trade (positive = received, negative = paid). Null for older trades recorded before this feature.
+        spreadAtExit:
+          type: number
+          nullable: true
+          description: The spread percentage at the time the trade was closed. Null for older trades.
+        closeReason:
+          type: string
+          nullable: true
+          description: Why the trade was closed (e.g. take_profit, stop_loss, force_stop, manual). Null for older trades.
         quantity:
           type: number
         entryTime:
@@ -1184,6 +1212,37 @@ components:
       required:
         - trades
         - stats
+
+    PnlChartPoint:
+      type: object
+      properties:
+        closeTime:
+          type: string
+          description: ISO 8601 timestamp of when the trade closed
+        pnl:
+          type: number
+          description: Realized PnL for this individual trade
+        cumPnl:
+          type: number
+          description: Running cumulative PnL up to and including this trade
+        symbol:
+          type: string
+          description: Trading pair symbol
+      required:
+        - closeTime
+        - pnl
+        - cumPnl
+        - symbol
+
+    PnlChartResponse:
+      type: object
+      properties:
+        points:
+          type: array
+          items:
+            $ref: "#/components/schemas/PnlChartPoint"
+      required:
+        - points
 
     StoreCredentialRequest:
       type: object

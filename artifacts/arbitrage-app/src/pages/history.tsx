@@ -1,6 +1,11 @@
 import { useMemo } from "react";
-import { useGetTrades, getGetTradesQueryKey } from "@workspace/api-client-react";
-import type { ClosedTrade } from "@workspace/api-client-react";
+import {
+  useGetTrades,
+  getGetTradesQueryKey,
+  useGetTradesPnlChart,
+  getGetTradesPnlChartQueryKey,
+} from "@workspace/api-client-react";
+import type { ClosedTrade, PnlChartPoint } from "@workspace/api-client-react";
 import {
   LineChart,
   Line,
@@ -61,22 +66,15 @@ interface CumulativePoint {
   symbol: string;
 }
 
-function CumulativePnlChart({ trades }: { trades: ClosedTrade[] }) {
+function CumulativePnlChart({ points }: { points: PnlChartPoint[] }) {
   const chartData = useMemo<CumulativePoint[]>(() => {
-    const sorted = [...trades].sort(
-      (a, b) => new Date(a.closeTime).getTime() - new Date(b.closeTime).getTime()
-    );
-    let cumPnl = 0;
-    return sorted.map((t) => {
-      cumPnl += t.realizedPnl;
-      return {
-        closeTime: format(new Date(t.closeTime), "MM/dd HH:mm"),
-        cumPnl: parseFloat(cumPnl.toFixed(2)),
-        pnl: t.realizedPnl,
-        symbol: t.symbol,
-      };
-    });
-  }, [trades]);
+    return points.map((p) => ({
+      closeTime: format(new Date(p.closeTime), "MM/dd HH:mm"),
+      cumPnl: p.cumPnl,
+      pnl: p.pnl,
+      symbol: p.symbol,
+    }));
+  }, [points]);
 
   if (chartData.length === 0) {
     return (
@@ -293,9 +291,17 @@ export default function History() {
     },
   });
 
+  const pnlChartQuery = useGetTradesPnlChart({
+    query: {
+      queryKey: getGetTradesPnlChartQueryKey(),
+      refetchInterval: 30000,
+    },
+  });
+
   const data = tradesQuery.data;
   const trades = data?.trades ?? [];
   const stats = data?.stats;
+  const chartPoints = pnlChartQuery.data?.points ?? [];
 
   const winRate =
     stats && stats.totalTrades > 0
@@ -381,13 +387,20 @@ export default function History() {
         <div className="flex items-center gap-2 mb-4">
           <TrendingUp className="w-4 h-4 text-primary" />
           <h2 className="text-sm font-semibold">Cumulative Realized PnL</h2>
+          {pnlChartQuery.isFetching && (
+            <span className="ml-auto text-xs text-muted-foreground animate-pulse">Refreshing…</span>
+          )}
         </div>
-        {tradesQuery.isLoading ? (
+        {pnlChartQuery.isLoading ? (
           <div className="flex items-center justify-center h-40 text-muted-foreground text-sm animate-pulse">
             Loading…
           </div>
+        ) : pnlChartQuery.isError ? (
+          <div className="flex items-center justify-center h-40 text-destructive text-sm">
+            Failed to load chart data.
+          </div>
         ) : (
-          <CumulativePnlChart trades={trades} />
+          <CumulativePnlChart points={chartPoints} />
         )}
       </div>
 

@@ -43,6 +43,8 @@ export * from "./orderRequest";
 export * from "./orderRequestExchange";
 export * from "./orderRequestSide";
 export * from "./orderResult";
+export * from "./pnlChartPoint";
+export * from "./pnlChartResponse";
 export * from "./position";
 export * from "./positionBinanceSide";
 export * from "./positionBybitSide";

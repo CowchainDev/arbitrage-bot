@@ -83,4 +83,34 @@ router.get("/trades", async (req: Request, res: Response) => {
   }
 });
 
+router.get("/trades/pnl-chart", async (req: Request, res: Response) => {
+  try {
+    const rows = await db
+      .select({
+        closeTime: closedTradesTable.closeTime,
+        realizedPnl: closedTradesTable.realizedPnl,
+        symbol: closedTradesTable.symbol,
+      })
+      .from(closedTradesTable)
+      .orderBy(closedTradesTable.closeTime);
+
+    let cumPnl = 0;
+    const points = rows.map((r) => {
+      const pnl = Number(r.realizedPnl);
+      cumPnl = parseFloat((cumPnl + pnl).toFixed(6));
+      return {
+        closeTime: r.closeTime.toISOString(),
+        pnl: parseFloat(pnl.toFixed(6)),
+        cumPnl: parseFloat(cumPnl.toFixed(2)),
+        symbol: r.symbol,
+      };
+    });
+
+    res.json({ points });
+  } catch (err) {
+    req.log.error({ err }, "Error fetching pnl chart data");
+    res.status(500).json({ error: "internal_error", message: "Failed to fetch pnl chart data" });
+  }
+});
+
 export { router as tradesRouter };

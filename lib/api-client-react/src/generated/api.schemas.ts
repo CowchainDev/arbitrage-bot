@@ -264,10 +264,10 @@ export interface ClosedTrade {
   closeFees?: number;
   /** Estimated net funding captured over the life of the trade (positive = received, negative = paid). Null for older trades recorded before this feature. */
   fundingPaidUsd?: number | null;
-  /** Spread % at the time the position was closed */
-  spreadAtExit?: number;
-  /** Why the trade closed: take_profit | stop_loss | force_stop | manual */
-  closeReason?: string;
+  /** The spread percentage at the time the trade was closed. Null for older trades. */
+  spreadAtExit?: number | null;
+  /** Why the trade was closed (e.g. take_profit, stop_loss, force_stop, manual). Null for older trades. */
+  closeReason?: string | null;
   quantity: number;
   entryTime: string;
   closeTime: string;
@@ -291,6 +291,21 @@ export interface TradeStats {
 export interface TradeHistoryResponse {
   trades: ClosedTrade[];
   stats: TradeStats;
+}
+
+export interface PnlChartPoint {
+  /** ISO 8601 timestamp of when the trade closed */
+  closeTime: string;
+  /** Realized PnL for this individual trade */
+  pnl: number;
+  /** Running cumulative PnL up to and including this trade */
+  cumPnl: number;
+  /** Trading pair symbol */
+  symbol: string;
+}
+
+export interface PnlChartResponse {
+  points: PnlChartPoint[];
 }
 
 /**
