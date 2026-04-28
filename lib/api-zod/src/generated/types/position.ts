@@ -22,6 +22,7 @@ export interface Position {
   bybitPnl?: number;
   binancePnl?: number;
   totalPnl: number;
+  openFees?: number;
   spreadAtEntry?: number;
   currentSpread: number;
   usdSize?: number;

@@ -14,6 +14,8 @@ export interface ClosedTrade {
   spreadAtEntry: number;
   realizedPnl: number;
   totalFees: number;
+  openFees?: number;
+  closeFees?: number;
   quantity: number;
   entryTime: string;
   closeTime: string;

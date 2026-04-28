@@ -222,6 +222,7 @@ export const GetPositionsResponseItem = zod.object({
   bybitPnl: zod.number().optional(),
   binancePnl: zod.number().optional(),
   totalPnl: zod.number(),
+  openFees: zod.number().optional(),
   spreadAtEntry: zod.number().optional(),
   currentSpread: zod.number(),
   usdSize: zod.number().optional(),
@@ -349,6 +350,7 @@ export const ClosePositionResponse = zod.object({
     })
     .optional(),
   realizedPnl: zod.number().optional(),
+  closeFees: zod.number().optional(),
 });
 
 /**
@@ -754,6 +756,14 @@ export const GetBotLegsResponse = zod.object({
       binanceEntry: zod.number().optional(),
       bybitSide: zod.enum(["long", "short"]),
       binanceSide: zod.enum(["long", "short"]),
+      openFeeA: zod
+        .number()
+        .optional()
+        .describe("Opening fee paid on exchange A (USD)"),
+      openFeeB: zod
+        .number()
+        .optional()
+        .describe("Opening fee paid on exchange B (USD)"),
       spreadAtEntry: zod.number().optional(),
       spreadAtExit: zod
         .number()
@@ -880,6 +890,8 @@ export const GetTradesResponse = zod.object({
       spreadAtEntry: zod.number(),
       realizedPnl: zod.number(),
       totalFees: zod.number(),
+      openFees: zod.number().optional(),
+      closeFees: zod.number().optional(),
       quantity: zod.number(),
       entryTime: zod.string(),
       closeTime: zod.string(),

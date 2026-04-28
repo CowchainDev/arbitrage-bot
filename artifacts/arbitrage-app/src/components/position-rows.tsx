@@ -81,7 +81,8 @@ export function botLegToPosition(leg: BotLeg, tokens: TokenSpread[], bot?: BotCo
         ? (binanceCurrentPrice - binanceEntry) * binanceQty
         : (binanceEntry - binanceCurrentPrice) * binanceQty
       : 0;
-  const totalPnl = bybitPnl + binancePnl;
+  const openFees = Number(leg.openFeeA ?? 0) + Number(leg.openFeeB ?? 0);
+  const totalPnl = bybitPnl + binancePnl - openFees;
   const usdSize = bybitEntry * bybitQty + binanceEntry * binanceQty;
   return {
     id: `bot-leg-${leg.id}`,
@@ -97,6 +98,7 @@ export function botLegToPosition(leg: BotLeg, tokens: TokenSpread[], bot?: BotCo
     bybitPnl,
     binancePnl,
     totalPnl,
+    openFees: openFees > 0 ? openFees : undefined,
     spreadAtEntry: leg.spreadAtEntry,
     currentSpread,
     usdSize: usdSize || undefined,
@@ -167,10 +169,12 @@ export function BotSummaryRow({
     .filter(Boolean)
     .sort()[0];
 
+  const totalOpenFees = positions.reduce((s, p) => s + (p.openFees ?? 0), 0);
+
   return (
     <div
       data-testid={`position-summary-${symbol}`}
-      className="grid grid-cols-9 gap-2 px-3 py-2.5 text-xs border-b border-border/50 bg-muted/20 hover:bg-muted/40 transition-colors items-center cursor-pointer"
+      className="grid grid-cols-10 gap-2 px-3 py-2.5 text-xs border-b border-border/50 bg-muted/20 hover:bg-muted/40 transition-colors items-center cursor-pointer"
       onClick={onToggle}
     >
       <span className="font-semibold flex items-center gap-1 min-w-0">
@@ -207,6 +211,9 @@ export function BotSummaryRow({
         </span>
       </span>
       <span className="font-mono">{formatPct(avgSpread)}</span>
+      <span className="font-mono text-muted-foreground">
+        {totalOpenFees > 0 ? `-$${totalOpenFees.toFixed(4)}` : "—"}
+      </span>
       <span className={`font-mono font-semibold ${pnlPositive ? "text-primary" : "text-destructive"}`}>
         {formatPnlWithPct(totalPnl, netUsdSize)}
       </span>
@@ -301,7 +308,7 @@ export function PositionRow({
     <>
       <div
         data-testid={`position-row-${position.symbol}`}
-        className={`grid grid-cols-9 gap-2 px-3 py-2.5 text-xs border-b border-border/50 hover:bg-muted/30 transition-colors items-center`}
+        className={`grid grid-cols-10 gap-2 px-3 py-2.5 text-xs border-b border-border/50 hover:bg-muted/30 transition-colors items-center`}
       >
         <span className="font-semibold">{position.symbol}</span>
         <span>
@@ -335,6 +342,11 @@ export function PositionRow({
           </span>
         </span>
         <span className="font-mono">{formatPct(position.currentSpread)}</span>
+        <span className="font-mono text-muted-foreground">
+          {position.openFees != null && position.openFees > 0
+            ? `-$${position.openFees.toFixed(4)}`
+            : "—"}
+        </span>
         <span className={`font-mono font-semibold ${pnlPositive ? "text-primary" : "text-destructive"}`}>
           {formatPnlWithPct(position.totalPnl, position.usdSize)}
         </span>
@@ -411,6 +423,14 @@ export function PositionRow({
                     <span className="text-muted-foreground">Status</span>
                     <span className="font-mono">{closeResult.binanceResult.status}</span>
                   </div>
+                </div>
+              )}
+              {closeResult.closeFees != null && closeResult.closeFees > 0 && (
+                <div className="flex items-center justify-between px-1 pt-1">
+                  <span className="text-sm text-muted-foreground">Close Fees</span>
+                  <span className="font-mono text-base text-muted-foreground">
+                    -${closeResult.closeFees.toFixed(4)}
+                  </span>
                 </div>
               )}
               {closeResult.realizedPnl != null && (

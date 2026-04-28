@@ -964,6 +964,9 @@ components:
           type: number
         totalPnl:
           type: number
+        openFees:
+          type: number
+          description: Sum of open fees paid when entering this position (from bot legs, if applicable)
         spreadAtEntry:
           type: number
         currentSpread:
@@ -1032,6 +1035,9 @@ components:
           $ref: "#/components/schemas/OrderResult"
         realizedPnl:
           type: number
+        closeFees:
+          type: number
+          description: Total fees paid to close the position (sum of both legs)
       required:
         - success
 
@@ -1099,6 +1105,12 @@ components:
           type: number
         totalFees:
           type: number
+        openFees:
+          type: number
+          description: Fees paid to open the position (from bot legs)
+        closeFees:
+          type: number
+          description: Fees paid to close the position (totalFees - openFees)
         quantity:
           type: number
         entryTime:
@@ -1299,6 +1311,12 @@ components:
         binanceSide:
           type: string
           enum: [long, short]
+        openFeeA:
+          type: number
+          description: Opening fee paid on exchange A (USD)
+        openFeeB:
+          type: number
+          description: Opening fee paid on exchange B (USD)
         spreadAtEntry:
           type: number
         spreadAtExit:

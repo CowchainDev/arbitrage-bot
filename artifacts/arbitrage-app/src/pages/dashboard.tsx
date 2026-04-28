@@ -923,13 +923,14 @@ export default function Dashboard() {
           </button>
           {showPositions && (
             <div>
-              <div className="grid grid-cols-9 gap-2 px-3 py-1.5 text-[10px] text-muted-foreground uppercase tracking-wider bg-muted/30 font-semibold border-t border-border/40">
+              <div className="grid grid-cols-10 gap-2 px-3 py-1.5 text-[10px] text-muted-foreground uppercase tracking-wider bg-muted/30 font-semibold border-t border-border/40">
                 <span>Symbol</span>
                 <span>Side</span>
                 <span>Size</span>
                 <span>Entry Price (A/B)</span>
                 <span>Price (A/B)</span>
                 <span>Spread</span>
+                <span>Open Fees</span>
                 <span>P/L</span>
                 <span>Opened</span>
                 <span />

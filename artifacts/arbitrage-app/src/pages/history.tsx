@@ -150,7 +150,7 @@ function TradeTable({ trades }: { trades: ClosedTrade[] }) {
             <th className="text-left px-3 py-2 font-medium">Long / Short</th>
             <th className="text-right px-3 py-2 font-medium">Entry Spread</th>
             <th className="text-right px-3 py-2 font-medium">Size (USD)</th>
-            <th className="text-right px-3 py-2 font-medium">Fees ($)</th>
+            <th className="text-right px-3 py-2 font-medium">Open Fees / Close Fees</th>
             <th className="text-right px-3 py-2 font-medium">Realized PnL ($)</th>
             <th className="text-right px-3 py-2 font-medium">PnL (%)</th>
             <th className="text-right px-3 py-2 font-medium">Duration</th>
@@ -184,7 +184,14 @@ function TradeTable({ trades }: { trades: ClosedTrade[] }) {
                   {trade.quantity > 0 ? `$${trade.quantity.toFixed(2)}` : "—"}
                 </td>
                 <td className="px-3 py-2.5 text-right text-muted-foreground">
-                  {trade.totalFees > 0 ? `-$${trade.totalFees.toFixed(4)}` : "—"}
+                  {trade.openFees != null && trade.closeFees != null ? (
+                    <span className="flex flex-col items-end gap-0.5">
+                      <span title="Open fees">-${trade.openFees.toFixed(4)}</span>
+                      <span title="Close fees" className="text-muted-foreground/60">-${trade.closeFees.toFixed(4)}</span>
+                    </span>
+                  ) : trade.totalFees > 0 ? (
+                    `-$${trade.totalFees.toFixed(4)}`
+                  ) : "—"}
                 </td>
                 <td
                   className={`px-3 py-2.5 text-right font-semibold ${pnlPositive ? "text-primary" : "text-destructive"}`}
@@ -235,6 +242,16 @@ export default function History() {
       ? stats.totalPnl / stats.totalTrades
       : 0;
 
+  const feeBreakdown = useMemo(() => {
+    const tradesWithBreakdown = trades.filter(
+      (t) => t.openFees != null && t.closeFees != null
+    );
+    if (tradesWithBreakdown.length === 0) return null;
+    const totalOpen = tradesWithBreakdown.reduce((s, t) => s + (t.openFees ?? 0), 0);
+    const totalClose = tradesWithBreakdown.reduce((s, t) => s + (t.closeFees ?? 0), 0);
+    return { open: totalOpen, close: totalClose };
+  }, [trades]);
+
   return (
     <div className="max-w-6xl mx-auto space-y-6">
       <div className="flex items-center gap-2">
@@ -271,6 +288,9 @@ export default function History() {
         <StatCard
           label="Total Fees"
           value={stats && stats.totalFees > 0 ? `-$${stats.totalFees.toFixed(2)}` : "—"}
+          sub={feeBreakdown != null
+            ? `Open -$${feeBreakdown.open.toFixed(2)} / Close -$${feeBreakdown.close.toFixed(2)}`
+            : undefined}
           positive={false}
         />
         <StatCard

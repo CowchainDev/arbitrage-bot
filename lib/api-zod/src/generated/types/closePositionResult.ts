@@ -12,4 +12,5 @@ export interface ClosePositionResult {
   bybitResult?: OrderResult;
   binanceResult?: OrderResult;
   realizedPnl?: number;
+  closeFees?: number;
 }

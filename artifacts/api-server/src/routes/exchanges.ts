@@ -7,7 +7,8 @@ import {
   CANDLE_LIMIT_BY_INTERVAL,
 } from "@workspace/api-zod";
 import { db } from "@workspace/db";
-import { closedTradesTable } from "@workspace/db";
+import { closedTradesTable, botLegsTable } from "@workspace/db";
+import { eq } from "drizzle-orm";
 import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
@@ -1338,6 +1339,8 @@ router.post("/exchanges/close-position", async (req: Request, res: Response) => 
       }
     }
 
+    const closeFees = result.closeFeeA + result.closeFeeB;
+
     res.json({
       success: result.bothClosed,
       bybitResult: result.orderIdA
@@ -1347,6 +1350,7 @@ router.post("/exchanges/close-position", async (req: Request, res: Response) => 
         ? { orderId: result.orderIdB, exchange: "binance", symbol, filledQty: binanceQty }
         : null,
       realizedPnl,
+      closeFees,
     });
   } catch (err) {
     req.log.error({ err }, "Error closing position");
@@ -1397,6 +1401,22 @@ router.get("/positions", async (req: Request, res: Response) => {
       }
     }
 
+    // Fetch open bot leg fees grouped by symbol so we can enrich exchange positions
+    const openBotLegs = await db
+      .select({
+        symbol: botLegsTable.symbol,
+        openFeeA: botLegsTable.openFeeA,
+        openFeeB: botLegsTable.openFeeB,
+      })
+      .from(botLegsTable)
+      .where(eq(botLegsTable.status, "open"));
+
+    const openFeesBySymbol = new Map<string, number>();
+    for (const leg of openBotLegs) {
+      const prev = openFeesBySymbol.get(leg.symbol) ?? 0;
+      openFeesBySymbol.set(leg.symbol, prev + Number(leg.openFeeA ?? 0) + Number(leg.openFeeB ?? 0));
+    }
+
     const result = [];
 
     if (binancePositions.status === "fulfilled") {
@@ -1428,6 +1448,9 @@ router.get("/positions", async (req: Request, res: Response) => {
           (binancePos.timestamp ? new Date(binancePos.timestamp).toISOString() : null) ??
           new Date().toISOString();
 
+        const openFees = openFeesBySymbol.get(sym) ?? 0;
+        const rawPnl = bybitPnlVal + binancePnlVal;
+
         result.push({
           id: `${sym}-${String(bybitPos.id ?? "")}-${String(binancePos.id ?? "")}`,
           symbol: sym,
@@ -1441,7 +1464,8 @@ router.get("/positions", async (req: Request, res: Response) => {
           binanceCurrentPrice: binanceMark,
           bybitPnl: bybitPnlVal,
           binancePnl: binancePnlVal,
-          totalPnl: bybitPnlVal + binancePnlVal,
+          totalPnl: rawPnl - openFees,
+          openFees: openFees > 0 ? openFees : undefined,
           spreadAtEntry: 0,
           currentSpread: bybitMark && binanceMark
             ? ((bybitMark - binanceMark) / binanceMark) * 100

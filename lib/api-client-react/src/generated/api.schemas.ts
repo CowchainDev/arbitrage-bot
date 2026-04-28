@@ -147,6 +147,7 @@ export interface Position {
   bybitPnl?: number;
   binancePnl?: number;
   totalPnl: number;
+  openFees?: number;
   spreadAtEntry?: number;
   currentSpread: number;
   usdSize?: number;
@@ -195,6 +196,7 @@ export interface ClosePositionResult {
   bybitResult?: OrderResult;
   binanceResult?: OrderResult;
   realizedPnl?: number;
+  closeFees?: number;
 }
 
 /**
@@ -252,6 +254,8 @@ export interface ClosedTrade {
   spreadAtEntry: number;
   realizedPnl: number;
   totalFees: number;
+  openFees?: number;
+  closeFees?: number;
   quantity: number;
   entryTime: string;
   closeTime: string;
@@ -375,6 +379,10 @@ export interface BotLeg {
   binanceEntry?: number;
   bybitSide: BotLegBybitSide;
   binanceSide: BotLegBinanceSide;
+  /** Opening fee paid on exchange A (USD) */
+  openFeeA?: number;
+  /** Opening fee paid on exchange B (USD) */
+  openFeeB?: number;
   spreadAtEntry?: number;
   /** Spread percentage when the leg was closed */
   spreadAtExit?: number;
