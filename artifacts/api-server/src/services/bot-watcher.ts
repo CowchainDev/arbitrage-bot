@@ -289,14 +289,18 @@ async function closeLeg(
   const shortExchangeName = leg.bybitSide === "short" ? exchangeA : exchangeB;
   const usdSize = Number(leg.bybitQty) * Number(leg.bybitEntry) + Number(leg.binanceQty) * Number(leg.binanceEntry);
 
-  // Estimate net funding accrued over the life of this leg
+  // Estimate net funding accrued over the life of this leg.
+  // Also record the raw rate spread (shortRate - longRate) so the calculation
+  // is transparent and auditable without reverse-engineering from fundingPaidUsd.
   let estimatedFundingUsd: number | null = null;
+  let fundingRateSpread: number | null = null;
   const fundingEntry = getFundingRateEntry(leg.symbol);
   if (fundingEntry) {
     const longRate = getFundingRateForExchange(fundingEntry, longExchangeName);
     const shortRate = getFundingRateForExchange(fundingEntry, shortExchangeName);
+    fundingRateSpread = shortRate - longRate;
     const intervals = countSettledFundingIntervals(leg.openedAt.getTime(), closedAt.getTime());
-    estimatedFundingUsd = intervals * (shortRate - longRate) * usdSize;
+    estimatedFundingUsd = intervals * fundingRateSpread * usdSize;
   }
 
   // Retry the DB write — a transient connection drop here silently orphans the P&L
@@ -311,6 +315,7 @@ async function closeLeg(
           spreadAtExit: spreadAtExit != null ? String(spreadAtExit) : undefined,
           realizedPnlUsd: String(realizedPnl),
           fundingPaidUsd: estimatedFundingUsd != null ? String(estimatedFundingUsd) : undefined,
+          fundingRateSpread: fundingRateSpread != null ? String(fundingRateSpread) : undefined,
         })
         .where(eq(botLegsTable.id, leg.id)),
     `closeLeg update leg=${leg.id}`,
@@ -330,6 +335,7 @@ async function closeLeg(
         totalFees: String(totalFees),
         openFees: String(Number(leg.openFeeA ?? 0) + Number(leg.openFeeB ?? 0)),
         fundingPaidUsd: estimatedFundingUsd != null ? String(estimatedFundingUsd) : undefined,
+        fundingRateSpread: fundingRateSpread != null ? String(fundingRateSpread) : undefined,
         quantity: String(usdSize / 2),
         entryTime: leg.openedAt,
         closeTime: closedAt,
