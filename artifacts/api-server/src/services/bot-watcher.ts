@@ -458,28 +458,44 @@ export async function closeAllLegsForBot(botId: number): Promise<{ closed: numbe
     .from(botLegsTable)
     .where(and(eq(botLegsTable.botConfigId, botId), eq(botLegsTable.status, "open")));
 
+  // Close all legs in parallel — each closePositionInternal itself fires
+  // both exchange orders concurrently, so running N legs in parallel is safe
+  // and avoids chaining N × round-trip latencies sequentially.
+  const legResults = await Promise.allSettled(
+    openLegs.map(async (leg) => {
+      const priceRow = getPriceCacheEntry(leg.symbol);
+      const priceA = (priceRow ? priceFromCache(priceRow, exchangeA) : null) ?? Number(leg.bybitEntry);
+      const priceB = (priceRow ? priceFromCache(priceRow, exchangeB) : null) ?? Number(leg.binanceEntry);
+
+      const result = await closePositionInternal({
+        exA,
+        exB,
+        symbol: leg.symbol,
+        sideA: leg.bybitSide as "long" | "short",
+        sideB: leg.binanceSide as "long" | "short",
+        qtyA: Number(leg.bybitQty),
+        qtyB: Number(leg.binanceQty),
+        contractSizeB: leg.contractSizeB != null ? Number(leg.contractSizeB) : null,
+        spreadAtEntry: Number(leg.spreadAtEntry),
+        entryTime: leg.openedAt,
+        longExchange: leg.bybitSide === "long" ? exchangeA : exchangeB,
+        shortExchange: leg.bybitSide === "short" ? exchangeA : exchangeB,
+      });
+
+      return { leg, result, priceA, priceB };
+    })
+  );
+
   let closed = 0;
   let failed = 0;
 
-  for (const leg of openLegs) {
-    const priceRow = getPriceCacheEntry(leg.symbol);
-    const priceA = (priceRow ? priceFromCache(priceRow, exchangeA) : null) ?? Number(leg.bybitEntry);
-    const priceB = (priceRow ? priceFromCache(priceRow, exchangeB) : null) ?? Number(leg.binanceEntry);
-
-    const result = await closePositionInternal({
-      exA,
-      exB,
-      symbol: leg.symbol,
-      sideA: leg.bybitSide as "long" | "short",
-      sideB: leg.binanceSide as "long" | "short",
-      qtyA: Number(leg.bybitQty),
-      qtyB: Number(leg.binanceQty),
-      contractSizeB: leg.contractSizeB != null ? Number(leg.contractSizeB) : null,
-      spreadAtEntry: Number(leg.spreadAtEntry),
-      entryTime: leg.openedAt,
-      longExchange: leg.bybitSide === "long" ? exchangeA : exchangeB,
-      shortExchange: leg.bybitSide === "short" ? exchangeA : exchangeB,
-    });
+  for (const outcome of legResults) {
+    if (outcome.status === "rejected") {
+      failed++;
+      logger.warn({ err: outcome.reason }, "stop-and-close: leg close threw unexpectedly");
+      continue;
+    }
+    const { leg, result, priceA, priceB } = outcome.value;
 
     if (result.bothClosed) {
       const closeFees = result.closeFeeA + result.closeFeeB;
