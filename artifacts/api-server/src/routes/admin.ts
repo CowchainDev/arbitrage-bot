@@ -417,4 +417,36 @@ router.post("/admin/backfill-funding", requireBotSecret, async (req, res) => {
   }
 });
 
+// POST /api/admin/backfill-conditions
+// Backfills enter_spread_threshold_pct on closed_trades rows where it is NULL,
+// by joining with the nearest matching bot_legs row (same symbol, entry_time ≈ opened_at within 5s).
+router.post("/admin/backfill-conditions", requireBotSecret, async (req, res) => {
+  try {
+    const result = await db.execute(sql`
+      WITH matched AS (
+        SELECT DISTINCT ON (ct.id)
+          ct.id AS ct_id,
+          bl.enter_spread_threshold_pct
+        FROM closed_trades ct
+        JOIN bot_legs bl
+          ON ct.symbol = bl.symbol
+          AND ABS(EXTRACT(EPOCH FROM (ct.entry_time - bl.opened_at))) < 5
+        WHERE ct.enter_spread_threshold_pct IS NULL
+          AND bl.enter_spread_threshold_pct IS NOT NULL
+        ORDER BY ct.id, ABS(EXTRACT(EPOCH FROM (ct.entry_time - bl.opened_at)))
+      )
+      UPDATE closed_trades
+      SET enter_spread_threshold_pct = matched.enter_spread_threshold_pct
+      FROM matched
+      WHERE closed_trades.id = matched.ct_id
+    `);
+    const updated = (result as unknown as { rowCount?: number }).rowCount ?? 0;
+    req.log.info({ updated }, "backfill-conditions: complete");
+    res.json({ updated });
+  } catch (err) {
+    req.log.error({ err }, "backfill-conditions: fatal error");
+    res.status(500).json({ error: "backfill_failed", message: String(err) });
+  }
+});
+
 export default router;

@@ -317,10 +317,15 @@ export function BotSummaryRow({
       <span className={`font-mono font-semibold ${pnlPositive ? "text-primary" : "text-destructive"}`}>
         {formatPnlWithPct(totalPnl, netUsdSize)}
       </span>
-      <span className={`font-mono text-xs ${totalAccruedFunding == null ? "text-muted-foreground/40" : totalAccruedFunding >= 0 ? "text-primary/80" : "text-destructive/80"}`}>
-        {totalAccruedFunding != null
-          ? `${totalAccruedFunding >= 0 ? "+" : ""}$${Math.abs(totalAccruedFunding).toFixed(4)}`
-          : "—"}
+      <span className={`font-mono text-xs leading-tight flex flex-col gap-0 ${totalAccruedFunding == null ? "text-muted-foreground/40" : totalAccruedFunding >= 0 ? "text-primary/80" : "text-destructive/80"}`}>
+        <span>
+          {totalAccruedFunding != null
+            ? `${totalAccruedFunding >= 0 ? "+" : ""}$${Math.abs(totalAccruedFunding).toFixed(4)}`
+            : "—"}
+        </span>
+        <span className="text-[10px] text-muted-foreground/60">
+          ⏱ {msToCountdown(nextFundingBoundaryMs(now) - now) ?? "—"}
+        </span>
       </span>
       <span className="font-mono text-muted-foreground">
         {earliestOpenedAt ? new Date(earliestOpenedAt).toLocaleTimeString() : "-"}
@@ -497,23 +502,20 @@ export function PositionRow({
           {formatPnlWithPct(position.totalPnl, position.usdSize)}
         </span>
         <span
-          className={`font-mono text-xs ${accruedFunding == null ? "text-muted-foreground/40" : accruedFunding >= 0 ? "text-primary/80" : "text-destructive/80"}`}
-          title={accruedFunding != null ? nextFundingTooltip : undefined}
+          className={`font-mono text-xs leading-tight flex flex-col gap-0 ${accruedFunding == null ? "text-muted-foreground/40" : accruedFunding >= 0 ? "text-primary/80" : "text-destructive/80"}`}
+          title={nextFundingTooltip}
         >
-          {accruedFunding != null
-            ? `${accruedFunding >= 0 ? "+" : ""}$${Math.abs(accruedFunding).toFixed(4)}`
-            : "—"}
+          <span>
+            {accruedFunding != null
+              ? `${accruedFunding >= 0 ? "+" : ""}$${Math.abs(accruedFunding).toFixed(4)}`
+              : "—"}
+          </span>
+          <span className="text-[10px] text-muted-foreground/60">
+            ⏱ {msToCountdown(nextFundingBoundaryMs(now) - now) ?? "—"}
+          </span>
         </span>
         <span className="font-mono text-muted-foreground leading-tight">
-          <span className="flex flex-col gap-0">
-            <span>{position.openedAt ? new Date(position.openedAt).toLocaleTimeString() : "-"}</span>
-            <FundingCountdownDisplay
-              nextFundingA={longFunding.nextFunding}
-              nextFundingB={shortFunding.nextFunding}
-              labelA={longAbbrev}
-              labelB={shortAbbrev}
-            />
-          </span>
+          {position.openedAt ? new Date(position.openedAt).toLocaleTimeString() : "-"}
         </span>
         {isLocalOnly ? (
           <button

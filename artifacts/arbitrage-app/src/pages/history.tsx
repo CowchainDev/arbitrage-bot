@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { formatFee } from "@/lib/utils";
 import {
   useGetTrades,
@@ -17,8 +17,9 @@ import {
   Legend,
   ResponsiveContainer,
 } from "recharts";
+import { useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { TrendingUp, BarChart2, Activity, Info } from "lucide-react";
+import { TrendingUp, BarChart2, Activity, Info, RefreshCw } from "lucide-react";
 
 function StatCard({
   label,
@@ -339,6 +340,29 @@ function TradeTable({ trades }: { trades: ClosedTrade[] }) {
 }
 
 export default function History() {
+  const queryClient = useQueryClient();
+  const [backfilling, setBackfilling] = useState(false);
+  const [backfillResult, setBackfillResult] = useState<string | null>(null);
+
+  const runBackfill = async () => {
+    setBackfilling(true);
+    setBackfillResult(null);
+    try {
+      const res = await fetch("/api/admin/backfill-conditions", { method: "POST" });
+      const data = await res.json() as { updated?: number; message?: string };
+      if (res.ok) {
+        setBackfillResult(data.updated === 0 ? "All data already filled" : `Filled ${data.updated} rows`);
+        await queryClient.invalidateQueries({ queryKey: getGetTradesQueryKey() });
+      } else {
+        setBackfillResult(`Error: ${data.message ?? "unknown"}`);
+      }
+    } catch {
+      setBackfillResult("Request failed");
+    } finally {
+      setBackfilling(false);
+    }
+  };
+
   const tradesQuery = useGetTrades({
     query: {
       queryKey: getGetTradesQueryKey(),
@@ -471,8 +495,22 @@ export default function History() {
           <BarChart2 className="w-4 h-4 text-muted-foreground" />
           <h2 className="text-sm font-semibold">Trade Log</h2>
           {trades.length > 0 && (
-            <span className="ml-auto text-xs text-muted-foreground">{trades.length} entries</span>
+            <span className="text-xs text-muted-foreground">{trades.length} entries</span>
           )}
+          <div className="ml-auto flex items-center gap-2">
+            {backfillResult && (
+              <span className="text-xs text-muted-foreground">{backfillResult}</span>
+            )}
+            <button
+              onClick={runBackfill}
+              disabled={backfilling}
+              title="Fill in missing Condition data from bot logs"
+              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground border border-border rounded px-2 py-1 transition-colors disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3 h-3 ${backfilling ? "animate-spin" : ""}`} />
+              {backfilling ? "Filling…" : "Fill missing data"}
+            </button>
+          </div>
         </div>
         {tradesQuery.isLoading ? (
           <div className="flex items-center justify-center py-12 text-muted-foreground text-sm animate-pulse">
