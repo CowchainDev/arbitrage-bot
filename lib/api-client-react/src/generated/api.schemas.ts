@@ -54,6 +54,11 @@ export interface TokenSpread {
   mexcNextFunding?: string;
   mexcBid?: number;
   mexcAsk?: number;
+  asterPrice?: number;
+  asterFundingRate?: number;
+  asterNextFunding?: string;
+  asterBid?: number;
+  asterAsk?: number;
   hyperPrice?: number | null;
   hyperFundingRate?: number | null;
   hyperNextFunding?: string | null;
@@ -339,6 +344,7 @@ export const StoreCredentialRequestExchange = {
   gate: "gate",
   okx: "okx",
   mexc: "mexc",
+  aster: "aster",
   hyper: "hyper",
 } as const;
 

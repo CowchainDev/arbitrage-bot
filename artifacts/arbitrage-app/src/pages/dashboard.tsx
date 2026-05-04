@@ -110,7 +110,7 @@ function getExchangeFields(token: TokenSpread, ex: string): { ask: number | unde
     case "okx":     return { ask: token.okxAsk,     bid: token.okxBid,     funding: token.okxFundingRate,     nextFunding: token.okxNextFunding };
     case "mexc":    return { ask: token.mexcAsk,    bid: token.mexcBid,    funding: token.mexcFundingRate,    nextFunding: token.mexcNextFunding };
     case "aster":   return { ask: token.asterAsk,   bid: token.asterBid,   funding: token.asterFundingRate,   nextFunding: token.asterNextFunding };
-    case "hyper":   return { ask: token.hyperAsk,   bid: token.hyperBid,   funding: token.hyperFundingRate,   nextFunding: token.hyperNextFunding };
+    case "hyper":   return { ask: token.hyperAsk ?? undefined,   bid: token.hyperBid ?? undefined,   funding: token.hyperFundingRate ?? undefined,   nextFunding: token.hyperNextFunding ?? undefined };
     default:        return { ask: undefined, bid: undefined, funding: undefined, nextFunding: undefined };
   }
 }

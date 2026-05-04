@@ -196,7 +196,6 @@ function TradeTable({ trades }: { trades: ClosedTrade[] }) {
                   className="w-3 h-3 text-muted-foreground/60 cursor-help"
                   aria-label="Net funding received (+) or paid (−) over the life of this trade. Figures for trades closed before the 8-hour interval snap fix may be continuous-ratio estimates rather than settled-interval counts."
                   role="img"
-                  title="Net funding received (+) or paid (−) over the life of this trade. Figures for trades closed before the 8-hour interval snap fix may be continuous-ratio estimates rather than settled-interval counts."
                 />
               </span>
             </th>

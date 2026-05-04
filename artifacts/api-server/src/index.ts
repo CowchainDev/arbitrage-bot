@@ -159,7 +159,7 @@ async function backfillLegExchanges() {
       SELECT COUNT(*) AS cnt FROM bot_legs
       WHERE leg_exchange_a IS NULL OR leg_exchange_b IS NULL
     `);
-    const remainingCount = Number((remaining as { rows?: { cnt: string }[] }).rows?.[0]?.cnt ?? 0);
+    const remainingCount = Number((remaining as unknown as { rows?: { cnt: string }[] }).rows?.[0]?.cnt ?? 0);
     if (remainingCount > 0) {
       logger.warn(
         { remainingCount },
