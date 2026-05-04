@@ -63,17 +63,18 @@ const EXCHANGE_LINE_COLORS: Record<string, string> = {
   okx:     "#34d399",
   mexc:    "#fb7185",
   aster:   "#c084fc",
+  hyper:   "#2dd4bf",
 };
 
 const EXCHANGE_DISPLAY: Record<string, string> = {
-  bybit: "Bybit", binance: "Binance", gate: "Gate", okx: "OKX", mexc: "MEXC", aster: "AsterDex",
+  bybit: "Bybit", binance: "Binance", gate: "Gate", okx: "OKX", mexc: "MEXC", aster: "AsterDex", hyper: "HyperLiquid",
 };
 
 const EXCHANGE_SHORT: Record<string, string> = {
-  bybit: "BB", binance: "BN", gate: "GT", okx: "OKX", mexc: "MX", aster: "AS",
+  bybit: "BB", binance: "BN", gate: "GT", okx: "OKX", mexc: "MX", aster: "AS", hyper: "HL",
 };
 
-const ALL_EXCHANGES = ["bybit", "binance", "gate", "okx", "mexc", "aster"] as const;
+const ALL_EXCHANGES = ["bybit", "binance", "gate", "okx", "mexc", "aster", "hyper"] as const;
 type ExchangeName = typeof ALL_EXCHANGES[number];
 
 function formatDuration(ms: number): string {
@@ -147,7 +148,7 @@ function TradingViewChart({ symbol, exchange }: { symbol: string; exchange: Exch
 function loadAllExchangeHeaders(base: RequestInit | undefined): RequestInit {
   const baseHeaders = (base?.headers ?? {}) as Record<string, string>;
   const extra: Record<string, string> = {};
-  for (const exchange of ["gate", "okx", "mexc", "aster"] as const) {
+  for (const exchange of ["gate", "okx", "mexc", "aster", "hyper"] as const) {
     try {
       const raw = localStorage.getItem(`exchange_creds_${exchange}`);
       if (raw) {

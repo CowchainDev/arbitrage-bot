@@ -27,6 +27,7 @@ function getExchangeTokenData(token: TokenSpread, exchange: string) {
     case "okx":     return { price: token.okxPrice,     bid: token.okxBid,     ask: token.okxAsk,     fundingRate: token.okxFundingRate,     nextFunding: null };
     case "mexc":    return { price: token.mexcPrice,    bid: token.mexcBid,    ask: token.mexcAsk,    fundingRate: token.mexcFundingRate,    nextFunding: null };
     case "aster":   return { price: token.asterPrice,   bid: token.asterBid,   ask: token.asterAsk,   fundingRate: token.asterFundingRate,   nextFunding: null };
+    case "hyper":   return { price: token.hyperPrice,   bid: token.hyperBid,   ask: token.hyperAsk,   fundingRate: token.hyperFundingRate,   nextFunding: token.hyperNextFunding ?? null };
     default:        return { price: null, bid: null, ask: null, fundingRate: null, nextFunding: null };
   }
 }
@@ -305,7 +306,7 @@ export function TokenDetailPanel({
               className="w-full font-mono text-sm bg-background border border-border rounded-md px-2 h-9 text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
               data-testid="select-bot-exchange-a"
             >
-              {["bybit", "binance", "gate", "okx", "mexc", "aster"].map((ex) => (
+              {["bybit", "binance", "gate", "okx", "mexc", "aster", "hyper"].map((ex) => (
                 <option key={ex} value={ex} disabled={ex === botExchangeB}>{getExchangeName(ex)}</option>
               ))}
             </select>
@@ -318,7 +319,7 @@ export function TokenDetailPanel({
               className="w-full font-mono text-sm bg-background border border-border rounded-md px-2 h-9 text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
               data-testid="select-bot-exchange-b"
             >
-              {["bybit", "binance", "gate", "okx", "mexc", "aster"].map((ex) => (
+              {["bybit", "binance", "gate", "okx", "mexc", "aster", "hyper"].map((ex) => (
                 <option key={ex} value={ex} disabled={ex === botExchangeA}>{getExchangeName(ex)}</option>
               ))}
             </select>
@@ -524,6 +525,7 @@ export function TokenDetailPanel({
           { key: "okx",     price: token.okxPrice     ?? null },
           { key: "mexc",    price: token.mexcPrice    ?? null },
           { key: "aster",   price: token.asterPrice   ?? null },
+          { key: "hyper",   price: token.hyperPrice   ?? null },
         ].filter((e): e is { key: string; price: number } => e.price != null && e.price !== 0);
 
         if (allExchanges.length < 2) return null;

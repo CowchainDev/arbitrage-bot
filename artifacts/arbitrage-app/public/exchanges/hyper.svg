@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40">
+  <rect width="40" height="40" rx="8" fill="#0d0d1a"/>
+  <polygon points="20,4 36,12 36,28 20,36 4,28 4,12" fill="none" stroke="#7c3aed" stroke-width="1.5"/>
+  <text x="20" y="25" text-anchor="middle" font-family="Arial,sans-serif" font-weight="900" font-size="13" fill="#a78bfa" letter-spacing="-0.5">HL</text>
+</svg>

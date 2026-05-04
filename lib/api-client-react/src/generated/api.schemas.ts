@@ -54,6 +54,11 @@ export interface TokenSpread {
   mexcNextFunding?: string;
   mexcBid?: number;
   mexcAsk?: number;
+  hyperPrice?: number | null;
+  hyperFundingRate?: number | null;
+  hyperNextFunding?: string | null;
+  hyperBid?: number | null;
+  hyperAsk?: number | null;
   /** Highest absolute spread across all tracked exchange pairs */
   bestSpreadPct?: number;
   /** Exponential moving average of bestSpreadPct (α≈0.006, ~10-min half-life at 5s refresh) */
@@ -75,6 +80,13 @@ export interface ExchangeBalances {
   bybitPnl?: number;
   /** Unrealized P&L on Binance */
   binancePnl?: number;
+  okx?: number;
+  okxPnl?: number;
+  mexc?: number;
+  mexcPnl?: number;
+  /** USDC balance in HyperLiquid futures wallet */
+  hyper?: number;
+  hyperPnl?: number;
 }
 
 export type OrderRequestExchange =
@@ -86,6 +98,7 @@ export const OrderRequestExchange = {
   gate: "gate",
   okx: "okx",
   mexc: "mexc",
+  hyper: "hyper",
 } as const;
 
 export type OrderRequestSide =
@@ -326,6 +339,7 @@ export const StoreCredentialRequestExchange = {
   gate: "gate",
   okx: "okx",
   mexc: "mexc",
+  hyper: "hyper",
 } as const;
 
 export interface StoreCredentialRequest {

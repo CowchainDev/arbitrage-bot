@@ -178,6 +178,67 @@ async function fetchAsterOhlcvDirect(symbol: string, interval: string, limit: nu
   return rows.map((r) => ({ t: r[0], o: parseFloat(r[1]), h: parseFloat(r[2]), l: parseFloat(r[3]), c: parseFloat(r[4]) })).filter((p) => p.t > 0 && p.c > 0);
 }
 
+async function fetchHyperLiquidOhlcvDirect(symbol: string, interval: string, limit: number): Promise<OhlcvPoint[]> {
+  const intervalMap: Record<string, string> = { "1m": "1m", "5m": "5m", "15m": "15m", "1h": "1h", "4h": "4h", "1d": "1d" };
+  const hlInterval = intervalMap[interval] ?? "1h";
+  const intervalMs: Record<string, number> = { "1m": 60_000, "5m": 300_000, "15m": 900_000, "1h": 3_600_000, "4h": 14_400_000, "1d": 86_400_000 };
+  const msPer = intervalMs[interval] ?? 3_600_000;
+  const endTime = Date.now();
+  const startTime = endTime - msPer * Math.min(limit, 500);
+  const resp = await fetch("https://api.hyperliquid.xyz/info", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ type: "candleSnapshot", req: { coin: symbol, interval: hlInterval, startTime, endTime } }),
+    signal: AbortSignal.timeout(RELAY_TIMEOUT_MS),
+  });
+  if (!resp.ok) throw new Error(`HyperLiquid OHLCV HTTP ${resp.status}`);
+  type HLCandle = { t: number; o: string; h: string; l: string; c: string };
+  const rows = await resp.json() as HLCandle[];
+  return rows.map((r) => ({ t: r.t, o: parseFloat(r.o), h: parseFloat(r.h), l: parseFloat(r.l), c: parseFloat(r.c) })).filter((p) => p.t > 0 && p.c > 0);
+}
+
+type HyperTickerEntry = { last: number; bid: number; ask: number; quoteVolume: number };
+type HyperFundingEntry = { fundingRate: number; fundingDatetime: string };
+
+async function fetchHyperLiquidMarketData(timeoutMs: number): Promise<{
+  tickerMap: Map<string, HyperTickerEntry>;
+  fundingMap: Map<string, HyperFundingEntry>;
+}> {
+  type HyperAssetCtx = {
+    funding: string;
+    dayNtlVlm: string;
+    markPx: string;
+    midPx: string | null;
+    impactPxs: [string, string] | null;
+  };
+  type HyperMeta = { universe: Array<{ name: string }> };
+  const resp = await fetch("https://api.hyperliquid.xyz/info", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ type: "metaAndAssetCtxs" }),
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  if (!resp.ok) throw new Error(`HyperLiquid market data HTTP ${resp.status}`);
+  const [meta, assetCtxs] = await resp.json() as [HyperMeta, HyperAssetCtx[]];
+  const nextFundingMs = Math.ceil(Date.now() / 3_600_000) * 3_600_000;
+  const nextFundingDatetime = new Date(nextFundingMs).toISOString();
+  const tickerMap = new Map<string, HyperTickerEntry>();
+  const fundingMap = new Map<string, HyperFundingEntry>();
+  meta.universe.forEach((coin, i) => {
+    const ctx = assetCtxs[i];
+    if (!ctx) return;
+    const price = parseFloat(ctx.markPx || ctx.midPx || "0");
+    if (!price) return;
+    const bid = ctx.impactPxs ? parseFloat(ctx.impactPxs[0]) : price;
+    const ask = ctx.impactPxs ? parseFloat(ctx.impactPxs[1]) : price;
+    const quoteVolume = parseFloat(ctx.dayNtlVlm || "0");
+    const fundingRate = parseFloat(ctx.funding || "0");
+    tickerMap.set(coin.name, { last: price, bid, ask, quoteVolume });
+    fundingMap.set(coin.name, { fundingRate, fundingDatetime: nextFundingDatetime });
+  });
+  return { tickerMap, fundingMap };
+}
+
 const DIRECT_FETCHERS: Record<string, (symbol: string, interval: string, limit: number) => Promise<OhlcvPoint[]>> = {
   binance: fetchBinanceOhlcvDirect,
   bybit:   fetchBybitOhlcvDirect,
@@ -185,6 +246,7 @@ const DIRECT_FETCHERS: Record<string, (symbol: string, interval: string, limit: 
   okx:     fetchOkxOhlcvDirect,
   mexc:    fetchMexcOhlcvDirect,
   aster:   fetchAsterOhlcvDirect,
+  hyper:   fetchHyperLiquidOhlcvDirect,
 };
 
 // ---------------------------------------------------------------------------
@@ -275,6 +337,7 @@ async function fetchKlinesForSymbol(
     { name: "okx",     create: () => createOkxExchange() },
     { name: "mexc",    create: () => createMexcExchange() },
     { name: "aster",   create: () => createAsterExchange() },
+    { name: "hyper",   create: () => createHyperLiquidExchange() },
   ];
 
   const results = await Promise.allSettled(
@@ -376,6 +439,7 @@ type SymbolPriceEntry = {
   gatePrice: number | null;
   okxPrice: number | null;
   asterPrice: number | null;
+  hyperPrice: number | null;
 };
 const priceCacheBySymbol = new Map<string, SymbolPriceEntry>();
 
@@ -386,12 +450,14 @@ export type SymbolFundingEntry = {
   okxFundingRate: number | null;
   mexcFundingRate: number | null;
   asterFundingRate: number | null;
+  hyperFundingRate: number | null;
   bybitNextFunding: string | null;
   binanceNextFunding: string | null;
   gateNextFunding: string | null;
   okxNextFunding: string | null;
   mexcNextFunding: string | null;
   asterNextFunding: string | null;
+  hyperNextFunding: string | null;
 };
 const fundingRateCacheBySymbol = new Map<string, SymbolFundingEntry>();
 
@@ -399,14 +465,24 @@ export function getFundingRateEntry(symbol: string): SymbolFundingEntry | null {
   return fundingRateCacheBySymbol.get(symbol) ?? null;
 }
 
+/** Funding settlement interval in ms per exchange. HyperLiquid settles every 1h; all others 8h. */
+export const FUNDING_INTERVAL_MS: Record<string, number> = {
+  bybit:   28_800_000,
+  binance: 28_800_000,
+  gate:    28_800_000,
+  okx:     28_800_000,
+  mexc:    28_800_000,
+  aster:   28_800_000,
+  hyper:    3_600_000,
+};
+
 /**
- * Counts how many 8-hour UTC settlement boundaries (00:00, 08:00, 16:00 UTC)
- * have passed strictly after openedAt and up to (including) now.
+ * Counts how many funding settlement boundaries have passed strictly after
+ * openedAt and up to (including) now for a given interval length.
  */
-function countSettledFundingIntervals(openedAtMs: number, nowMs: number): number {
-  const INTERVAL_MS = 28_800_000;
-  const kFirst = Math.floor(openedAtMs / INTERVAL_MS) + 1;
-  const kLast  = Math.floor(nowMs / INTERVAL_MS);
+export function countSettledFundingIntervals(openedAtMs: number, nowMs: number, intervalMs = 28_800_000): number {
+  const kFirst = Math.floor(openedAtMs / intervalMs) + 1;
+  const kLast  = Math.floor(nowMs / intervalMs);
   return Math.max(0, kLast - kFirst + 1);
 }
 
@@ -418,6 +494,7 @@ export function getFundingRateForExchange(entry: SymbolFundingEntry, exchange: s
     case "okx":     return entry.okxFundingRate     ?? 0;
     case "mexc":    return entry.mexcFundingRate    ?? 0;
     case "aster":   return entry.asterFundingRate   ?? 0;
+    case "hyper":   return entry.hyperFundingRate   ?? 0;
     default:        return 0;
   }
 }
@@ -480,6 +557,7 @@ async function fetchAndCachePrices(): Promise<unknown[]> {
     bybitTickers, binanceTickers, gateTickers, okxTickers, mexcTickers, asterTickers,
     bybitFunding, binanceFunding, gateFunding, okxFunding, mexcFunding, asterFunding,
     bybitOIResult, binanceOIResult, gateOIResult, okxOIResult,
+    hyperDataResult,
   ] = await Promise.allSettled([
     withTimeout(bybit.fetchTickers(undefined, { type: "linear" }), T, "bybit tickers"),
     withTimeout(binance.fetchTickers(undefined, { type: "future" }), T, "binance tickers"),
@@ -497,6 +575,7 @@ async function fetchAndCachePrices(): Promise<unknown[]> {
     withTimeout(binance.fetchOpenInterests(undefined, { type: "future" }), T, "binance OI"),
     withTimeout(gate.fetchOpenInterests(undefined, { type: "swap" }), T, "gate OI"),
     withTimeout(okx.fetchOpenInterests(undefined, { type: "swap" }), T, "okx OI"),
+    withTimeout(fetchHyperLiquidMarketData(T), T, "hyperliquid market data"),
   ]);
 
   const bybitMap   = buildTickerMap(bybitTickers.status   === "fulfilled" ? bybitTickers.value   : {});
@@ -505,6 +584,8 @@ async function fetchAndCachePrices(): Promise<unknown[]> {
   const okxMap     = buildTickerMap(okxTickers.status     === "fulfilled" ? okxTickers.value     : {});
   const mexcMap    = buildTickerMap(mexcTickers.status    === "fulfilled" ? mexcTickers.value    : {});
   const asterMap   = buildTickerMap(asterTickers.status   === "fulfilled" ? asterTickers.value   : {});
+  const hyperTickerMap = hyperDataResult.status === "fulfilled" ? hyperDataResult.value.tickerMap : new Map<string, HyperTickerEntry>();
+  const hyperFundingMap = hyperDataResult.status === "fulfilled" ? hyperDataResult.value.fundingMap : new Map<string, HyperFundingEntry>();
 
   const bybitFundingMap  = bybitFunding.status  === "fulfilled" ? bybitFunding.value  : {};
   const binanceFundingMap = binanceFunding.status === "fulfilled" ? binanceFunding.value : {};
@@ -538,6 +619,7 @@ async function fetchAndCachePrices(): Promise<unknown[]> {
   const allBases = new Set([
     ...bybitMap.keys(), ...binanceMap.keys(), ...gateMap.keys(),
     ...okxMap.keys(), ...mexcMap.keys(), ...asterMap.keys(),
+    ...hyperTickerMap.keys(),
   ]);
 
   // ── Pass 1: compute all spread info except depth ─────────────────────────
@@ -551,8 +633,10 @@ async function fetchAndCachePrices(): Promise<unknown[]> {
     okxT:     ReturnType<typeof okxMap.get>;
     mexcT:    ReturnType<typeof mexcMap.get>;
     asterT:   ReturnType<typeof asterMap.get>;
+    hyperT:   HyperTickerEntry | undefined;
     bybitPriceC: number; binancePriceC: number; gatePriceC: number;
     okxPriceC: number;   mexcPriceC: number;    asterPriceC: number;
+    hyperPriceC: number;
     spreadPct: number;
     bestSpreadPct: number;
     bestSpreadLeg: string | null;
@@ -572,6 +656,7 @@ async function fetchAndCachePrices(): Promise<unknown[]> {
     const okxT     = okxMap.get(base);
     const mexcT    = mexcMap.get(base);
     const asterT   = asterMap.get(base);
+    const hyperT   = hyperTickerMap.get(base);
 
     const bybitPrice   = bybitT   ? (bybitT.last   ?? bybitT.bid   ?? 0) : 0;
     const binancePrice = binanceT ? (binanceT.last  ?? binanceT.bid ?? 0) : 0;
@@ -579,8 +664,9 @@ async function fetchAndCachePrices(): Promise<unknown[]> {
     const okxPrice     = okxT     ? (okxT.last      ?? okxT.bid     ?? 0) : 0;
     const mexcPrice    = mexcT    ? (mexcT.last      ?? mexcT.bid    ?? 0) : 0;
     const asterPrice   = asterT   ? (asterT.last     ?? asterT.bid   ?? 0) : 0;
+    const hyperPrice   = hyperT   ? hyperT.last : 0;
 
-    const rawPriceList = [bybitPrice, binancePrice, gatePrice, okxPrice, mexcPrice, asterPrice];
+    const rawPriceList = [bybitPrice, binancePrice, gatePrice, okxPrice, mexcPrice, asterPrice, hyperPrice];
     const livePrices = rawPriceList.filter(p => p > 0);
     if (livePrices.length < 2) continue;
 
@@ -599,14 +685,15 @@ async function fetchAndCachePrices(): Promise<unknown[]> {
     const okxPriceC     = clean(okxPrice);
     const mexcPriceC    = clean(mexcPrice);
     const asterPriceC   = clean(asterPrice);
+    const hyperPriceC   = clean(hyperPrice);
 
-    const cleanPrices = [bybitPriceC, binancePriceC, gatePriceC, okxPriceC, mexcPriceC, asterPriceC];
+    const cleanPrices = [bybitPriceC, binancePriceC, gatePriceC, okxPriceC, mexcPriceC, asterPriceC, hyperPriceC];
     if (cleanPrices.filter(p => p > 0).length < 2) continue;
 
     const totalVolume =
       (bybitT?.quoteVolume ?? 0) + (binanceT?.quoteVolume ?? 0) +
       (gateT?.quoteVolume ?? 0) + (okxT?.quoteVolume ?? 0) + (mexcT?.quoteVolume ?? 0) +
-      (asterT?.quoteVolume ?? 0);
+      (asterT?.quoteVolume ?? 0) + (hyperT?.quoteVolume ?? 0);
     if (totalVolume < MIN_VOLUME_USD) continue;
 
     const spreadPct = bybitPriceC && binancePriceC
@@ -620,6 +707,7 @@ async function fetchAndCachePrices(): Promise<unknown[]> {
       okx:     okxPriceC     ? { price: okxPriceC,     bid: okxT?.bid     ?? okxPriceC,     ask: okxT?.ask     ?? okxPriceC,     fundingRate: okxFundingMap[key]?.fundingRate     ?? 0 } : null,
       mexc:    mexcPriceC    ? { price: mexcPriceC,    bid: mexcT?.bid    ?? mexcPriceC,    ask: mexcT?.ask    ?? mexcPriceC,    fundingRate: mexcFundingMap[key]?.fundingRate    ?? 0 } : null,
       aster:   asterPriceC   ? { price: asterPriceC,   bid: asterT?.bid   ?? asterPriceC,   ask: asterT?.ask   ?? asterPriceC,   fundingRate: asterFundingMap[key]?.fundingRate   ?? 0 } : null,
+      hyper:   hyperPriceC   ? { price: hyperPriceC,   bid: hyperT?.bid   ?? hyperPriceC,   ask: hyperT?.ask   ?? hyperPriceC,   fundingRate: hyperFundingMap.get(base)?.fundingRate ?? 0 } : null,
     };
 
     const { bestSpreadPct, bestSpreadLeg } = computeBestSpread(allPrices);
@@ -655,8 +743,8 @@ async function fetchAndCachePrices(): Promise<unknown[]> {
 
     passOne.push({
       base, key,
-      bybitT, binanceT, gateT, okxT, mexcT, asterT,
-      bybitPriceC, binancePriceC, gatePriceC, okxPriceC, mexcPriceC, asterPriceC,
+      bybitT, binanceT, gateT, okxT, mexcT, asterT, hyperT,
+      bybitPriceC, binancePriceC, gatePriceC, okxPriceC, mexcPriceC, asterPriceC, hyperPriceC,
       spreadPct, bestSpreadPct, bestSpreadLeg, emaSpreadPct,
       openInterestUsd, totalVolume, needsMexcOb,
     });
@@ -689,8 +777,8 @@ async function fetchAndCachePrices(): Promise<unknown[]> {
   for (const d of passOne) {
     const {
       base, key,
-      bybitT, binanceT, gateT, okxT, mexcT, asterT,
-      bybitPriceC, binancePriceC, gatePriceC, okxPriceC, mexcPriceC, asterPriceC,
+      bybitT, binanceT, gateT, okxT, mexcT, asterT, hyperT,
+      bybitPriceC, binancePriceC, gatePriceC, okxPriceC, mexcPriceC, asterPriceC, hyperPriceC,
       spreadPct, bestSpreadPct, bestSpreadLeg,
       openInterestUsd, totalVolume,
     } = d;
@@ -703,11 +791,12 @@ async function fetchAndCachePrices(): Promise<unknown[]> {
     if (bestSpreadLeg) {
       const [cheapExchange, expensiveExchange] = bestSpreadLeg.split("/");
       const mexcOb = mexcObMap.get(base);
-      const tickerMap: Record<string, ReturnType<typeof bybitMap.get>> = {
-        bybit: bybitT, binance: binanceT, gate: gateT, okx: okxT, mexc: mexcT, aster: asterT,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const tickerMap: Record<string, any> = {
+        bybit: bybitT, binance: binanceT, gate: gateT, okx: okxT, mexc: mexcT, aster: asterT, hyper: hyperT,
       };
       const priceMap: Record<string, number> = {
-        bybit: bybitPriceC, binance: binancePriceC, gate: gatePriceC, okx: okxPriceC, mexc: mexcPriceC, aster: asterPriceC,
+        bybit: bybitPriceC, binance: binancePriceC, gate: gatePriceC, okx: okxPriceC, mexc: mexcPriceC, aster: asterPriceC, hyper: hyperPriceC,
       };
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const sideDepthUsd = (exName: string, side: "bid" | "ask"): number => {
@@ -762,6 +851,11 @@ async function fetchAndCachePrices(): Promise<unknown[]> {
       asterNextFunding:  asterFundingMap[key]?.fundingDatetime  ?? null,
       asterBid:  asterPriceC ? (asterT?.bid  ?? null) : null,
       asterAsk:  asterPriceC ? (asterT?.ask  ?? null) : null,
+      hyperPrice:   hyperPriceC   || null,
+      hyperFundingRate:  hyperFundingMap.get(base)?.fundingRate   ?? null,
+      hyperNextFunding:  hyperFundingMap.get(base)?.fundingDatetime ?? null,
+      hyperBid:  hyperPriceC ? (hyperT?.bid  ?? null) : null,
+      hyperAsk:  hyperPriceC ? (hyperT?.ask  ?? null) : null,
       bestSpreadPct,
       bestSpreadLeg,
       emaSpreadPct: d.emaSpreadPct,
@@ -781,6 +875,7 @@ async function fetchAndCachePrices(): Promise<unknown[]> {
       gatePrice:    s.gatePrice    as number | null,
       okxPrice:     s.okxPrice     as number | null,
       asterPrice:   s.asterPrice   as number | null,
+      hyperPrice:   s.hyperPrice   as number | null,
     });
     fundingRateCacheBySymbol.set(s.symbol, {
       bybitFundingRate:   (s.bybitFundingRate   as number | null) ?? null,
@@ -789,12 +884,14 @@ async function fetchAndCachePrices(): Promise<unknown[]> {
       okxFundingRate:     (s.okxFundingRate     as number | null) ?? null,
       mexcFundingRate:    (s.mexcFundingRate    as number | null) ?? null,
       asterFundingRate:   (s.asterFundingRate   as number | null) ?? null,
+      hyperFundingRate:   (s.hyperFundingRate   as number | null) ?? null,
       bybitNextFunding:   (s.bybitNextFunding   as string | null) ?? null,
       binanceNextFunding: (s.binanceNextFunding  as string | null) ?? null,
       gateNextFunding:    (s.gateNextFunding    as string | null) ?? null,
       okxNextFunding:     (s.okxNextFunding     as string | null) ?? null,
       mexcNextFunding:    (s.mexcNextFunding    as string | null) ?? null,
       asterNextFunding:   (s.asterNextFunding   as string | null) ?? null,
+      hyperNextFunding:   (s.hyperNextFunding   as string | null) ?? null,
     });
   }
 
@@ -852,6 +949,13 @@ function getAsterCredentials(req: Request) {
   };
 }
 
+function getHyperLiquidCredentials(req: Request) {
+  return {
+    apiKey: (req.headers["x-hyper-api-key"] as string) || "",
+    secret: (req.headers["x-hyper-api-secret"] as string) || "",
+  };
+}
+
 function getCredentialsForExchange(req: Request, exchange: string): { apiKey: string; secret: string; passphrase?: string } {
   switch (exchange) {
     case "bybit":   return getBybitCredentials(req);
@@ -860,6 +964,7 @@ function getCredentialsForExchange(req: Request, exchange: string): { apiKey: st
     case "mexc":    return getMexcCredentials(req);
     case "gate":    return getGateCredentials(req);
     case "aster":   return getAsterCredentials(req);
+    case "hyper":   return getHyperLiquidCredentials(req);
     default:        return { apiKey: "", secret: "" };
   }
 }
@@ -945,13 +1050,22 @@ export function createAsterExchange(apiKey = "", secret = "") {
   });
 }
 
+export function createHyperLiquidExchange(walletAddress = "", privateKey = "") {
+  return new ccxt.hyperliquid({
+    walletAddress,
+    privateKey,
+    options: { defaultType: "swap" },
+  });
+}
+
 export type SupportedCcxtExchange =
   | ReturnType<typeof createBybitExchange>
   | ReturnType<typeof createBinanceExchange>
   | ReturnType<typeof createGateExchange>
   | ReturnType<typeof createOkxExchange>
   | ReturnType<typeof createMexcExchange>
-  | ReturnType<typeof createAsterExchange>;
+  | ReturnType<typeof createAsterExchange>
+  | ReturnType<typeof createHyperLiquidExchange>;
 
 export function createExchangeForName(
   name: string,
@@ -966,6 +1080,7 @@ export function createExchangeForName(
     case "okx":     return createOkxExchange(apiKey, apiSecret, extraPassphrase ?? "");
     case "mexc":    return createMexcExchange(apiKey, apiSecret);
     case "aster":   return createAsterExchange(apiKey, apiSecret);
+    case "hyper":   return createHyperLiquidExchange(apiKey, apiSecret);
     default:        throw new Error(`Unsupported exchange: ${name}`);
   }
 }
@@ -1023,12 +1138,16 @@ function generateDemoSpreads() {
     const spreadPct = binancePrice ? ((bybitPrice - binancePrice) / binancePrice) * 100 : 0;
     const spread = basePrice * 0.0001;
 
+    const hyperPrice = basePrice * (1 + n() + (Math.random() - 0.5) * 0.015);
+    const hyperNextFundingTime = new Date(Math.ceil(Date.now() / 3_600_000) * 3_600_000).toISOString();
+
     const allPrices: Record<string, ExchangePrices | null> = {
       bybit: { price: bybitPrice, bid: bybitPrice - spread, ask: bybitPrice + spread, fundingRate: (Math.random() - 0.4) * 0.001 },
       binance: { price: binancePrice, bid: binancePrice - spread, ask: binancePrice + spread, fundingRate: (Math.random() - 0.4) * 0.001 },
       gate: { price: gatePrice, bid: gatePrice - spread, ask: gatePrice + spread, fundingRate: (Math.random() - 0.4) * 0.001 },
       okx: { price: okxPrice, bid: okxPrice - spread, ask: okxPrice + spread, fundingRate: (Math.random() - 0.4) * 0.001 },
       mexc: { price: mexcPrice, bid: mexcPrice - spread, ask: mexcPrice + spread, fundingRate: (Math.random() - 0.4) * 0.001 },
+      hyper: { price: hyperPrice, bid: hyperPrice - spread, ask: hyperPrice + spread, fundingRate: (Math.random() - 0.4) * 0.0002 },
     };
 
     const { bestSpreadPct, bestSpreadLeg } = computeBestSpread(allPrices);
@@ -1061,6 +1180,11 @@ function generateDemoSpreads() {
       mexcNextFunding: nextFundingTime,
       mexcBid: mexcPrice - spread,
       mexcAsk: mexcPrice + spread,
+      hyperPrice,
+      hyperFundingRate: allPrices.hyper!.fundingRate,
+      hyperNextFunding: hyperNextFundingTime,
+      hyperBid: hyperPrice - spread,
+      hyperAsk: hyperPrice + spread,
       bestSpreadPct,
       bestSpreadLeg,
       // Demo EMA: simulate a slightly smoothed value so the column is non-empty
@@ -1179,6 +1303,7 @@ router.get("/exchanges/klines", async (req: Request, res: Response) => {
     { name: "okx",     create: () => createOkxExchange() },
     { name: "mexc",    create: () => createMexcExchange() },
     { name: "aster",   create: () => createAsterExchange() },
+    { name: "hyper",   create: () => createHyperLiquidExchange() },
   ];
 
   const results = await Promise.allSettled(
@@ -1227,12 +1352,14 @@ router.get("/exchanges/balances", async (req: Request, res: Response) => {
   const binanceCreds = getBinanceCredentials(req);
   const okxCreds = getOkxCredentials(req);
   const mexcCreds = getMexcCredentials(req);
+  const hyperCreds = getHyperLiquidCredentials(req);
 
   const hasAnyCredentials =
     (bybitCreds.apiKey && bybitCreds.secret) ||
     (binanceCreds.apiKey && binanceCreds.secret) ||
     (okxCreds.apiKey && okxCreds.secret) ||
-    (mexcCreds.apiKey && mexcCreds.secret);
+    (mexcCreds.apiKey && mexcCreds.secret) ||
+    (hyperCreds.apiKey && hyperCreds.secret);
 
   if (!hasAnyCredentials) {
     res.status(401).json({ error: "unauthorized", message: "API credentials required" });
@@ -1258,6 +1385,10 @@ router.get("/exchanges/balances", async (req: Request, res: Response) => {
       const mexc = createMexcExchange(mexcCreds.apiKey, mexcCreds.secret);
       fetchers.push(mexc.fetchBalance({ type: "swap" }).then((b) => ({ exchange: "mexc", balance: b })));
     }
+    if (hyperCreds.apiKey && hyperCreds.secret) {
+      const hyper = createHyperLiquidExchange(hyperCreds.apiKey, hyperCreds.secret);
+      fetchers.push(hyper.fetchBalance().then((b) => ({ exchange: "hyper", balance: b })));
+    }
 
     const results = await Promise.allSettled(fetchers);
 
@@ -1265,7 +1396,10 @@ router.get("/exchanges/balances", async (req: Request, res: Response) => {
     for (const result of results) {
       if (result.status !== "fulfilled") continue;
       const { exchange, balance } = result.value as { exchange: string; balance: Record<string, unknown> };
-      const usdt = (balance.USDT as Record<string, number>)?.free ?? (balance.USDT as Record<string, number>)?.total ?? 0;
+      // HyperLiquid uses USDC; all others use USDT.
+      const currency = exchange === "hyper" ? "USDC" : "USDT";
+      const bal = balance[currency] as Record<string, number> | undefined;
+      const usdt = bal?.free ?? bal?.total ?? 0;
       let pnl = 0;
       if (exchange === "bybit") pnl = (balance.info as Record<string, unknown>)?.totalUnrealisedPnl as number ?? 0;
       if (exchange === "binance") pnl = (balance.info as Record<string, unknown>)?.totalUnrealizedProfit as number ?? 0;
@@ -1281,6 +1415,8 @@ router.get("/exchanges/balances", async (req: Request, res: Response) => {
       okxPnl: balanceMap["okx"] != null ? balanceMap["okx"].pnl : undefined,
       mexc: balanceMap["mexc"] != null ? balanceMap["mexc"].usdt : undefined,
       mexcPnl: balanceMap["mexc"] != null ? balanceMap["mexc"].pnl : undefined,
+      hyper: balanceMap["hyper"] != null ? balanceMap["hyper"].usdt : undefined,
+      hyperPnl: balanceMap["hyper"] != null ? balanceMap["hyper"].pnl : undefined,
     });
   } catch (err) {
     req.log.error({ err }, "Error fetching balances");

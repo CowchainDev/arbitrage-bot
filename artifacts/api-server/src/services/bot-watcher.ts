@@ -16,6 +16,8 @@ import {
   createExchangeForName,
   placeOrderInternal,
   closePositionInternal,
+  FUNDING_INTERVAL_MS,
+  countSettledFundingIntervals,
   type SupportedCcxtExchange,
 } from "../routes/exchanges";
 import { getStoredCredentials, type SupportedExchange } from "../routes/credentials";
@@ -63,16 +65,6 @@ function invalidateCredCache(exchange?: string) {
   }
 }
 
-/**
- * Counts how many 8-hour UTC settlement boundaries (00:00, 08:00, 16:00 UTC)
- * have passed strictly after openedAt and up to (including) now.
- */
-function countSettledFundingIntervals(openedAtMs: number, nowMs: number): number {
-  const INTERVAL_MS = 28_800_000;
-  const kFirst = Math.floor(openedAtMs / INTERVAL_MS) + 1;
-  const kLast  = Math.floor(nowMs / INTERVAL_MS);
-  return Math.max(0, kLast - kFirst + 1);
-}
 
 function getSpreadPct(priceA: number | null, priceB: number | null): number | null {
   if (!priceA || !priceB) return null;
@@ -89,6 +81,7 @@ function priceFromCache(entry: PriceCacheEntry, exchange: string): number | null
     case "gate":    return entry.gatePrice;
     case "okx":     return entry.okxPrice;
     case "aster":   return entry.asterPrice;
+    case "hyper":   return entry.hyperPrice;
     default:        return null;
   }
 }
@@ -300,8 +293,11 @@ async function closeLeg(
     const longRate = getFundingRateForExchange(fundingEntry, longExchangeName);
     const shortRate = getFundingRateForExchange(fundingEntry, shortExchangeName);
     fundingRateSpread = shortRate - longRate;
-    const intervals = countSettledFundingIntervals(leg.openedAt.getTime(), closedAt.getTime());
-    estimatedFundingUsd = intervals * fundingRateSpread * usdSize;
+    const longIntervalMs  = FUNDING_INTERVAL_MS[longExchangeName]  ?? 28_800_000;
+    const shortIntervalMs = FUNDING_INTERVAL_MS[shortExchangeName] ?? 28_800_000;
+    const longIntervals  = countSettledFundingIntervals(leg.openedAt.getTime(), closedAt.getTime(), longIntervalMs);
+    const shortIntervals = countSettledFundingIntervals(leg.openedAt.getTime(), closedAt.getTime(), shortIntervalMs);
+    estimatedFundingUsd = (shortIntervals * shortRate - longIntervals * longRate) * usdSize;
   }
 
   // Retry the DB write — a transient connection drop here silently orphans the P&L

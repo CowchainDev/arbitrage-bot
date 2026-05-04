@@ -53,6 +53,7 @@ function getTokenPriceForExchange(token: TokenSpread | undefined, exchange: stri
     case "okx":     return token.okxPrice     ?? fb;
     case "mexc":    return token.mexcPrice    ?? fb;
     case "aster":   return token.asterPrice   ?? fb;
+    case "hyper":   return token.hyperPrice   ?? fb;
     default:        return fb;
   }
 }
@@ -66,12 +67,13 @@ function getTokenFundingForExchange(token: TokenSpread | undefined, exchange: st
     case "okx":     return { rate: token.okxFundingRate     ?? null, nextFunding: token.okxNextFunding     ?? null };
     case "mexc":    return { rate: token.mexcFundingRate    ?? null, nextFunding: token.mexcNextFunding    ?? null };
     case "aster":   return { rate: token.asterFundingRate   ?? null, nextFunding: token.asterNextFunding   ?? null };
+    case "hyper":   return { rate: token.hyperFundingRate   ?? null, nextFunding: token.hyperNextFunding   ?? null };
     default:        return { rate: null, nextFunding: null };
   }
 }
 
 const EXCHANGE_ABBREV: Record<string, string> = {
-  bybit: "BY", binance: "BN", gate: "GT", okx: "OX", mexc: "MX", aster: "AS",
+  bybit: "BY", binance: "BN", gate: "GT", okx: "OX", mexc: "MX", aster: "AS", hyper: "HL",
 };
 
 function fmtFundingRate(rate: number | null): string {

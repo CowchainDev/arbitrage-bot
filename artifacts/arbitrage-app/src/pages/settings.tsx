@@ -16,6 +16,7 @@ interface ExchangeMeta {
   marketType: string;
   keysUrl: string;
   hasPassphrase?: boolean;
+  hasWalletAuth?: boolean;
 }
 
 const EXCHANGES: ExchangeMeta[] = [
@@ -25,6 +26,7 @@ const EXCHANGES: ExchangeMeta[] = [
   { id: "okx", label: "OKX", dot: "bg-emerald-400", marketType: "Futures (Perp)", keysUrl: "https://www.okx.com/account/my-api", hasPassphrase: true },
   { id: "mexc", label: "MEXC", dot: "bg-rose-400", marketType: "Futures (USDT)", keysUrl: "https://www.mexc.com/user/openapi" },
   { id: "aster", label: "ASTERDEX", dot: "bg-violet-500", marketType: "Futures (USDT)", keysUrl: "https://www.asterdex.com/en/account/api-management" },
+  { id: "hyper", label: "HYPERLIQUID", dot: "bg-violet-400", marketType: "Perps (USDC)", keysUrl: "https://app.hyperliquid.xyz/userInfo", hasWalletAuth: true },
 ];
 
 function ExchangeCard({ meta }: { meta: ExchangeMeta }) {
@@ -43,7 +45,7 @@ function ExchangeCard({ meta }: { meta: ExchangeMeta }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const hasChanges = apiKey !== (creds?.apiKey ?? "") || apiSecret !== (creds?.apiSecret ?? "") || passphrase !== (creds?.passphrase ?? "");
-  const canSave = !!apiKey && !!apiSecret && (meta.hasPassphrase ? !!passphrase : true);
+  const canSave = !!apiKey && !!apiSecret;
 
   const handleSave = async () => {
     const c = { apiKey, apiSecret, ...(meta.hasPassphrase ? { passphrase } : {}) };
@@ -52,7 +54,7 @@ function ExchangeCard({ meta }: { meta: ExchangeMeta }) {
     try {
       await storeCredential.mutateAsync({
         data: {
-          exchange: meta.id as "bybit" | "binance" | "gate" | "okx" | "mexc" | "aster",
+          exchange: meta.id,
           apiKey,
           apiSecret,
           ...(meta.hasPassphrase && passphrase ? { passphrase } : {}),
@@ -110,11 +112,11 @@ function ExchangeCard({ meta }: { meta: ExchangeMeta }) {
 
       <div className="space-y-3">
         <div className="space-y-1.5">
-          <label className="text-xs text-muted-foreground uppercase tracking-wider">API Key</label>
+          <label className="text-xs text-muted-foreground uppercase tracking-wider">{meta.hasWalletAuth ? "Wallet Address" : "API Key"}</label>
           <Input
             value={apiKey}
             onChange={(e) => { setApiKey(e.target.value); setSyncStatus("idle"); }}
-            placeholder={`Enter ${meta.label} API Key`}
+            placeholder={meta.hasWalletAuth ? "0x…" : `Enter ${meta.label} API Key`}
             className="font-mono bg-background border-border text-sm"
             autoComplete="off"
             data-testid={`input-${meta.id}-apiKey`}
@@ -122,13 +124,13 @@ function ExchangeCard({ meta }: { meta: ExchangeMeta }) {
         </div>
 
         <div className="space-y-1.5">
-          <label className="text-xs text-muted-foreground uppercase tracking-wider">API Secret</label>
+          <label className="text-xs text-muted-foreground uppercase tracking-wider">{meta.hasWalletAuth ? "Private Key" : "API Secret"}</label>
           <div className="relative">
             <Input
               value={apiSecret}
               onChange={(e) => { setApiSecret(e.target.value); setSyncStatus("idle"); }}
               type={showSecret ? "text" : "password"}
-              placeholder={`Enter ${meta.label} API Secret`}
+              placeholder={meta.hasWalletAuth ? "0x…" : `Enter ${meta.label} API Secret`}
               className="font-mono bg-background border-border text-sm pr-10"
               autoComplete="off"
               data-testid={`input-${meta.id}-apiSecret`}
