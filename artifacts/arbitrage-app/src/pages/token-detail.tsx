@@ -62,17 +62,18 @@ const EXCHANGE_LINE_COLORS: Record<string, string> = {
   gate:    "#38bdf8",
   okx:     "#34d399",
   mexc:    "#fb7185",
+  aster:   "#c084fc",
 };
 
 const EXCHANGE_DISPLAY: Record<string, string> = {
-  bybit: "Bybit", binance: "Binance", gate: "Gate", okx: "OKX", mexc: "MEXC",
+  bybit: "Bybit", binance: "Binance", gate: "Gate", okx: "OKX", mexc: "MEXC", aster: "AsterDex",
 };
 
 const EXCHANGE_SHORT: Record<string, string> = {
-  bybit: "BB", binance: "BN", gate: "GT", okx: "OKX", mexc: "MX",
+  bybit: "BB", binance: "BN", gate: "GT", okx: "OKX", mexc: "MX", aster: "AS",
 };
 
-const ALL_EXCHANGES = ["bybit", "binance", "gate", "okx", "mexc"] as const;
+const ALL_EXCHANGES = ["bybit", "binance", "gate", "okx", "mexc", "aster"] as const;
 type ExchangeName = typeof ALL_EXCHANGES[number];
 
 function formatDuration(ms: number): string {
@@ -88,7 +89,7 @@ function formatDuration(ms: number): string {
 
 type ChartRow = { t: number } & Partial<Record<ExchangeName, number>>;
 
-const TV_SYMBOL_MAP: Record<ExchangeName, string> = {
+const TV_SYMBOL_MAP: Partial<Record<ExchangeName, string>> = {
   bybit:   "BYBIT:{S}USDT.P",
   binance: "BINANCE:{S}USDT.P",
   gate:    "GATEIO:{S}USDT",
@@ -146,7 +147,7 @@ function TradingViewChart({ symbol, exchange }: { symbol: string; exchange: Exch
 function loadAllExchangeHeaders(base: RequestInit | undefined): RequestInit {
   const baseHeaders = (base?.headers ?? {}) as Record<string, string>;
   const extra: Record<string, string> = {};
-  for (const exchange of ["gate", "okx", "mexc"] as const) {
+  for (const exchange of ["gate", "okx", "mexc", "aster"] as const) {
     try {
       const raw = localStorage.getItem(`exchange_creds_${exchange}`);
       if (raw) {

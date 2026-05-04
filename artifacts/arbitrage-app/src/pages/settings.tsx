@@ -24,6 +24,7 @@ const EXCHANGES: ExchangeMeta[] = [
   { id: "gate", label: "GATE.IO", dot: "bg-sky-400", marketType: "Futures (USDT)", keysUrl: "https://www.gate.io/myaccount/apikey" },
   { id: "okx", label: "OKX", dot: "bg-emerald-400", marketType: "Futures (Perp)", keysUrl: "https://www.okx.com/account/my-api", hasPassphrase: true },
   { id: "mexc", label: "MEXC", dot: "bg-rose-400", marketType: "Futures (USDT)", keysUrl: "https://www.mexc.com/user/openapi" },
+  { id: "aster", label: "ASTERDEX", dot: "bg-violet-500", marketType: "Futures (USDT)", keysUrl: "https://www.asterdex.com/en/account/api-management" },
 ];
 
 function ExchangeCard({ meta }: { meta: ExchangeMeta }) {
@@ -51,7 +52,7 @@ function ExchangeCard({ meta }: { meta: ExchangeMeta }) {
     try {
       await storeCredential.mutateAsync({
         data: {
-          exchange: meta.id as "bybit" | "binance" | "gate" | "okx" | "mexc",
+          exchange: meta.id as "bybit" | "binance" | "gate" | "okx" | "mexc" | "aster",
           apiKey,
           apiSecret,
           ...(meta.hasPassphrase && passphrase ? { passphrase } : {}),

@@ -88,6 +88,7 @@ function priceFromCache(entry: PriceCacheEntry, exchange: string): number | null
     case "mexc":    return entry.mexcPrice;
     case "gate":    return entry.gatePrice;
     case "okx":     return entry.okxPrice;
+    case "aster":   return entry.asterPrice;
     default:        return null;
   }
 }

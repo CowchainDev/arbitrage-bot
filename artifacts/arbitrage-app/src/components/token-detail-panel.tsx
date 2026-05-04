@@ -25,7 +25,8 @@ function getExchangeTokenData(token: TokenSpread, exchange: string) {
     case "binance": return { price: token.binancePrice, bid: token.binanceBid, ask: token.binanceAsk, fundingRate: token.binanceFundingRate, nextFunding: token.binanceNextFunding ?? null };
     case "gate":    return { price: token.gatePrice,    bid: token.gateBid,    ask: token.gateAsk,    fundingRate: token.gateFundingRate,    nextFunding: null };
     case "okx":     return { price: token.okxPrice,     bid: token.okxBid,     ask: token.okxAsk,     fundingRate: token.okxFundingRate,     nextFunding: null };
-    case "mexc":    return { price: token.mexcPrice,    bid: token.mexcBid,    ask: token.mexcAsk,    fundingRate: token.mexcFundingRate,     nextFunding: null };
+    case "mexc":    return { price: token.mexcPrice,    bid: token.mexcBid,    ask: token.mexcAsk,    fundingRate: token.mexcFundingRate,    nextFunding: null };
+    case "aster":   return { price: token.asterPrice,   bid: token.asterBid,   ask: token.asterAsk,   fundingRate: token.asterFundingRate,   nextFunding: null };
     default:        return { price: null, bid: null, ask: null, fundingRate: null, nextFunding: null };
   }
 }
@@ -304,7 +305,7 @@ export function TokenDetailPanel({
               className="w-full font-mono text-sm bg-background border border-border rounded-md px-2 h-9 text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
               data-testid="select-bot-exchange-a"
             >
-              {["bybit", "binance", "gate", "okx", "mexc"].map((ex) => (
+              {["bybit", "binance", "gate", "okx", "mexc", "aster"].map((ex) => (
                 <option key={ex} value={ex} disabled={ex === botExchangeB}>{getExchangeName(ex)}</option>
               ))}
             </select>
@@ -317,7 +318,7 @@ export function TokenDetailPanel({
               className="w-full font-mono text-sm bg-background border border-border rounded-md px-2 h-9 text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
               data-testid="select-bot-exchange-b"
             >
-              {["bybit", "binance", "gate", "okx", "mexc"].map((ex) => (
+              {["bybit", "binance", "gate", "okx", "mexc", "aster"].map((ex) => (
                 <option key={ex} value={ex} disabled={ex === botExchangeA}>{getExchangeName(ex)}</option>
               ))}
             </select>
@@ -472,7 +473,7 @@ export function TokenDetailPanel({
 
       {/* Other exchanges — shows exchanges not selected as A or B */}
       {(() => {
-        const others = (["bybit", "binance", "gate", "okx", "mexc"] as const).filter((ex) => ex !== botExchangeA && ex !== botExchangeB);
+        const others = (["bybit", "binance", "gate", "okx", "mexc", "aster"] as const).filter((ex) => ex !== botExchangeA && ex !== botExchangeB);
         const othersWithData = others.filter((ex) => {
           const d = getExchangeTokenData(token, ex);
           return d.price != null;
@@ -522,6 +523,7 @@ export function TokenDetailPanel({
           { key: "gate",    price: token.gatePrice    ?? null },
           { key: "okx",     price: token.okxPrice     ?? null },
           { key: "mexc",    price: token.mexcPrice    ?? null },
+          { key: "aster",   price: token.asterPrice   ?? null },
         ].filter((e): e is { key: string; price: number } => e.price != null && e.price !== 0);
 
         if (allExchanges.length < 2) return null;

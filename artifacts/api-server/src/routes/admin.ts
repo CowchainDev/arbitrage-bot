@@ -206,6 +206,7 @@ const TAKER_RATES: Record<string, number> = {
   gate:    0.00050,
   okx:     0.00050,
   mexc:    0.00050,
+  aster:   0.00050,
 };
 
 // POST /api/backfill-estimated-fees

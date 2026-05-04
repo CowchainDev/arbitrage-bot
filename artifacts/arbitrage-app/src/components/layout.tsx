@@ -33,8 +33,9 @@ function HeaderBalances() {
   const { getRequestHeaders, hasCredentials } = useApiCredentials();
   const oldHeaders = getRequestHeaders();
 
-  const okxCreds = loadExchangeCreds("okx");
+  const okxCreds  = loadExchangeCreds("okx");
   const mexcCreds = loadExchangeCreds("mexc");
+  const asterCreds = loadExchangeCreds("aster");
 
   const extraHeaders: Record<string, string> = {};
   if (okxCreds?.apiKey) {
@@ -45,6 +46,10 @@ function HeaderBalances() {
   if (mexcCreds?.apiKey) {
     extraHeaders["x-mexc-api-key"] = mexcCreds.apiKey;
     extraHeaders["x-mexc-api-secret"] = mexcCreds.apiSecret;
+  }
+  if (asterCreds?.apiKey) {
+    extraHeaders["x-aster-api-key"] = asterCreds.apiKey;
+    extraHeaders["x-aster-api-secret"] = asterCreds.apiSecret;
   }
 
   const hasAnyCredentials = hasCredentials || !!okxCreds?.apiKey || !!mexcCreds?.apiKey;

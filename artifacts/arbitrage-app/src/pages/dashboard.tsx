@@ -45,7 +45,7 @@ function isValidSortOption(value: unknown): value is SortOption {
 type ViewMode = "list" | "card";
 const VIEW_MODE_KEY = "dashboard-view-mode";
 
-const ALL_EXCHANGES_LIST = ["bybit", "binance", "gate", "okx", "mexc"] as const;
+const ALL_EXCHANGES_LIST = ["bybit", "binance", "gate", "okx", "mexc", "aster"] as const;
 const FILTER_STORAGE_KEY = "dashboard-filters";
 
 const DEFAULT_FILTERS = {
@@ -109,6 +109,7 @@ function getExchangeFields(token: TokenSpread, ex: string): { ask: number | unde
     case "gate":    return { ask: token.gateAsk,    bid: token.gateBid,    funding: token.gateFundingRate,    nextFunding: token.gateNextFunding };
     case "okx":     return { ask: token.okxAsk,     bid: token.okxBid,     funding: token.okxFundingRate,     nextFunding: token.okxNextFunding };
     case "mexc":    return { ask: token.mexcAsk,    bid: token.mexcBid,    funding: token.mexcFundingRate,    nextFunding: token.mexcNextFunding };
+    case "aster":   return { ask: token.asterAsk,   bid: token.asterBid,   funding: token.asterFundingRate,   nextFunding: token.asterNextFunding };
     default:        return { ask: undefined, bid: undefined, funding: undefined, nextFunding: undefined };
   }
 }
@@ -817,7 +818,7 @@ export default function Dashboard() {
   const allExchangeRequestHeaders = useMemo(() => {
     const base = requestHeaders?.headers ?? {};
     const extra: Record<string, string> = {};
-    for (const exchange of ["gate", "okx", "mexc"] as const) {
+    for (const exchange of ["gate", "okx", "mexc", "aster"] as const) {
       try {
         const raw = localStorage.getItem(`exchange_creds_${exchange}`);
         if (raw) {
@@ -1259,7 +1260,7 @@ export default function Dashboard() {
 
             {/* Exchange toggles */}
             <div className="flex items-center gap-0.5" data-testid="exchange-toggles">
-              {(["bybit", "binance", "gate", "okx", "mexc"] as const).map((key) => {
+              {(["bybit", "binance", "gate", "okx", "mexc", "aster"] as const).map((key) => {
                 const name = getExchangeName(key);
                 return (
                   <button

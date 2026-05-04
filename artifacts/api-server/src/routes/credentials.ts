@@ -7,8 +7,8 @@ import { requireBotSecret } from "../middleware/auth";
 
 const router: IRouter = Router();
 
-export type SupportedExchange = "bybit" | "binance" | "gate" | "okx" | "mexc";
-export const SUPPORTED_EXCHANGES: SupportedExchange[] = ["bybit", "binance", "gate", "okx", "mexc"];
+export type SupportedExchange = "bybit" | "binance" | "gate" | "okx" | "mexc" | "aster";
+export const SUPPORTED_EXCHANGES: SupportedExchange[] = ["bybit", "binance", "gate", "okx", "mexc", "aster"];
 
 router.post("/credentials", requireBotSecret, async (req: Request, res: Response) => {
   const parsed = StoreCredentialBody.safeParse(req.body);

@@ -1,6 +1,6 @@
 import { useState, useCallback } from "react";
 
-export type SupportedExchange = "bybit" | "binance" | "gate" | "okx" | "mexc";
+export type SupportedExchange = "bybit" | "binance" | "gate" | "okx" | "mexc" | "aster";
 
 export interface ExchangeCreds {
   apiKey: string;

@@ -168,12 +168,23 @@ async function fetchMexcOhlcvDirect(symbol: string, interval: string, limit: num
     .filter((p) => p.t > 0 && p.c > 0);
 }
 
+async function fetchAsterOhlcvDirect(symbol: string, interval: string, limit: number): Promise<OhlcvPoint[]> {
+  const intervalMap: Record<string, string> = { "1m": "1m", "5m": "5m", "15m": "15m", "1h": "1h", "4h": "4h", "1d": "1d" };
+  const tf = intervalMap[interval] ?? "1h";
+  const url = `https://fapi.asterdex.com/fapi/v1/klines?symbol=${symbol}USDT&interval=${tf}&limit=${Math.min(limit, 500)}`;
+  const resp = await fetch(url, { signal: AbortSignal.timeout(RELAY_TIMEOUT_MS) });
+  if (!resp.ok) throw new Error(`AsterDex HTTP ${resp.status}`);
+  const rows = await resp.json() as [number, string, string, string, string, ...unknown[]][];
+  return rows.map((r) => ({ t: r[0], o: parseFloat(r[1]), h: parseFloat(r[2]), l: parseFloat(r[3]), c: parseFloat(r[4]) })).filter((p) => p.t > 0 && p.c > 0);
+}
+
 const DIRECT_FETCHERS: Record<string, (symbol: string, interval: string, limit: number) => Promise<OhlcvPoint[]>> = {
   binance: fetchBinanceOhlcvDirect,
   bybit:   fetchBybitOhlcvDirect,
   gate:    fetchGateOhlcvDirect,
   okx:     fetchOkxOhlcvDirect,
   mexc:    fetchMexcOhlcvDirect,
+  aster:   fetchAsterOhlcvDirect,
 };
 
 // ---------------------------------------------------------------------------
@@ -263,6 +274,7 @@ async function fetchKlinesForSymbol(
     { name: "gate",    create: () => createGateExchange() },
     { name: "okx",     create: () => createOkxExchange() },
     { name: "mexc",    create: () => createMexcExchange() },
+    { name: "aster",   create: () => createAsterExchange() },
   ];
 
   const results = await Promise.allSettled(
@@ -363,6 +375,7 @@ type SymbolPriceEntry = {
   mexcPrice: number | null;
   gatePrice: number | null;
   okxPrice: number | null;
+  asterPrice: number | null;
 };
 const priceCacheBySymbol = new Map<string, SymbolPriceEntry>();
 
@@ -372,11 +385,13 @@ export type SymbolFundingEntry = {
   gateFundingRate: number | null;
   okxFundingRate: number | null;
   mexcFundingRate: number | null;
+  asterFundingRate: number | null;
   bybitNextFunding: string | null;
   binanceNextFunding: string | null;
   gateNextFunding: string | null;
   okxNextFunding: string | null;
   mexcNextFunding: string | null;
+  asterNextFunding: string | null;
 };
 const fundingRateCacheBySymbol = new Map<string, SymbolFundingEntry>();
 
@@ -402,6 +417,7 @@ export function getFundingRateForExchange(entry: SymbolFundingEntry, exchange: s
     case "gate":    return entry.gateFundingRate    ?? 0;
     case "okx":     return entry.okxFundingRate     ?? 0;
     case "mexc":    return entry.mexcFundingRate    ?? 0;
+    case "aster":   return entry.asterFundingRate   ?? 0;
     default:        return 0;
   }
 }
@@ -456,12 +472,13 @@ async function fetchAndCachePrices(): Promise<unknown[]> {
   const gate    = createGateExchange();    gate.timeout    = PRICE_FETCH_TIMEOUT_MS;
   const okx     = createOkxExchange();     okx.timeout     = PRICE_FETCH_TIMEOUT_MS;
   const mexc    = createMexcExchange();    mexc.timeout    = PRICE_FETCH_TIMEOUT_MS;
+  const aster   = createAsterExchange();   aster.timeout   = PRICE_FETCH_TIMEOUT_MS;
 
   const T = PRICE_FETCH_TIMEOUT_MS;
 
   const [
-    bybitTickers, binanceTickers, gateTickers, okxTickers, mexcTickers,
-    bybitFunding, binanceFunding, gateFunding, okxFunding, mexcFunding,
+    bybitTickers, binanceTickers, gateTickers, okxTickers, mexcTickers, asterTickers,
+    bybitFunding, binanceFunding, gateFunding, okxFunding, mexcFunding, asterFunding,
     bybitOIResult, binanceOIResult, gateOIResult, okxOIResult,
   ] = await Promise.allSettled([
     withTimeout(bybit.fetchTickers(undefined, { type: "linear" }), T, "bybit tickers"),
@@ -469,11 +486,13 @@ async function fetchAndCachePrices(): Promise<unknown[]> {
     withTimeout(gate.fetchTickers(undefined, { type: "swap" }), T, "gate tickers"),
     withTimeout(okx.fetchTickers(undefined, { type: "swap" }), T, "okx tickers"),
     withTimeout(mexc.fetchTickers(undefined, { type: "swap" }), T, "mexc tickers"),
+    withTimeout(aster.fetchTickers(undefined, { type: "future" }), T, "aster tickers"),
     withTimeout(bybit.fetchFundingRates(), T, "bybit funding"),
     withTimeout(binance.fetchFundingRates(), T, "binance funding"),
     withTimeout(gate.fetchFundingRates(), T, "gate funding"),
     withTimeout(okx.fetchFundingRates(), T, "okx funding"),
     withTimeout(mexc.fetchFundingRates(), T, "mexc funding"),
+    withTimeout(aster.fetchFundingRates(), T, "aster funding"),
     withTimeout(bybit.fetchOpenInterests(undefined, { type: "linear" }), T, "bybit OI"),
     withTimeout(binance.fetchOpenInterests(undefined, { type: "future" }), T, "binance OI"),
     withTimeout(gate.fetchOpenInterests(undefined, { type: "swap" }), T, "gate OI"),
@@ -485,12 +504,14 @@ async function fetchAndCachePrices(): Promise<unknown[]> {
   const gateMap    = buildTickerMap(gateTickers.status    === "fulfilled" ? gateTickers.value    : {});
   const okxMap     = buildTickerMap(okxTickers.status     === "fulfilled" ? okxTickers.value     : {});
   const mexcMap    = buildTickerMap(mexcTickers.status    === "fulfilled" ? mexcTickers.value    : {});
+  const asterMap   = buildTickerMap(asterTickers.status   === "fulfilled" ? asterTickers.value   : {});
 
   const bybitFundingMap  = bybitFunding.status  === "fulfilled" ? bybitFunding.value  : {};
   const binanceFundingMap = binanceFunding.status === "fulfilled" ? binanceFunding.value : {};
   const gateFundingMap   = gateFunding.status   === "fulfilled" ? gateFunding.value   : {};
   const okxFundingMap    = okxFunding.status    === "fulfilled" ? okxFunding.value    : {};
   const mexcFundingMap   = mexcFunding.status   === "fulfilled" ? mexcFunding.value   : {};
+  const asterFundingMap  = asterFunding.status  === "fulfilled" ? asterFunding.value  : {};
 
   // Build OI maps: key = base symbol (e.g. "BTC"), value = OI in USD
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -516,7 +537,7 @@ async function fetchAndCachePrices(): Promise<unknown[]> {
 
   const allBases = new Set([
     ...bybitMap.keys(), ...binanceMap.keys(), ...gateMap.keys(),
-    ...okxMap.keys(), ...mexcMap.keys(),
+    ...okxMap.keys(), ...mexcMap.keys(), ...asterMap.keys(),
   ]);
 
   // ── Pass 1: compute all spread info except depth ─────────────────────────
@@ -529,8 +550,9 @@ async function fetchAndCachePrices(): Promise<unknown[]> {
     gateT:    ReturnType<typeof gateMap.get>;
     okxT:     ReturnType<typeof okxMap.get>;
     mexcT:    ReturnType<typeof mexcMap.get>;
+    asterT:   ReturnType<typeof asterMap.get>;
     bybitPriceC: number; binancePriceC: number; gatePriceC: number;
-    okxPriceC: number;   mexcPriceC: number;
+    okxPriceC: number;   mexcPriceC: number;    asterPriceC: number;
     spreadPct: number;
     bestSpreadPct: number;
     bestSpreadLeg: string | null;
@@ -549,14 +571,16 @@ async function fetchAndCachePrices(): Promise<unknown[]> {
     const gateT    = gateMap.get(base);
     const okxT     = okxMap.get(base);
     const mexcT    = mexcMap.get(base);
+    const asterT   = asterMap.get(base);
 
     const bybitPrice   = bybitT   ? (bybitT.last   ?? bybitT.bid   ?? 0) : 0;
     const binancePrice = binanceT ? (binanceT.last  ?? binanceT.bid ?? 0) : 0;
     const gatePrice    = gateT    ? (gateT.last     ?? gateT.bid    ?? 0) : 0;
     const okxPrice     = okxT     ? (okxT.last      ?? okxT.bid     ?? 0) : 0;
     const mexcPrice    = mexcT    ? (mexcT.last      ?? mexcT.bid    ?? 0) : 0;
+    const asterPrice   = asterT   ? (asterT.last     ?? asterT.bid   ?? 0) : 0;
 
-    const rawPriceList = [bybitPrice, binancePrice, gatePrice, okxPrice, mexcPrice];
+    const rawPriceList = [bybitPrice, binancePrice, gatePrice, okxPrice, mexcPrice, asterPrice];
     const livePrices = rawPriceList.filter(p => p > 0);
     if (livePrices.length < 2) continue;
 
@@ -574,13 +598,15 @@ async function fetchAndCachePrices(): Promise<unknown[]> {
     const gatePriceC    = clean(gatePrice);
     const okxPriceC     = clean(okxPrice);
     const mexcPriceC    = clean(mexcPrice);
+    const asterPriceC   = clean(asterPrice);
 
-    const cleanPrices = [bybitPriceC, binancePriceC, gatePriceC, okxPriceC, mexcPriceC];
+    const cleanPrices = [bybitPriceC, binancePriceC, gatePriceC, okxPriceC, mexcPriceC, asterPriceC];
     if (cleanPrices.filter(p => p > 0).length < 2) continue;
 
     const totalVolume =
       (bybitT?.quoteVolume ?? 0) + (binanceT?.quoteVolume ?? 0) +
-      (gateT?.quoteVolume ?? 0) + (okxT?.quoteVolume ?? 0) + (mexcT?.quoteVolume ?? 0);
+      (gateT?.quoteVolume ?? 0) + (okxT?.quoteVolume ?? 0) + (mexcT?.quoteVolume ?? 0) +
+      (asterT?.quoteVolume ?? 0);
     if (totalVolume < MIN_VOLUME_USD) continue;
 
     const spreadPct = bybitPriceC && binancePriceC
@@ -593,6 +619,7 @@ async function fetchAndCachePrices(): Promise<unknown[]> {
       gate:    gatePriceC    ? { price: gatePriceC,    bid: gateT?.bid    ?? gatePriceC,    ask: gateT?.ask    ?? gatePriceC,    fundingRate: gateFundingMap[key]?.fundingRate    ?? 0 } : null,
       okx:     okxPriceC     ? { price: okxPriceC,     bid: okxT?.bid     ?? okxPriceC,     ask: okxT?.ask     ?? okxPriceC,     fundingRate: okxFundingMap[key]?.fundingRate     ?? 0 } : null,
       mexc:    mexcPriceC    ? { price: mexcPriceC,    bid: mexcT?.bid    ?? mexcPriceC,    ask: mexcT?.ask    ?? mexcPriceC,    fundingRate: mexcFundingMap[key]?.fundingRate    ?? 0 } : null,
+      aster:   asterPriceC   ? { price: asterPriceC,   bid: asterT?.bid   ?? asterPriceC,   ask: asterT?.ask   ?? asterPriceC,   fundingRate: asterFundingMap[key]?.fundingRate   ?? 0 } : null,
     };
 
     const { bestSpreadPct, bestSpreadLeg } = computeBestSpread(allPrices);
@@ -628,8 +655,8 @@ async function fetchAndCachePrices(): Promise<unknown[]> {
 
     passOne.push({
       base, key,
-      bybitT, binanceT, gateT, okxT, mexcT,
-      bybitPriceC, binancePriceC, gatePriceC, okxPriceC, mexcPriceC,
+      bybitT, binanceT, gateT, okxT, mexcT, asterT,
+      bybitPriceC, binancePriceC, gatePriceC, okxPriceC, mexcPriceC, asterPriceC,
       spreadPct, bestSpreadPct, bestSpreadLeg, emaSpreadPct,
       openInterestUsd, totalVolume, needsMexcOb,
     });
@@ -662,8 +689,8 @@ async function fetchAndCachePrices(): Promise<unknown[]> {
   for (const d of passOne) {
     const {
       base, key,
-      bybitT, binanceT, gateT, okxT, mexcT,
-      bybitPriceC, binancePriceC, gatePriceC, okxPriceC, mexcPriceC,
+      bybitT, binanceT, gateT, okxT, mexcT, asterT,
+      bybitPriceC, binancePriceC, gatePriceC, okxPriceC, mexcPriceC, asterPriceC,
       spreadPct, bestSpreadPct, bestSpreadLeg,
       openInterestUsd, totalVolume,
     } = d;
@@ -677,10 +704,10 @@ async function fetchAndCachePrices(): Promise<unknown[]> {
       const [cheapExchange, expensiveExchange] = bestSpreadLeg.split("/");
       const mexcOb = mexcObMap.get(base);
       const tickerMap: Record<string, ReturnType<typeof bybitMap.get>> = {
-        bybit: bybitT, binance: binanceT, gate: gateT, okx: okxT, mexc: mexcT,
+        bybit: bybitT, binance: binanceT, gate: gateT, okx: okxT, mexc: mexcT, aster: asterT,
       };
       const priceMap: Record<string, number> = {
-        bybit: bybitPriceC, binance: binancePriceC, gate: gatePriceC, okx: okxPriceC, mexc: mexcPriceC,
+        bybit: bybitPriceC, binance: binancePriceC, gate: gatePriceC, okx: okxPriceC, mexc: mexcPriceC, aster: asterPriceC,
       };
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const sideDepthUsd = (exName: string, side: "bid" | "ask"): number => {
@@ -730,6 +757,11 @@ async function fetchAndCachePrices(): Promise<unknown[]> {
       mexcNextFunding:  mexcFundingMap[key]?.fundingDatetime  ?? null,
       mexcBid:  mexcPriceC ? (mexcT?.bid  ?? null) : null,
       mexcAsk:  mexcPriceC ? (mexcT?.ask  ?? null) : null,
+      asterPrice:   asterPriceC   || null,
+      asterFundingRate:  asterFundingMap[key]?.fundingRate   ?? null,
+      asterNextFunding:  asterFundingMap[key]?.fundingDatetime  ?? null,
+      asterBid:  asterPriceC ? (asterT?.bid  ?? null) : null,
+      asterAsk:  asterPriceC ? (asterT?.ask  ?? null) : null,
       bestSpreadPct,
       bestSpreadLeg,
       emaSpreadPct: d.emaSpreadPct,
@@ -743,23 +775,26 @@ async function fetchAndCachePrices(): Promise<unknown[]> {
   fundingRateCacheBySymbol.clear();
   for (const s of spreads) {
     priceCacheBySymbol.set(s.symbol, {
-      bybitPrice: s.bybitPrice as number | null,
+      bybitPrice:   s.bybitPrice   as number | null,
       binancePrice: s.binancePrice as number | null,
-      mexcPrice: s.mexcPrice as number | null,
-      gatePrice: s.gatePrice as number | null,
-      okxPrice: s.okxPrice as number | null,
+      mexcPrice:    s.mexcPrice    as number | null,
+      gatePrice:    s.gatePrice    as number | null,
+      okxPrice:     s.okxPrice     as number | null,
+      asterPrice:   s.asterPrice   as number | null,
     });
     fundingRateCacheBySymbol.set(s.symbol, {
-      bybitFundingRate:  (s.bybitFundingRate  as number | null) ?? null,
-      binanceFundingRate: (s.binanceFundingRate as number | null) ?? null,
-      gateFundingRate:   (s.gateFundingRate   as number | null) ?? null,
-      okxFundingRate:    (s.okxFundingRate    as number | null) ?? null,
-      mexcFundingRate:   (s.mexcFundingRate   as number | null) ?? null,
-      bybitNextFunding:  (s.bybitNextFunding  as string | null) ?? null,
-      binanceNextFunding: (s.binanceNextFunding as string | null) ?? null,
-      gateNextFunding:   (s.gateNextFunding   as string | null) ?? null,
-      okxNextFunding:    (s.okxNextFunding    as string | null) ?? null,
-      mexcNextFunding:   (s.mexcNextFunding   as string | null) ?? null,
+      bybitFundingRate:   (s.bybitFundingRate   as number | null) ?? null,
+      binanceFundingRate: (s.binanceFundingRate  as number | null) ?? null,
+      gateFundingRate:    (s.gateFundingRate    as number | null) ?? null,
+      okxFundingRate:     (s.okxFundingRate     as number | null) ?? null,
+      mexcFundingRate:    (s.mexcFundingRate    as number | null) ?? null,
+      asterFundingRate:   (s.asterFundingRate   as number | null) ?? null,
+      bybitNextFunding:   (s.bybitNextFunding   as string | null) ?? null,
+      binanceNextFunding: (s.binanceNextFunding  as string | null) ?? null,
+      gateNextFunding:    (s.gateNextFunding    as string | null) ?? null,
+      okxNextFunding:     (s.okxNextFunding     as string | null) ?? null,
+      mexcNextFunding:    (s.mexcNextFunding    as string | null) ?? null,
+      asterNextFunding:   (s.asterNextFunding   as string | null) ?? null,
     });
   }
 
@@ -810,6 +845,13 @@ function getGateCredentials(req: Request) {
   };
 }
 
+function getAsterCredentials(req: Request) {
+  return {
+    apiKey: (req.headers["x-aster-api-key"] as string) || "",
+    secret: (req.headers["x-aster-api-secret"] as string) || "",
+  };
+}
+
 function getCredentialsForExchange(req: Request, exchange: string): { apiKey: string; secret: string; passphrase?: string } {
   switch (exchange) {
     case "bybit":   return getBybitCredentials(req);
@@ -817,6 +859,7 @@ function getCredentialsForExchange(req: Request, exchange: string): { apiKey: st
     case "okx":     { const c = getOkxCredentials(req); return { apiKey: c.apiKey, secret: c.secret, passphrase: c.password }; }
     case "mexc":    return getMexcCredentials(req);
     case "gate":    return getGateCredentials(req);
+    case "aster":   return getAsterCredentials(req);
     default:        return { apiKey: "", secret: "" };
   }
 }
@@ -894,12 +937,21 @@ export function createMexcExchange(apiKey = "", secret = "") {
   });
 }
 
+export function createAsterExchange(apiKey = "", secret = "") {
+  return new ccxt.aster({
+    apiKey,
+    secret,
+    options: { defaultType: "future" },
+  });
+}
+
 export type SupportedCcxtExchange =
   | ReturnType<typeof createBybitExchange>
   | ReturnType<typeof createBinanceExchange>
   | ReturnType<typeof createGateExchange>
   | ReturnType<typeof createOkxExchange>
-  | ReturnType<typeof createMexcExchange>;
+  | ReturnType<typeof createMexcExchange>
+  | ReturnType<typeof createAsterExchange>;
 
 export function createExchangeForName(
   name: string,
@@ -913,6 +965,7 @@ export function createExchangeForName(
     case "gate":    return createGateExchange(apiKey, apiSecret);
     case "okx":     return createOkxExchange(apiKey, apiSecret, extraPassphrase ?? "");
     case "mexc":    return createMexcExchange(apiKey, apiSecret);
+    case "aster":   return createAsterExchange(apiKey, apiSecret);
     default:        throw new Error(`Unsupported exchange: ${name}`);
   }
 }
@@ -1125,6 +1178,7 @@ router.get("/exchanges/klines", async (req: Request, res: Response) => {
     { name: "gate",    create: () => createGateExchange() },
     { name: "okx",     create: () => createOkxExchange() },
     { name: "mexc",    create: () => createMexcExchange() },
+    { name: "aster",   create: () => createAsterExchange() },
   ];
 
   const results = await Promise.allSettled(
