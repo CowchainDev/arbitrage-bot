@@ -944,8 +944,9 @@ function getGateCredentials(req: Request) {
 
 function getAsterCredentials(req: Request) {
   return {
-    apiKey: (req.headers["x-aster-api-key"] as string) || "",
-    secret: (req.headers["x-aster-api-secret"] as string) || "",
+    apiKey:     (req.headers["x-aster-api-key"] as string) || "",
+    secret:     (req.headers["x-aster-api-secret"] as string) || "",
+    passphrase: (req.headers["x-aster-signer-address"] as string) || "",
   };
 }
 
@@ -1355,6 +1356,7 @@ router.get("/exchanges/balances", async (req: Request, res: Response) => {
   const binanceCreds = getBinanceCredentials(req);
   const okxCreds = getOkxCredentials(req);
   const mexcCreds = getMexcCredentials(req);
+  const asterCreds = getAsterCredentials(req);
   const hyperCreds = getHyperLiquidCredentials(req);
 
   const hasAnyCredentials =
@@ -1362,6 +1364,7 @@ router.get("/exchanges/balances", async (req: Request, res: Response) => {
     (binanceCreds.apiKey && binanceCreds.secret) ||
     (okxCreds.apiKey && okxCreds.secret) ||
     (mexcCreds.apiKey && mexcCreds.secret) ||
+    (asterCreds.apiKey && asterCreds.secret && asterCreds.passphrase) ||
     (hyperCreds.apiKey && hyperCreds.secret);
 
   if (!hasAnyCredentials) {
@@ -1387,6 +1390,10 @@ router.get("/exchanges/balances", async (req: Request, res: Response) => {
     if (mexcCreds.apiKey && mexcCreds.secret) {
       const mexc = createMexcExchange(mexcCreds.apiKey, mexcCreds.secret);
       fetchers.push(mexc.fetchBalance({ type: "swap" }).then((b) => ({ exchange: "mexc", balance: b })));
+    }
+    if (asterCreds.apiKey && asterCreds.secret && asterCreds.passphrase) {
+      const aster = createAsterExchange(asterCreds.apiKey, asterCreds.secret, asterCreds.passphrase);
+      fetchers.push(aster.fetchBalance({ type: "future" }).then((b) => ({ exchange: "aster", balance: b })));
     }
     if (hyperCreds.apiKey && hyperCreds.secret) {
       const hyper = createHyperLiquidExchange(hyperCreds.apiKey, hyperCreds.secret);
@@ -1418,6 +1425,8 @@ router.get("/exchanges/balances", async (req: Request, res: Response) => {
       okxPnl: balanceMap["okx"] != null ? balanceMap["okx"].pnl : undefined,
       mexc: balanceMap["mexc"] != null ? balanceMap["mexc"].usdt : undefined,
       mexcPnl: balanceMap["mexc"] != null ? balanceMap["mexc"].pnl : undefined,
+      aster: balanceMap["aster"] != null ? balanceMap["aster"].usdt : undefined,
+      asterPnl: balanceMap["aster"] != null ? balanceMap["aster"].pnl : undefined,
       hyper: balanceMap["hyper"] != null ? balanceMap["hyper"].usdt : undefined,
       hyperPnl: balanceMap["hyper"] != null ? balanceMap["hyper"].pnl : undefined,
     });

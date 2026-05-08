@@ -51,13 +51,14 @@ function HeaderBalances() {
   if (asterCreds?.apiKey) {
     extraHeaders["x-aster-api-key"] = asterCreds.apiKey;
     extraHeaders["x-aster-api-secret"] = asterCreds.apiSecret;
+    if (asterCreds.passphrase) extraHeaders["x-aster-signer-address"] = asterCreds.passphrase;
   }
   if (hyperCreds?.apiKey) {
     extraHeaders["x-hyper-api-key"] = hyperCreds.apiKey;
     extraHeaders["x-hyper-api-secret"] = hyperCreds.apiSecret;
   }
 
-  const hasAnyCredentials = hasCredentials || !!okxCreds?.apiKey || !!mexcCreds?.apiKey;
+  const hasAnyCredentials = hasCredentials || !!okxCreds?.apiKey || !!mexcCreds?.apiKey || !!asterCreds?.apiKey || !!hyperCreds?.apiKey;
 
   const requestOptions = {
     headers: {
@@ -87,6 +88,7 @@ function HeaderBalances() {
 
   const data = balancesQuery.data as typeof balancesQuery.data & {
     okx?: number; okxPnl?: number; mexc?: number; mexcPnl?: number;
+    aster?: number; asterPnl?: number;
     hyper?: number; hyperPnl?: number;
   };
   const { bybit, binance, bybitPnl, binancePnl } = data;
@@ -97,6 +99,7 @@ function HeaderBalances() {
       {binance > 0 && <BalanceChip label="Binance" usdt={binance} pnl={binancePnl} />}
       {data.okx != null && <BalanceChip label="OKX" usdt={data.okx} pnl={data.okxPnl} />}
       {data.mexc != null && <BalanceChip label="MEXC" usdt={data.mexc} pnl={data.mexcPnl} />}
+      {data.aster != null && <BalanceChip label="Aster" usdt={data.aster} pnl={data.asterPnl} />}
       {data.hyper != null && <BalanceChip label="HL" usdt={data.hyper} pnl={data.hyperPnl} />}
     </div>
   );
