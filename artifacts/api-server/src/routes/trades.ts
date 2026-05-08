@@ -1,7 +1,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db } from "@workspace/db";
 import { closedTradesTable } from "@workspace/db";
-import { desc, sql, count, sum, max, min } from "drizzle-orm";
+import { desc, sql, count, sum, max, min, avg } from "drizzle-orm";
 
 const router: IRouter = Router();
 
@@ -33,6 +33,7 @@ router.get("/trades", async (req: Request, res: Response) => {
           worstTrade: min(closedTradesTable.realizedPnl),
           winningTrades: sql<number>`count(*) filter (where ${closedTradesTable.realizedPnl} > 0)`,
           totalFunding: sql<string | null>`sum(coalesce(${closedTradesTable.fundingPaidUsd}, 0))`,
+          avgFundingRateSpread: avg(closedTradesTable.fundingRateSpread),
         })
         .from(closedTradesTable),
     ]);
@@ -76,6 +77,7 @@ router.get("/trades", async (req: Request, res: Response) => {
         worstTrade: Number(s?.worstTrade ?? 0),
         totalFunding: Number(s?.totalFunding ?? 0),
         netPnl: Number(s?.totalPnl ?? 0) + Number(s?.totalFunding ?? 0),
+        avgFundingRateSpread: s?.avgFundingRateSpread != null ? Number(s.avgFundingRateSpread) : null,
       },
       pagination: { limit, offset },
     });

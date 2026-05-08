@@ -483,6 +483,16 @@ export default function History() {
           sub="per trade"
           positive={stats && stats.totalTrades > 0 ? avgPnl >= 0 : null}
         />
+        <StatCard
+          label="Avg Funding Rate Spread"
+          value={
+            stats?.avgFundingRateSpread != null
+              ? `${stats.avgFundingRateSpread >= 0 ? "+" : ""}${(stats.avgFundingRateSpread * 100).toFixed(4)}%`
+              : "—"
+          }
+          sub="avg at close across trades"
+          positive={stats?.avgFundingRateSpread != null ? stats.avgFundingRateSpread > 0 : null}
+        />
       </div>
 
       <div className="bg-card border border-border rounded-lg p-4">
