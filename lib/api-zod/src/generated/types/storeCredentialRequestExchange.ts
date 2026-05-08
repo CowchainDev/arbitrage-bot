@@ -18,4 +18,6 @@ export const StoreCredentialRequestExchange = {
   gate: "gate",
   okx: "okx",
   mexc: "mexc",
+  aster: "aster",
+  hyper: "hyper",
 } as const;

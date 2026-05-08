@@ -181,7 +181,7 @@ export const PlaceOrderHeader = zod.object({
 });
 
 export const PlaceOrderBody = zod.object({
-  exchange: zod.enum(["bybit", "binance", "gate", "okx", "mexc"]),
+  exchange: zod.enum(["bybit", "binance", "gate", "okx", "mexc", "aster", "hyper"]),
   symbol: zod.string().describe("Token symbol e.g. BTC"),
   side: zod.enum(["long", "short"]),
   usdAmount: zod.number().describe("Order size in USD"),
@@ -846,7 +846,7 @@ export const GetBotLegHistoryResponse = zod.object({
  */
 export const StoreCredentialBody = zod.object({
   exchange: zod
-    .enum(["bybit", "binance", "gate", "okx", "mexc"])
+    .enum(["bybit", "binance", "gate", "okx", "mexc", "aster", "hyper"])
     .describe("Exchange identifier"),
   apiKey: zod.string().describe("API key for the exchange"),
   apiSecret: zod.string().describe("API secret for the exchange"),
