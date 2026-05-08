@@ -1042,11 +1042,14 @@ export function createMexcExchange(apiKey = "", secret = "") {
   });
 }
 
-export function createAsterExchange(apiKey = "", secret = "") {
+export function createAsterExchange(walletAddress = "", privateKey = "", signerAddress = "") {
   return new ccxt.aster({
-    apiKey,
-    secret,
-    options: { defaultType: "future" },
+    walletAddress,
+    privateKey,
+    options: {
+      defaultType: "future",
+      ...(signerAddress ? { signerAddress } : {}),
+    },
   });
 }
 
@@ -1079,7 +1082,7 @@ export function createExchangeForName(
     case "gate":    return createGateExchange(apiKey, apiSecret);
     case "okx":     return createOkxExchange(apiKey, apiSecret, extraPassphrase ?? "");
     case "mexc":    return createMexcExchange(apiKey, apiSecret);
-    case "aster":   return createAsterExchange(apiKey, apiSecret);
+    case "aster":   return createAsterExchange(apiKey, apiSecret, extraPassphrase ?? "");
     case "hyper":   return createHyperLiquidExchange(apiKey, apiSecret);
     default:        throw new Error(`Unsupported exchange: ${name}`);
   }

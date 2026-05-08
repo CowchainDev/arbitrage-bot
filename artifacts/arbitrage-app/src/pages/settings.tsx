@@ -17,6 +17,7 @@ interface ExchangeMeta {
   keysUrl: string;
   hasPassphrase?: boolean;
   hasWalletAuth?: boolean;
+  hasSignerAddress?: boolean;
 }
 
 const EXCHANGES: ExchangeMeta[] = [
@@ -25,7 +26,7 @@ const EXCHANGES: ExchangeMeta[] = [
   { id: "gate", label: "GATE.IO", dot: "bg-sky-400", marketType: "Futures (USDT)", keysUrl: "https://www.gate.io/myaccount/apikey" },
   { id: "okx", label: "OKX", dot: "bg-emerald-400", marketType: "Futures (Perp)", keysUrl: "https://www.okx.com/account/my-api", hasPassphrase: true },
   { id: "mexc", label: "MEXC", dot: "bg-rose-400", marketType: "Futures (USDT)", keysUrl: "https://www.mexc.com/user/openapi" },
-  { id: "aster", label: "ASTERDEX", dot: "bg-violet-500", marketType: "Futures (USDT)", keysUrl: "https://www.asterdex.com/en/account/api-management" },
+  { id: "aster", label: "ASTERDEX", dot: "bg-violet-500", marketType: "Perps (USDT)", keysUrl: "https://www.asterdex.com/en/api-wallet", hasWalletAuth: true, hasSignerAddress: true },
   { id: "hyper", label: "HYPERLIQUID", dot: "bg-violet-400", marketType: "Perps (USDC)", keysUrl: "https://app.hyperliquid.xyz/userInfo", hasWalletAuth: true },
 ];
 
@@ -44,11 +45,12 @@ function ExchangeCard({ meta }: { meta: ExchangeMeta }) {
   const [syncStatus, setSyncStatus] = useState<"idle" | "syncing" | "ok" | "error">("idle");
   const [confirmDelete, setConfirmDelete] = useState(false);
 
+  const needsPassphrase = meta.hasPassphrase || meta.hasSignerAddress;
   const hasChanges = apiKey !== (creds?.apiKey ?? "") || apiSecret !== (creds?.apiSecret ?? "") || passphrase !== (creds?.passphrase ?? "");
-  const canSave = !!apiKey && !!apiSecret;
+  const canSave = !!apiKey && !!apiSecret && (!needsPassphrase || !!passphrase);
 
   const handleSave = async () => {
-    const c = { apiKey, apiSecret, ...(meta.hasPassphrase ? { passphrase } : {}) };
+    const c = { apiKey, apiSecret, ...(needsPassphrase ? { passphrase } : {}) };
     save(c);
     setSyncStatus("syncing");
     try {
@@ -57,7 +59,7 @@ function ExchangeCard({ meta }: { meta: ExchangeMeta }) {
           exchange: meta.id,
           apiKey,
           apiSecret,
-          ...(meta.hasPassphrase && passphrase ? { passphrase } : {}),
+          ...(needsPassphrase && passphrase ? { passphrase } : {}),
         },
       });
       setSyncStatus("ok");
@@ -146,27 +148,33 @@ function ExchangeCard({ meta }: { meta: ExchangeMeta }) {
           </div>
         </div>
 
-        {meta.hasPassphrase && (
+        {needsPassphrase && (
           <div className="space-y-1.5">
-            <label className="text-xs text-muted-foreground uppercase tracking-wider">Passphrase <span className="text-primary">(required)</span></label>
+            <label className="text-xs text-muted-foreground uppercase tracking-wider">
+              {meta.hasSignerAddress
+                ? <>API Wallet Address <span className="text-primary">(required)</span></>
+                : <>Passphrase <span className="text-primary">(required)</span></>}
+            </label>
             <div className="relative">
               <Input
                 value={passphrase}
                 onChange={(e) => { setPassphrase(e.target.value); setSyncStatus("idle"); }}
-                type={showPass ? "text" : "password"}
-                placeholder="Enter OKX API Passphrase"
+                type={meta.hasSignerAddress ? "text" : (showPass ? "text" : "password")}
+                placeholder={meta.hasSignerAddress ? "0x… API wallet address (signer)" : "Enter OKX API Passphrase"}
                 className="font-mono bg-background border-border text-sm pr-10"
                 autoComplete="off"
                 data-testid={`input-${meta.id}-passphrase`}
               />
-              <button
-                type="button"
-                onClick={() => setShowPass((v) => !v)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                tabIndex={-1}
-              >
-                {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
+              {!meta.hasSignerAddress && (
+                <button
+                  type="button"
+                  onClick={() => setShowPass((v) => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  tabIndex={-1}
+                >
+                  {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              )}
             </div>
           </div>
         )}
