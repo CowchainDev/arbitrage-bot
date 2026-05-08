@@ -57,6 +57,7 @@ router.get("/trades", async (req: Request, res: Response) => {
           openFees: isBotTrade ? openFees : undefined,
           closeFees,
           fundingPaidUsd: t.fundingPaidUsd != null ? Number(t.fundingPaidUsd) : undefined,
+          fundingRateSpread: t.fundingRateSpread != null ? Number(t.fundingRateSpread) : undefined,
           spreadAtExit: t.spreadAtExit != null ? Number(t.spreadAtExit) : undefined,
           closeReason: t.closeReason ?? undefined,
           quantity: Number(t.quantity),

@@ -191,10 +191,10 @@ function TradeTable({ trades }: { trades: ClosedTrade[] }) {
             <th className="text-right px-3 py-2 font-medium">Open Fees / Close Fees</th>
             <th className="text-right px-3 py-2 font-medium">
               <span className="inline-flex items-center gap-1">
-                Funding
+                Funding / Rate Spread
                 <Info
                   className="w-3 h-3 text-muted-foreground/60 cursor-help"
-                  aria-label="Net funding received (+) or paid (−) over the life of this trade. Figures for trades closed before the 8-hour interval snap fix may be continuous-ratio estimates rather than settled-interval counts."
+                  aria-label="Net funding received (+) or paid (−) over the life of this trade, with the funding rate spread at close shown below where available. Figures for trades closed before the 8-hour interval snap fix may be continuous-ratio estimates rather than settled-interval counts."
                   role="img"
                 />
               </span>
@@ -299,11 +299,28 @@ function TradeTable({ trades }: { trades: ClosedTrade[] }) {
                     `-$${formatFee(trade.totalFees)}`
                   ) : "—"}
                 </td>
-                <td className={`px-3 py-2.5 text-right ${funding != null ? (funding >= 0 ? "text-primary/80" : "text-destructive/80") : "text-muted-foreground"}`}
-                  title="Estimated net funding received (+) or paid (−) over the life of this trade. Older records may reflect continuous-ratio estimates rather than discrete 8-hour settled intervals.">
-                  {funding != null
-                    ? `${funding >= 0 ? "+" : ""}$${Math.abs(funding).toFixed(4)}`
-                    : "—"}
+                <td
+                  className={`px-3 py-2.5 text-right ${funding != null ? (funding >= 0 ? "text-primary/80" : "text-destructive/80") : "text-muted-foreground"}`}
+                  title={
+                    trade.fundingRateSpread != null
+                      ? `Rate spread at close: ${trade.fundingRateSpread >= 0 ? "+" : ""}${(trade.fundingRateSpread * 100).toFixed(4)}% — Estimated net funding received (+) or paid (−) over the life of this trade. Older records may reflect continuous-ratio estimates rather than discrete 8-hour settled intervals.`
+                      : "Estimated net funding received (+) or paid (−) over the life of this trade. Older records may reflect continuous-ratio estimates rather than discrete 8-hour settled intervals."
+                  }
+                >
+                  {funding != null || trade.fundingRateSpread != null ? (
+                    <span className="flex flex-col items-end gap-0.5">
+                      {funding != null ? (
+                        <span>{`${funding >= 0 ? "+" : ""}$${Math.abs(funding).toFixed(4)}`}</span>
+                      ) : (
+                        <span>—</span>
+                      )}
+                      {trade.fundingRateSpread != null && (
+                        <span className="text-muted-foreground/60 text-[10px]">
+                          {`${trade.fundingRateSpread >= 0 ? "+" : ""}${(trade.fundingRateSpread * 100).toFixed(4)}%`}
+                        </span>
+                      )}
+                    </span>
+                  ) : "—"}
                 </td>
                 <td
                   className={`px-3 py-2.5 text-right font-semibold ${pnlPositive ? "text-primary" : "text-destructive"}`}

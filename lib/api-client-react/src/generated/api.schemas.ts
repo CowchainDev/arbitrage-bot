@@ -282,6 +282,8 @@ export interface ClosedTrade {
   closeFees?: number;
   /** Estimated net funding captured over the life of the trade (positive = received, negative = paid). Null for older trades recorded before this feature. */
   fundingPaidUsd?: number | null;
+  /** The net funding rate spread (long rate minus short rate) at the time the trade was closed. Positive means long side received more than short side paid. Null for older trades. */
+  fundingRateSpread?: number | null;
   /** The spread percentage at the time the trade was closed. Null for older trades. */
   spreadAtExit?: number | null;
   /** Why the trade was closed (e.g. take_profit, stop_loss, force_stop, manual). Null for older trades. */
