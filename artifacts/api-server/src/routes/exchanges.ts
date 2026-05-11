@@ -1045,6 +1045,10 @@ export function createMexcExchange(apiKey = "", secret = "") {
 
 export function createAsterExchange(walletAddress = "", privateKey = "", signerAddress = "") {
   return new ccxt.aster({
+    // apiKey + secret satisfy checkRequiredCredentials() which runs before signing.
+    // For V3 paths the actual signing uses walletAddress/privateKey/signerAddress.
+    apiKey: walletAddress,
+    secret: privateKey,
     walletAddress,
     privateKey,
     options: {
