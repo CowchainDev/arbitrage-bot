@@ -1393,7 +1393,25 @@ router.get("/exchanges/balances", async (req: Request, res: Response) => {
     }
     if (asterCreds.apiKey && asterCreds.secret && asterCreds.passphrase) {
       const aster = createAsterExchange(asterCreds.apiKey, asterCreds.secret, asterCreds.passphrase);
-      fetchers.push(aster.fetchBalance({ type: "future" }).then((b) => ({ exchange: "aster", balance: b })));
+      // fetchBalance() calls the V4 endpoint which requires traditional apiKey+HMAC auth.
+      // V3 wallet-based auth (walletAddress+privateKey+signerAddress) only signs paths containing 'v3'.
+      // So we call fapiPrivateGetV3Account directly which is wallet-signed.
+      fetchers.push(
+        (aster as any).fapiPrivateGetV3Account({}).then((resp: any) => {
+          const assets: Array<{ asset: string; walletBalance: string; maxWithdrawAmount?: string; unrealizedProfit?: string }> =
+            resp?.assets ?? [];
+          const balanceObj: Record<string, { free: string; total: string }> = {};
+          let unrealizedProfit = 0;
+          for (const a of assets) {
+            balanceObj[a.asset] = {
+              free: a.maxWithdrawAmount ?? a.walletBalance,
+              total: a.walletBalance,
+            };
+            if (a.asset === "USDT") unrealizedProfit = Number(a.unrealizedProfit) || 0;
+          }
+          return { exchange: "aster", balance: balanceObj as Record<string, unknown>, pnl: unrealizedProfit };
+        })
+      );
     }
     if (hyperCreds.apiKey && hyperCreds.secret) {
       const hyper = createHyperLiquidExchange(hyperCreds.apiKey, hyperCreds.secret);
@@ -1404,13 +1422,20 @@ router.get("/exchanges/balances", async (req: Request, res: Response) => {
 
     const balanceMap: Record<string, { usdt: number; pnl: number }> = {};
     for (const result of results) {
-      if (result.status !== "fulfilled") continue;
-      const { exchange, balance } = result.value as { exchange: string; balance: Record<string, unknown> };
+      if (result.status === "rejected") {
+        req.log.warn({ err: result.reason }, "Balance fetch failed for an exchange");
+        continue;
+      }
+      const { exchange, balance, pnl: topLevelPnl } = result.value as {
+        exchange: string;
+        balance: Record<string, unknown>;
+        pnl?: number;
+      };
       // HyperLiquid uses USDC; all others use USDT.
       const currency = exchange === "hyper" ? "USDC" : "USDT";
-      const bal = balance[currency] as Record<string, number> | undefined;
+      const bal = balance[currency] as Record<string, number | string> | undefined;
       const usdt = bal?.free ?? bal?.total ?? 0;
-      let pnl = 0;
+      let pnl = topLevelPnl ?? 0;
       if (exchange === "bybit") pnl = (balance.info as Record<string, unknown>)?.totalUnrealisedPnl as number ?? 0;
       if (exchange === "binance") pnl = (balance.info as Record<string, unknown>)?.totalUnrealizedProfit as number ?? 0;
       balanceMap[exchange] = { usdt: Number(usdt) || 0, pnl: Number(pnl) || 0 };
