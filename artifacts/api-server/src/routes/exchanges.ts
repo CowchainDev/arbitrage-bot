@@ -1,6 +1,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import ccxt from "ccxt";
-import { requireBotSecret } from "../middleware/auth";
+import { requireBotSecret, requireAuth } from "../middleware/auth";
+import { getCredentialFailuresForUser } from "../services/bot-watcher";
 import {
   PlaceOrderBody,
   ClosePositionBody,
@@ -2316,5 +2317,11 @@ export async function closePositionInternal(
     binanceError: errorB,
   };
 }
+
+router.get("/exchanges/credential-failures", requireAuth, (req: Request, res: Response): void => {
+  const userId = (req as any).userId as string;
+  const failures = getCredentialFailuresForUser(userId);
+  res.json({ failures });
+});
 
 export default router;

@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, useRef, useMemo, type ReactNode } from "react";
+import { createContext, useContext, useState, useCallback, useRef, useMemo, useEffect, type ReactNode } from "react";
 import { toast } from "sonner";
 import { useNotificationStream, type BotEvent, type NotificationMessage } from "@/hooks/use-notification-stream";
 
@@ -118,6 +118,23 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useNotificationStream(handleMessage);
+
+  // Hydrate failing exchanges from server on mount so the warning survives page refresh.
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/exchanges/credential-failures", { credentials: "include" })
+      .then((r) => r.ok ? r.json() : null)
+      .then((data: { failures: Array<{ exchange: string; message: string }> } | null) => {
+        if (cancelled || !data?.failures?.length) return;
+        setFailingExchanges((prev) => {
+          const next = new Set(prev);
+          for (const { exchange } of data.failures) next.add(exchange);
+          return next;
+        });
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
 
   const unreadCount = notifications.filter((n) => !n.read).length;
 

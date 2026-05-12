@@ -109,11 +109,6 @@ async function getCachedCredentials(userId: string, exchange: SupportedExchange)
     return null;
   }
   credCache.set(cacheKey, { data: fresh, ts: Date.now() });
-  // Credentials are present in DB — clear any previously recorded missing-creds failure
-  // and emit credential_ok so the frontend warning banner goes away.
-  if (clearCredFailure(userId, exchange)) {
-    botEventBus.emitBotEvent({ kind: "credential_ok", exchange });
-  }
   return fresh;
 }
 
@@ -830,6 +825,21 @@ export function startBotWatcher(): void {
 
   watcherTimer = setTimeout(tick, WATCHER_INTERVAL_MS);
   logger.info("Bot watcher started");
+}
+
+/** Returns all currently recorded credential failures for a given user. */
+export function getCredentialFailuresForUser(userId: string): Array<{ exchange: string; message: string }> {
+  const result: Array<{ exchange: string; message: string }> = [];
+  for (const [key, message] of credFailures.entries()) {
+    const colonIdx = key.indexOf(":");
+    if (colonIdx === -1) continue;
+    const storedUserId = key.slice(0, colonIdx);
+    const exchange = key.slice(colonIdx + 1);
+    if (storedUserId === userId) {
+      result.push({ exchange, message });
+    }
+  }
+  return result;
 }
 
 export function stopBotWatcher(): void {
