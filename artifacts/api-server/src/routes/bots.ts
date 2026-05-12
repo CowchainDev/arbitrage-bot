@@ -101,6 +101,14 @@ router.post("/bots", requireAuth, async (req: Request, res: Response) => {
     return;
   }
 
+  if (parsed.data.closeSpreadPct >= parsed.data.enterSpreadPct) {
+    res.status(400).json({
+      error: "bad_request",
+      message: "closeSpreadPct must be less than enterSpreadPct (take-profit spread must be tighter than the entry threshold)",
+    });
+    return;
+  }
+
   const {
     symbol, enterSpreadPct, closeSpreadPct, orderSizeUsd,
     maxOrders, forceStopUsd, bybitLeverage, binanceLeverage,

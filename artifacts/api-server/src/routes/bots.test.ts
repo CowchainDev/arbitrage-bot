@@ -388,3 +388,146 @@ describe("POST /bots – CreateBotBody Zod schema", () => {
     expect(parsed.success).toBe(true);
   });
 });
+
+describe("POST /bots – CreateBotBody range constraints", () => {
+  const validBase = {
+    symbol: "BTC",
+    enterSpreadPct: 0.3,
+    closeSpreadPct: 0.1,
+    orderSizeUsd: 100,
+  };
+
+  describe("enterSpreadPct", () => {
+    it("rejects zero", () => {
+      expect(CreateBotBody.safeParse({ ...validBase, enterSpreadPct: 0 }).success).toBe(false);
+    });
+    it("rejects negative values", () => {
+      expect(CreateBotBody.safeParse({ ...validBase, enterSpreadPct: -0.1 }).success).toBe(false);
+    });
+    it("accepts a small positive value", () => {
+      expect(CreateBotBody.safeParse({ ...validBase, enterSpreadPct: 0.0001 }).success).toBe(true);
+    });
+  });
+
+  describe("closeSpreadPct", () => {
+    it("rejects zero", () => {
+      expect(CreateBotBody.safeParse({ ...validBase, closeSpreadPct: 0 }).success).toBe(false);
+    });
+    it("rejects negative values", () => {
+      expect(CreateBotBody.safeParse({ ...validBase, closeSpreadPct: -0.1 }).success).toBe(false);
+    });
+    it("accepts a small positive value", () => {
+      expect(CreateBotBody.safeParse({ ...validBase, closeSpreadPct: 0.0001 }).success).toBe(true);
+    });
+  });
+
+  describe("stopLossSpreadPct", () => {
+    it("accepts zero (disabled)", () => {
+      expect(CreateBotBody.safeParse({ ...validBase, stopLossSpreadPct: 0 }).success).toBe(true);
+    });
+    it("rejects negative values", () => {
+      expect(CreateBotBody.safeParse({ ...validBase, stopLossSpreadPct: -0.1 }).success).toBe(false);
+    });
+    it("accepts a positive value", () => {
+      expect(CreateBotBody.safeParse({ ...validBase, stopLossSpreadPct: 0.5 }).success).toBe(true);
+    });
+  });
+
+  describe("orderSizeUsd", () => {
+    it("rejects zero", () => {
+      expect(CreateBotBody.safeParse({ ...validBase, orderSizeUsd: 0 }).success).toBe(false);
+    });
+    it("rejects negative values", () => {
+      expect(CreateBotBody.safeParse({ ...validBase, orderSizeUsd: -50 }).success).toBe(false);
+    });
+    it("accepts values >= 1", () => {
+      expect(CreateBotBody.safeParse({ ...validBase, orderSizeUsd: 1 }).success).toBe(true);
+    });
+  });
+
+  describe("maxOrders", () => {
+    it("rejects zero", () => {
+      expect(CreateBotBody.safeParse({ ...validBase, maxOrders: 0 }).success).toBe(false);
+    });
+    it("rejects negative values", () => {
+      expect(CreateBotBody.safeParse({ ...validBase, maxOrders: -1 }).success).toBe(false);
+    });
+    it("rejects non-integer values", () => {
+      expect(CreateBotBody.safeParse({ ...validBase, maxOrders: 1.5 }).success).toBe(false);
+    });
+    it("accepts positive integers", () => {
+      expect(CreateBotBody.safeParse({ ...validBase, maxOrders: 3 }).success).toBe(true);
+    });
+  });
+
+  describe("leverage fields (bybitLeverage, binanceLeverage, leverageA, leverageB)", () => {
+    const leverageFields = ["bybitLeverage", "binanceLeverage", "leverageA", "leverageB"] as const;
+    for (const field of leverageFields) {
+      it(`${field}: rejects 0`, () => {
+        expect(CreateBotBody.safeParse({ ...validBase, [field]: 0 }).success).toBe(false);
+      });
+      it(`${field}: rejects values above 125`, () => {
+        expect(CreateBotBody.safeParse({ ...validBase, [field]: 126 }).success).toBe(false);
+      });
+      it(`${field}: rejects non-integer values`, () => {
+        expect(CreateBotBody.safeParse({ ...validBase, [field]: 1.5 }).success).toBe(false);
+      });
+      it(`${field}: accepts boundary value 1`, () => {
+        expect(CreateBotBody.safeParse({ ...validBase, [field]: 1 }).success).toBe(true);
+      });
+      it(`${field}: accepts boundary value 125`, () => {
+        expect(CreateBotBody.safeParse({ ...validBase, [field]: 125 }).success).toBe(true);
+      });
+    }
+  });
+});
+
+describe("POST /api/bots – inverted spread cross-field check", () => {
+  let app: express.Express;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    app = await buildApp();
+  });
+
+  it("returns 400 when closeSpreadPct equals enterSpreadPct", async () => {
+    const res = await request(app)
+      .post("/api/bots")
+      .send({ symbol: "BTC", enterSpreadPct: 0.2, closeSpreadPct: 0.2, orderSizeUsd: 100 })
+      .set("Content-Type", "application/json");
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("bad_request");
+    expect(res.body.message).toMatch(/closeSpreadPct must be less than enterSpreadPct/i);
+  });
+
+  it("returns 400 when closeSpreadPct is greater than enterSpreadPct", async () => {
+    const res = await request(app)
+      .post("/api/bots")
+      .send({ symbol: "BTC", enterSpreadPct: 0.1, closeSpreadPct: 0.3, orderSizeUsd: 100 })
+      .set("Content-Type", "application/json");
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("bad_request");
+    expect(res.body.message).toMatch(/closeSpreadPct must be less than enterSpreadPct/i);
+  });
+
+  it("passes when closeSpreadPct is strictly less than enterSpreadPct", async () => {
+    const res = await request(app)
+      .post("/api/bots")
+      .send({ symbol: "BTC", enterSpreadPct: 0.3, closeSpreadPct: 0.1, orderSizeUsd: 100 })
+      .set("Content-Type", "application/json");
+
+    expect(res.status).not.toBe(400);
+  });
+
+  it("returns 400 when enterSpreadPct is zero (Zod check fires before cross-field check)", async () => {
+    const res = await request(app)
+      .post("/api/bots")
+      .send({ symbol: "BTC", enterSpreadPct: 0, closeSpreadPct: 0.1, orderSizeUsd: 100 })
+      .set("Content-Type", "application/json");
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("bad_request");
+  });
+});

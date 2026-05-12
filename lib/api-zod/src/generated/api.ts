@@ -450,31 +450,33 @@ export const CreateBotHeader = zod.object({
 
 export const CreateBotBody = zod.object({
   symbol: zod.string().describe("Token symbol e.g. BTC"),
-  enterSpreadPct: zod.number().describe("Minimum spread % to open a new leg"),
+  enterSpreadPct: zod.number().min(0.0001).describe("Minimum spread % to open a new leg"),
   closeSpreadPct: zod
     .number()
+    .min(0.0001)
     .describe("Spread % at which open legs are closed (take profit)"),
   stopLossSpreadPct: zod
     .number()
+    .min(0)
     .optional()
     .describe(
       "Spread % at which a widening position is closed (stop loss, 0 = disabled)",
     ),
-  orderSizeUsd: zod.number().describe("Total USD size per leg"),
-  maxOrders: zod.number().optional().describe("Maximum concurrent open legs"),
+  orderSizeUsd: zod.number().min(1).describe("Total USD size per leg"),
+  maxOrders: zod.number().int().min(1).optional().describe("Maximum concurrent open legs"),
   forceStopUsd: zod
     .number()
     .optional()
     .describe("Force-stop loss threshold in USD"),
-  bybitLeverage: zod.number().optional(),
-  binanceLeverage: zod.number().optional(),
+  bybitLeverage: zod.number().int().min(1).max(125).optional(),
+  binanceLeverage: zod.number().int().min(1).max(125).optional(),
   exchangeA: zod.string().optional().describe("First exchange (default bybit)"),
   exchangeB: zod
     .string()
     .optional()
     .describe("Second exchange (default binance)"),
-  leverageA: zod.number().optional().describe("Leverage for exchange A"),
-  leverageB: zod.number().optional().describe("Leverage for exchange B"),
+  leverageA: zod.number().int().min(1).max(125).optional().describe("Leverage for exchange A"),
+  leverageB: zod.number().int().min(1).max(125).optional().describe("Leverage for exchange B"),
 });
 
 export const CreateBotResponse = zod.object({
