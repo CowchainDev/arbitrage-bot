@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import express from "express";
 import request from "supertest";
-import { UpdateBotBody } from "@workspace/api-zod";
+import { CreateBotBody, UpdateBotBody } from "@workspace/api-zod";
 import { buildBotUpdateFields } from "./bots.js";
 
 vi.mock("../middleware/auth.js", () => ({
@@ -276,5 +276,115 @@ describe("UpdateBotBody – range / boundary validation", () => {
       orderSizeUsd: 0,
     });
     expect(result.success).toBe(false);
+  });
+});
+
+describe("POST /api/bots – empty-body guard", () => {
+  let app: express.Express;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    app = await buildApp();
+  });
+
+  it("returns 400 when the body is completely empty", async () => {
+    const res = await request(app)
+      .post("/api/bots")
+      .send({})
+      .set("Content-Type", "application/json");
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("bad_request");
+    expect(res.body.message).toMatch(/must not be empty/i);
+  });
+
+  it("returns 400 when required fields are missing", async () => {
+    const res = await request(app)
+      .post("/api/bots")
+      .send({ symbol: "BTC" })
+      .set("Content-Type", "application/json");
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("bad_request");
+  });
+
+  it("returns 400 when numeric fields have wrong types", async () => {
+    const res = await request(app)
+      .post("/api/bots")
+      .send({
+        symbol: "BTC",
+        enterSpreadPct: "not-a-number",
+        closeSpreadPct: 0.1,
+        orderSizeUsd: 100,
+      })
+      .set("Content-Type", "application/json");
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("bad_request");
+  });
+
+  it("passes the guard when all required fields are present", async () => {
+    const res = await request(app)
+      .post("/api/bots")
+      .send({
+        symbol: "BTC",
+        enterSpreadPct: 0.3,
+        closeSpreadPct: 0.1,
+        orderSizeUsd: 100,
+      })
+      .set("Content-Type", "application/json");
+
+    expect(res.status).not.toBe(400);
+  });
+});
+
+describe("POST /bots – CreateBotBody Zod schema", () => {
+  it("rejects an empty body", () => {
+    const parsed = CreateBotBody.safeParse({});
+    expect(parsed.success).toBe(false);
+  });
+
+  it("rejects a body missing required numeric fields", () => {
+    const parsed = CreateBotBody.safeParse({ symbol: "ETH" });
+    expect(parsed.success).toBe(false);
+  });
+
+  it("rejects a body where a required numeric field has a string value", () => {
+    const parsed = CreateBotBody.safeParse({
+      symbol: "BTC",
+      enterSpreadPct: "high",
+      closeSpreadPct: 0.1,
+      orderSizeUsd: 100,
+    });
+    expect(parsed.success).toBe(false);
+  });
+
+  it("accepts a minimal valid body with only required fields", () => {
+    const parsed = CreateBotBody.safeParse({
+      symbol: "BTC",
+      enterSpreadPct: 0.3,
+      closeSpreadPct: 0.1,
+      orderSizeUsd: 100,
+    });
+    expect(parsed.success).toBe(true);
+  });
+
+  it("accepts a full body with all optional fields provided", () => {
+    const parsed = CreateBotBody.safeParse({
+      symbol: "ETH",
+      enterSpreadPct: 0.25,
+      closeSpreadPct: 0.05,
+      orderSizeUsd: 200,
+      stopLossSpreadPct: 0.5,
+      maxOrders: 3,
+      forceStopUsd: 50,
+      bybitLeverage: 2,
+      binanceLeverage: 2,
+      exchangeA: "bybit",
+      exchangeB: "binance",
+      leverageA: 2,
+      leverageB: 2,
+    });
+    expect(parsed.success).toBe(true);
   });
 });
