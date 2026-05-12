@@ -23,6 +23,7 @@ import type {
   BotListResponse,
   BotResponse,
   BotStats,
+  BotsStatusResponse,
   ClosePositionRequest,
   ClosePositionResult,
   CreateBotRequest,
@@ -717,6 +718,81 @@ export const useClosePosition = <
 > => {
   return useMutation(getClosePositionMutationOptions(options));
 };
+
+/**
+ * @summary Get bot watcher startup status
+ */
+export const getGetBotsStatusUrl = () => {
+  return `/api/bots/status`;
+};
+
+export const getBotsStatus = async (
+  options?: RequestInit,
+): Promise<BotsStatusResponse> => {
+  return customFetch<BotsStatusResponse>(getGetBotsStatusUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetBotsStatusQueryKey = () => {
+  return [`/api/bots/status`] as const;
+};
+
+export const getGetBotsStatusQueryOptions = <
+  TData = Awaited<ReturnType<typeof getBotsStatus>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getBotsStatus>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetBotsStatusQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getBotsStatus>>> = ({
+    signal,
+  }) => getBotsStatus({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getBotsStatus>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetBotsStatusQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getBotsStatus>>
+>;
+export type GetBotsStatusQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get bot watcher startup status
+ */
+
+export function useGetBotsStatus<
+  TData = Awaited<ReturnType<typeof getBotsStatus>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getBotsStatus>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetBotsStatusQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
 
 /**
  * @summary List all bot configurations
@@ -2016,8 +2092,10 @@ export const getGetTradesPnlChartUrl = (params?: GetTradesPnlChartParams) => {
     }
   });
 
-  return normalizedParams.size
-    ? `/api/trades/pnl-chart?${normalizedParams.toString()}`
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/trades/pnl-chart?${stringifiedParams}`
     : `/api/trades/pnl-chart`;
 };
 
@@ -2031,7 +2109,9 @@ export const getTradesPnlChart = async (
   });
 };
 
-export const getGetTradesPnlChartQueryKey = (params?: GetTradesPnlChartParams) => {
+export const getGetTradesPnlChartQueryKey = (
+  params?: GetTradesPnlChartParams,
+) => {
   return [`/api/trades/pnl-chart`, ...(params ? [params] : [])] as const;
 };
 
@@ -2051,7 +2131,8 @@ export const getGetTradesPnlChartQueryOptions = <
 ) => {
   const { query: queryOptions, request: requestOptions } = options ?? {};
 
-  const queryKey = queryOptions?.queryKey ?? getGetTradesPnlChartQueryKey(params);
+  const queryKey =
+    queryOptions?.queryKey ?? getGetTradesPnlChartQueryKey(params);
 
   const queryFn: QueryFunction<
     Awaited<ReturnType<typeof getTradesPnlChart>>

@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import { Link } from "wouter";
 import { Star, Search, TrendingUp, AlertCircle, ChevronDown, ChevronUp, X, Bell, BellOff, Bot, LayoutList, LayoutGrid, ChevronsUpDown, Clock } from "lucide-react";
-import { useGetExchangePrices, getGetExchangePricesQueryKey, useGetPositions, getGetPositionsQueryKey } from "@workspace/api-client-react";
+import { useGetExchangePrices, getGetExchangePricesQueryKey, useGetPositions, getGetPositionsQueryKey, useGetBotsStatus, getGetBotsStatusQueryKey } from "@workspace/api-client-react";
 import type { TokenSpread, Position, BotConfig } from "@workspace/api-client-react";
 import { TokenDetailPanel } from "@/components/token-detail-panel";
 import { useBots } from "@/hooks/use-bots";
@@ -656,7 +656,16 @@ export default function Dashboard() {
   const requestHeaders = getRequestHeaders();
   const { localPositions, removePosition } = useLocalPositions();
   const { setDataSource } = useConnectionStatus();
-  const { getBotStatusForSymbol, allOpenLegsWithBot } = useBots();
+  const { bots, getBotStatusForSymbol, allOpenLegsWithBot } = useBots();
+
+  const botsStatusQuery = useGetBotsStatus({
+    query: {
+      queryKey: getGetBotsStatusQueryKey(),
+      refetchInterval: (query) => (query.state.data?.warming ? 1000 : false),
+      staleTime: 500,
+    },
+  });
+  const isBotsWarming = botsStatusQuery.data?.warming ?? false;
 
   const ALL_EXCHANGES = ALL_EXCHANGES_LIST;
 
@@ -1058,6 +1067,14 @@ export default function Dashboard() {
         <div className="flex items-center gap-3 bg-card border border-border rounded px-3 py-2 text-xs shrink-0">
           <span className="inline-block w-3 h-3 border border-primary border-t-transparent rounded-full animate-spin shrink-0" />
           <span className="text-muted-foreground">Fetching live prices from exchanges…</span>
+        </div>
+      )}
+      {isBotsWarming && bots.length > 0 && (
+        <div className="flex items-center gap-3 bg-card border border-blue-500/25 rounded px-3 py-2 text-xs shrink-0" data-testid="banner-bots-warming">
+          <span className="inline-block w-3 h-3 border border-blue-400 border-t-transparent rounded-full animate-spin shrink-0" />
+          <span className="text-muted-foreground">
+            Bots initializing — loading credentials and verifying API keys…
+          </span>
         </div>
       )}
 

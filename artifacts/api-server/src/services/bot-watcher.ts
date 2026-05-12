@@ -27,6 +27,12 @@ let watcherTimer: ReturnType<typeof setTimeout> | null = null;
 let priceRefreshTimer: ReturnType<typeof setTimeout> | null = null;
 let reconcileTimer: ReturnType<typeof setTimeout> | null = null;
 let running = false;
+let warming = false;
+
+/** Returns true while the credential cache warmup + startup probe is in progress. */
+export function isWarmingUp(): boolean {
+  return warming;
+}
 
 const WATCHER_INTERVAL_MS = 1500;
 const PRICE_REFRESH_INTERVAL_MS = 5000;
@@ -1051,6 +1057,7 @@ async function probeAllEnabledBotsOnStartup(): Promise<void> {
 export function startBotWatcher(): void {
   if (running) return;
   running = true;
+  warming = true;
 
   // Price refresh doesn't need credentials — start it immediately.
   startPriceRefreshLoop();
@@ -1073,6 +1080,7 @@ export function startBotWatcher(): void {
       logger.warn({ err }, "Bot watcher: startup credential probe sweep failed — starting loops anyway"),
     )
     .finally(() => {
+      warming = false;
       if (!running) return;
       startReconcileLoop();
       startWatcherLoop();

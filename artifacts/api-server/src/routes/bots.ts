@@ -3,7 +3,7 @@ import { db } from "@workspace/db";
 import { botConfigsTable, botLegsTable, type BotConfig, type BotLeg, type InsertBotConfig } from "@workspace/db";
 import { eq, and, desc } from "drizzle-orm";
 import { CreateBotBody, UpdateBotBody } from "@workspace/api-zod";
-import { closeAllLegsForBot, probeCredentialsForBot } from "../services/bot-watcher";
+import { closeAllLegsForBot, probeCredentialsForBot, isWarmingUp } from "../services/bot-watcher";
 import { requireAuth } from "../middleware/auth";
 import { logger } from "../lib/logger";
 
@@ -68,6 +68,10 @@ function normalizeBotLeg(leg: BotLeg) {
     closedAt: leg.closedAt ? leg.closedAt.toISOString() : undefined,
   };
 }
+
+router.get("/bots/status", (_req: Request, res: Response) => {
+  res.json({ warming: isWarmingUp() });
+});
 
 router.get("/bots", requireAuth, async (req: Request, res: Response) => {
   const userId = (req as any).userId as string;

@@ -335,6 +335,19 @@ paths:
               schema:
                 $ref: "#/components/schemas/ClosePositionResult"
 
+  /bots/status:
+    get:
+      operationId: getBotsStatus
+      tags: [bots]
+      summary: Get bot watcher startup status
+      responses:
+        "200":
+          description: Watcher status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BotsStatusResponse"
+
   /bots:
     get:
       operationId: listBots
@@ -1643,6 +1656,15 @@ components:
           $ref: "#/components/schemas/BotConfig"
       required:
         - bot
+
+    BotsStatusResponse:
+      type: object
+      properties:
+        warming:
+          type: boolean
+          description: True while the bot watcher is still loading credentials on startup
+      required:
+        - warming
 
     BotListResponse:
       type: object

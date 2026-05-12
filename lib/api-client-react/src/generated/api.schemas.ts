@@ -514,6 +514,11 @@ export interface BotResponse {
   bot: BotConfig;
 }
 
+export interface BotsStatusResponse {
+  /** True while the bot watcher is still loading credentials on startup */
+  warming: boolean;
+}
+
 export interface BotListResponse {
   bots: BotConfig[];
 }

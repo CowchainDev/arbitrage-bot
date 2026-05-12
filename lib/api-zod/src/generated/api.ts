@@ -381,6 +381,17 @@ export const ClosePositionResponse = zod.object({
 });
 
 /**
+ * @summary Get bot watcher startup status
+ */
+export const GetBotsStatusResponse = zod.object({
+  warming: zod
+    .boolean()
+    .describe(
+      "True while the bot watcher is still loading credentials on startup",
+    ),
+});
+
+/**
  * @summary List all bot configurations
  */
 export const ListBotsResponse = zod.object({
@@ -986,6 +997,12 @@ export const GetTradesResponse = zod.object({
         .describe(
           "Why the trade was closed (e.g. take_profit, stop_loss, force_stop, manual). Null for older trades.",
         ),
+      pnlFromExchange: zod
+        .boolean()
+        .nullish()
+        .describe(
+          "True when realizedPnl was reported directly by the exchange. False when it was calculated locally using the spread formula. Null for older trades recorded before this field was added.",
+        ),
       quantity: zod.number(),
       entryTime: zod.string(),
       closeTime: zod.string(),
@@ -1042,9 +1059,30 @@ export const GetTradesSymbolsResponse = zod.object({
 });
 
 /**
- * Returns cumulative PnL data points for every closed trade ordered chronologically. Used for the all-time equity curve chart.
- * @summary Get all-time cumulative PnL chart data
+ * Returns cumulative PnL data points for closed trades ordered chronologically. Supports the same symbol and date filters as the trade history endpoint.
+ * @summary Get cumulative PnL chart data
  */
+export const GetTradesPnlChartQueryParams = zod.object({
+  symbol: zod.coerce
+    .string()
+    .optional()
+    .describe(
+      "Filter by trading symbol (e.g. BTC, ETH). Case-insensitive exact match.",
+    ),
+  dateFrom: zod.coerce
+    .string()
+    .optional()
+    .describe(
+      "Start of date range (ISO 8601). Filters trades closed on or after this date.",
+    ),
+  dateTo: zod.coerce
+    .string()
+    .optional()
+    .describe(
+      "End of date range (ISO 8601). Filters trades closed on or before this date.",
+    ),
+});
+
 export const GetTradesPnlChartResponse = zod.object({
   points: zod.array(
     zod.object({
@@ -1068,6 +1106,12 @@ export const GetTradesPnlChartResponse = zod.object({
         .nullable()
         .describe(
           "Running cumulative net PnL (realizedPnl + funding) up to and including this trade; null if any preceding trade has no funding data",
+        ),
+      fundingRateSpread: zod
+        .number()
+        .nullish()
+        .describe(
+          "Net funding rate spread (long rate minus short rate) at trade close. Null for older trades.",
         ),
       symbol: zod.string().describe("Trading pair symbol"),
     }),
