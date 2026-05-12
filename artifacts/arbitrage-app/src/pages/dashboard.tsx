@@ -507,6 +507,10 @@ function TokenCard({
   const sortCol = sort ? sortColFromOption(sort) : null;
   const frCheapActive = sortCol === "fr_cheap";
   const frExpActive = sortCol === "fr_exp";
+  const emaActive = sortCol === "ema";
+  const volActive = sortCol === "volume";
+  const oiActive = sortCol === "oi";
+  const depActive = sortCol === "depth";
 
   const cardBorder = isSelected
     ? "border-primary bg-primary/8"
@@ -622,15 +626,24 @@ function TokenCard({
 
       {/* Stats grid */}
       <div className="grid grid-cols-3 gap-x-2 text-[10px] font-mono text-muted-foreground/70">
-        <div><span className="text-muted-foreground/40">VOL </span>{formatUsd(token.volume24h)}</div>
-        <div><span className="text-muted-foreground/40">OI </span>{formatUsd(token.openInterestUsd)}</div>
-        <div><span className="text-muted-foreground/40">DEP </span>{formatUsd(token.spreadDepthUsd)}</div>
+        <div className={volActive ? "rounded px-0.5 -mx-0.5 bg-primary/10" : ""}>
+          <span className={volActive ? "text-primary font-semibold" : "text-muted-foreground/40"}>VOL </span>
+          <span className={volActive ? "text-primary font-semibold tabular-nums" : "tabular-nums"}>{formatUsd(token.volume24h)}</span>
+        </div>
+        <div className={oiActive ? "rounded px-0.5 -mx-0.5 bg-primary/10" : ""}>
+          <span className={oiActive ? "text-primary font-semibold" : "text-muted-foreground/40"}>OI </span>
+          <span className={oiActive ? "text-primary font-semibold tabular-nums" : "tabular-nums"}>{formatUsd(token.openInterestUsd)}</span>
+        </div>
+        <div className={depActive ? "rounded px-0.5 -mx-0.5 bg-primary/10" : ""}>
+          <span className={depActive ? "text-primary font-semibold" : "text-muted-foreground/40"}>DEP </span>
+          <span className={depActive ? "text-primary font-semibold tabular-nums" : "tabular-nums"}>{formatUsd(token.spreadDepthUsd)}</span>
+        </div>
       </div>
 
       {/* EMA spread */}
-      <div className="mt-1 text-[10px] font-mono">
-        <span className="text-muted-foreground/40">EMA </span>
-        <span className={emaColor} title="10-min EMA of spread">
+      <div className={`mt-1 text-[10px] font-mono${emaActive ? " rounded px-0.5 -mx-0.5 bg-primary/10" : ""}`}>
+        <span className={emaActive ? "text-primary font-semibold" : "text-muted-foreground/40"}>EMA </span>
+        <span className={emaActive ? "text-primary font-semibold tabular-nums" : emaColor} title="10-min EMA of spread">
           {ema != null && isFinite(ema) ? `${ema >= 0 ? "+" : ""}${ema.toFixed(4)}%` : "-"}
         </span>
       </div>
