@@ -2365,7 +2365,10 @@ router.post("/exchanges/test-credentials", requireAuth, async (req: Request, res
         case "mexc":    bal = await ex.fetchBalance({ type: "swap" }); break;
         default:        bal = await ex.fetchBalance(); break;
       }
-      const raw = (bal as any)?.USDT?.total ?? (bal as any)?.total?.USDT ?? null;
+      // HyperLiquid settles in USDC; all other CCXT exchanges use USDT.
+      const currency = exchange === "hyper" ? "USDC" : "USDT";
+      const currencyBal = bal[currency] as Record<string, number | string> | undefined;
+      const raw = currencyBal?.free ?? currencyBal?.total ?? null;
       if (raw != null) usdtBalance = Number(raw);
     }
 
