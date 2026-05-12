@@ -21,7 +21,8 @@ import {
 } from "recharts";
 import { useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { TrendingUp, BarChart2, Activity, Info, RefreshCw, Filter, X } from "lucide-react";
+import { TrendingUp, BarChart2, Activity, Info, RefreshCw, Filter, X, ShieldAlert } from "lucide-react";
+import { Link } from "wouter";
 
 function StatCard({
   label,
@@ -456,6 +457,15 @@ function TradeTable({ trades }: { trades: ClosedTrade[] }) {
   );
 }
 
+function isHttpStatus(error: unknown, status: number): boolean {
+  return (
+    error != null &&
+    typeof error === "object" &&
+    "status" in error &&
+    (error as { status: number }).status === status
+  );
+}
+
 export default function History() {
   const queryClient = useQueryClient();
   const [backfilling, setBackfilling] = useState(false);
@@ -558,8 +568,19 @@ export default function History() {
       </div>
 
       {tradesQuery.isError && (
-        <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-4 text-sm text-destructive">
-          Failed to load trade history.
+        <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-4 flex items-start gap-3">
+          <ShieldAlert className="w-4 h-4 text-destructive mt-0.5 shrink-0" />
+          <div className="text-sm text-destructive">
+            {isHttpStatus(tradesQuery.error, 401) ? (
+              <>
+                <span className="font-medium">Authentication required</span> — your session may have expired.{" "}
+                Reload the page to sign in again, or verify your credentials in{" "}
+                <Link href="/settings" className="underline underline-offset-2 hover:opacity-80 transition-opacity">Settings</Link>.
+              </>
+            ) : (
+              "Failed to load trade history."
+            )}
+          </div>
         </div>
       )}
 
@@ -701,8 +722,11 @@ export default function History() {
             Loading…
           </div>
         ) : pnlChartQuery.isError ? (
-          <div className="flex items-center justify-center h-40 text-destructive text-sm">
-            Failed to load chart data.
+          <div className="flex items-center justify-center h-40 text-destructive text-sm gap-2">
+            <ShieldAlert className="w-4 h-4 shrink-0" />
+            {isHttpStatus(pnlChartQuery.error, 401)
+              ? <span>Authentication required — <Link href="/settings" className="underline underline-offset-2 hover:opacity-80 transition-opacity">go to Settings</Link>.</span>
+              : "Failed to load chart data."}
           </div>
         ) : (
           <CumulativePnlChart points={chartPoints} />
@@ -723,8 +747,11 @@ export default function History() {
             Loading…
           </div>
         ) : pnlChartQuery.isError ? (
-          <div className="flex items-center justify-center h-40 text-destructive text-sm">
-            Failed to load chart data.
+          <div className="flex items-center justify-center h-40 text-destructive text-sm gap-2">
+            <ShieldAlert className="w-4 h-4 shrink-0" />
+            {isHttpStatus(pnlChartQuery.error, 401)
+              ? <span>Authentication required — <Link href="/settings" className="underline underline-offset-2 hover:opacity-80 transition-opacity">go to Settings</Link>.</span>
+              : "Failed to load chart data."}
           </div>
         ) : (
           <FundingRateSpreadChart points={chartPoints} />

@@ -666,8 +666,17 @@ function BotCard({ bot, openLegs }: { bot: BotConfig; openLegs: BotLeg[] }) {
   );
 }
 
+function is401(error: unknown): boolean {
+  return (
+    error != null &&
+    typeof error === "object" &&
+    "status" in error &&
+    (error as { status: number }).status === 401
+  );
+}
+
 export default function Bots() {
-  const { bots, getBotStatusForSymbol, isLoading } = useBots();
+  const { bots, getBotStatusForSymbol, isLoading, isError, error } = useBots();
 
   const running = bots.filter((b) => b.enabled).length;
   const inPosition = bots.filter((b) => {
@@ -715,6 +724,19 @@ export default function Bots() {
         <div className="flex items-center justify-center py-20 text-muted-foreground gap-2">
           <span className="w-4 h-4 border border-current border-t-transparent rounded-full animate-spin" />
           Loading bots…
+        </div>
+      ) : isError ? (
+        <div className="flex flex-col items-center justify-center py-20 gap-3">
+          <AlertTriangle className="w-8 h-8 text-destructive opacity-70" />
+          <p className="text-sm font-medium text-destructive">
+            {is401(error) ? "Authentication required — your session may have expired." : "Failed to load bots."}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {is401(error)
+              ? "Reload the page to sign in again, or check your credentials in "
+              : "If the problem persists, check your credentials in "}
+            <Link href="/settings" className="underline underline-offset-2 hover:text-foreground transition-colors">Settings</Link>.
+          </p>
         </div>
       ) : bots.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 gap-3 text-muted-foreground">

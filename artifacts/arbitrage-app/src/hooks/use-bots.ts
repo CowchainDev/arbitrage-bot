@@ -63,5 +63,7 @@ export function useBots() {
     allOpenLegs,
     allOpenLegsWithBot,
     isLoading: botsQuery.isLoading,
+    isError: botsQuery.isError,
+    error: botsQuery.error,
   };
 }
