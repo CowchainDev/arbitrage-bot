@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { sql } from "drizzle-orm";
 import { db } from "@workspace/db";
-import { botLegsTable, botConfigsTable, closedTradesTable, credentialsTable } from "@workspace/db";
+import { botLegsTable, botConfigsTable, closedTradesTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { requireBotSecret, requireAuth } from "../middleware/auth";
 import {
@@ -641,10 +641,12 @@ router.post("/admin/backfill-pnl", requireBotSecret, async (req, res) => {
 
 // POST /api/admin/migrate-user
 // Associates all legacy rows (user_id = '') with the currently signed-in
-// user's Clerk ID.  Requires both a valid Clerk session AND the X-Bot-Secret
-// header (when BOT_SECRET is configured).  If the ADMIN_USER_ID env var is
-// set only that specific Clerk user may execute the migration, preventing any
-// other authenticated user from claiming unowned legacy data.
+// user's Clerk ID.  Requires a valid Clerk session.  If the ADMIN_USER_ID env
+// var is set, only that specific Clerk user may execute the migration —
+// preventing any other authenticated user from claiming unowned legacy data.
+// In single-owner deployments where ADMIN_USER_ID is not configured the
+// endpoint is open to any authenticated caller (acceptable because the WHERE
+// user_id = '' filter means a user can only claim rows not yet owned by anyone).
 //
 // Conflict-safety: credentials and bot_configs have unique constraints on
 // (user_id, exchange) and (user_id, symbol) respectively.  We skip any row
@@ -654,7 +656,7 @@ router.post("/admin/backfill-pnl", requireBotSecret, async (req, res) => {
 //
 // Idempotency: subsequent calls return 0 updated rows because the WHERE
 // user_id = '' filter no longer matches anything.
-router.post("/admin/migrate-user", requireBotSecret, requireAuth, async (req, res) => {
+router.post("/admin/migrate-user", requireAuth, async (req, res) => {
   const userId = (req as any).userId as string;
 
   // Optional admin allowlist: if ADMIN_USER_ID is set, only that user may run.
