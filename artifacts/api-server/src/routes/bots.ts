@@ -8,6 +8,38 @@ import { requireAuth } from "../middleware/auth";
 
 const router: IRouter = Router();
 
+export function buildBotUpdateFields(
+  data: Partial<{
+    enterSpreadPct: number;
+    closeSpreadPct: number;
+    stopLossSpreadPct: number;
+    orderSizeUsd: number;
+    maxOrders: number;
+    forceStopUsd: number;
+    bybitLeverage: number;
+    binanceLeverage: number;
+    exchangeA: string;
+    exchangeB: string;
+    leverageA: number;
+    leverageB: number;
+  }>
+): Partial<InsertBotConfig> {
+  const updates: Partial<InsertBotConfig> = {};
+  if (data.enterSpreadPct !== undefined) updates.enterSpreadPct = String(data.enterSpreadPct);
+  if (data.closeSpreadPct !== undefined) updates.closeSpreadPct = String(data.closeSpreadPct);
+  if (data.stopLossSpreadPct !== undefined) updates.stopLossSpreadPct = String(data.stopLossSpreadPct);
+  if (data.orderSizeUsd !== undefined) updates.orderSizeUsd = String(data.orderSizeUsd);
+  if (data.maxOrders !== undefined) updates.maxOrders = data.maxOrders;
+  if (data.forceStopUsd !== undefined) updates.forceStopUsd = String(data.forceStopUsd);
+  if (data.bybitLeverage !== undefined) updates.bybitLeverage = data.bybitLeverage;
+  if (data.binanceLeverage !== undefined) updates.binanceLeverage = data.binanceLeverage;
+  if (data.exchangeA !== undefined) updates.exchangeA = data.exchangeA;
+  if (data.exchangeB !== undefined) updates.exchangeB = data.exchangeB;
+  if (data.leverageA !== undefined) updates.leverageA = data.leverageA;
+  if (data.leverageB !== undefined) updates.leverageB = data.leverageB;
+  return updates;
+}
+
 function normalizeBotConfig(bot: BotConfig) {
   return {
     ...bot,
@@ -109,25 +141,14 @@ router.put("/bots/:id", requireAuth, async (req: Request, res: Response) => {
     return;
   }
 
-  const {
-    enterSpreadPct, closeSpreadPct, orderSizeUsd,
-    maxOrders, forceStopUsd, bybitLeverage, binanceLeverage,
-    exchangeA, exchangeB, leverageA, leverageB, stopLossSpreadPct,
-  } = parsed.data;
+  const updates = buildBotUpdateFields(parsed.data);
 
-  const updates: Partial<InsertBotConfig> = { updatedAt: new Date() };
-  if (enterSpreadPct !== undefined) updates.enterSpreadPct = String(enterSpreadPct);
-  if (closeSpreadPct !== undefined) updates.closeSpreadPct = String(closeSpreadPct);
-  if (stopLossSpreadPct !== undefined) updates.stopLossSpreadPct = String(stopLossSpreadPct);
-  if (orderSizeUsd !== undefined) updates.orderSizeUsd = String(orderSizeUsd);
-  if (maxOrders !== undefined) updates.maxOrders = maxOrders;
-  if (forceStopUsd !== undefined) updates.forceStopUsd = String(forceStopUsd);
-  if (bybitLeverage !== undefined) updates.bybitLeverage = bybitLeverage;
-  if (binanceLeverage !== undefined) updates.binanceLeverage = binanceLeverage;
-  if (exchangeA !== undefined) updates.exchangeA = exchangeA;
-  if (exchangeB !== undefined) updates.exchangeB = exchangeB;
-  if (leverageA !== undefined) updates.leverageA = leverageA;
-  if (leverageB !== undefined) updates.leverageB = leverageB;
+  if (Object.keys(updates).length === 0) {
+    res.status(400).json({ error: "bad_request", message: "No fields provided to update" });
+    return;
+  }
+
+  updates.updatedAt = new Date();
 
   try {
     const [bot] = await db
