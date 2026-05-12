@@ -10,6 +10,15 @@ import { db } from "@workspace/db";
 import { closedTradesTable, botLegsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { logger } from "../lib/logger";
+import {
+  asterFetchTicker,
+  asterFetchMarketStepSize,
+  asterFetchBalance,
+  asterPlaceOrder,
+  asterClosePosition,
+  asterSetLeverage,
+  roundToStepSize,
+} from "../lib/aster-client";
 
 const router: IRouter = Router();
 
@@ -1058,6 +1067,16 @@ export function createAsterExchange(walletAddress = "", privateKey = "", signerA
   });
 }
 
+/** Extract EIP-712 signing credentials stored in a CCXT aster exchange instance. */
+function getAsterCreds(ex: SupportedCcxtExchange): { walletAddress: string; privateKey: string; signerAddress: string } | null {
+  if (ex.id !== "aster") return null;
+  const walletAddress = (ex as any).walletAddress || ex.apiKey || "";
+  const privateKey    = (ex as any).privateKey    || ex.secret  || "";
+  const signerAddress = (ex as any).options?.signerAddress || "";
+  if (!walletAddress || !privateKey || !signerAddress) return null;
+  return { walletAddress, privateKey, signerAddress };
+}
+
 export function createHyperLiquidExchange(walletAddress = "", privateKey = "") {
   return new ccxt.hyperliquid({
     walletAddress,
@@ -1396,20 +1415,15 @@ router.get("/exchanges/balances", async (req: Request, res: Response) => {
       fetchers.push(mexc.fetchBalance({ type: "swap" }).then((b) => ({ exchange: "mexc", balance: b })));
     }
     if (asterCreds.apiKey && asterCreds.secret && asterCreds.passphrase) {
-      const aster = createAsterExchange(asterCreds.apiKey, asterCreds.secret, asterCreds.passphrase);
-      // fetchBalance() calls the V4 endpoint which requires traditional apiKey+HMAC auth.
-      // V3 wallet-based auth (walletAddress+privateKey+signerAddress) only signs paths containing 'v3'.
-      // So we call fapiPrivateGetV3Account directly which is wallet-signed.
+      // Use custom EIP-712 client — CCXT's V3 signing is incompatible with AsterDex's actual auth.
       fetchers.push(
-        (aster as any).fapiPrivateGetV3Account({}).then((resp: any) => {
-          const assets: Array<{ asset: string; walletBalance: string; maxWithdrawAmount?: string; unrealizedProfit?: string }> =
-            resp?.assets ?? [];
+        asterFetchBalance(asterCreds.apiKey, asterCreds.passphrase, asterCreds.secret).then((assets) => {
           const balanceObj: Record<string, { free: string; total: string }> = {};
           let unrealizedProfit = 0;
           for (const a of assets) {
             balanceObj[a.asset] = {
-              free: a.maxWithdrawAmount ?? a.walletBalance,
-              total: a.walletBalance,
+              free: a.availableBalance ?? a.balance,
+              total: a.balance,
             };
             if (a.asset === "USDT") unrealizedProfit = Number(a.unrealizedProfit) || 0;
           }
@@ -1854,6 +1868,50 @@ export async function placeOrderInternal(
   leverage: number | undefined
 ): Promise<{ orderId: string; exchange: string; symbol: string; side: string; filledQty: number; avgPrice: number; status: string; feeCost: number; contractSize: number }> {
   const marketSymbol = `${symbol}/USDT:USDT`;
+  const exchangeName = ex.id;
+
+  // ── AsterDex: use custom EIP-712 client instead of CCXT ──────────────────
+  if (exchangeName === "aster") {
+    const creds = getAsterCreds(ex);
+    if (!creds) throw new Error("AsterDex: missing wallet/signer credentials");
+
+    if (leverage && leverage !== 1) {
+      try {
+        await asterSetLeverage(symbol, leverage, creds.walletAddress, creds.signerAddress, creds.privateKey);
+      } catch (_) {}
+    }
+
+    const ticker = await asterFetchTicker(symbol);
+    const price = ticker.price || ticker.bid || 1;
+    let qty = usdAmount / price;
+
+    try {
+      const stepSize = await asterFetchMarketStepSize(symbol);
+      qty = roundToStepSize(qty, stepSize);
+    } catch (_) {}
+    if (qty <= 0) qty = usdAmount / price;
+
+    logger.info({ exchange: "aster", symbol, side, usdAmount, price, qty }, "placeOrderInternal: placing order");
+
+    const asterSide = side === "long" ? "BUY" : "SELL";
+    const orderResult = await asterPlaceOrder(symbol, asterSide, qty, creds.walletAddress, creds.signerAddress, creds.privateKey);
+
+    const filledQty = Number(orderResult.executedQty) || qty;
+    const avgPrice  = orderResult.avgPrice ? Number(orderResult.avgPrice) : price;
+
+    return {
+      orderId:      String(orderResult.orderId),
+      exchange:     "aster",
+      symbol,
+      side,
+      filledQty,
+      avgPrice,
+      status:       orderResult.status ?? "closed",
+      feeCost:      0,
+      contractSize: 1,
+    };
+  }
+  // ─────────────────────────────────────────────────────────────────────────
 
   if (leverage && leverage !== 1) {
     try {
@@ -1865,7 +1923,6 @@ export async function placeOrderInternal(
   const price = ticker.last ?? ticker.bid ?? 1;
   let qty = usdAmount / price;
   const ccxtSide = side === "long" ? "buy" : "sell";
-  const exchangeName = ex.id;
 
   const minNotional = MIN_NOTIONAL_BY_EXCHANGE[exchangeName];
   let contractSize = 1;
@@ -2051,6 +2108,26 @@ async function closeOnExchange(
   if (contractSize != null && contractSize > 1) {
     closeQty = qty / contractSize;
   }
+
+  // ── AsterDex: use custom EIP-712 client ──────────────────────────────────
+  if (ex.id === "aster") {
+    const creds = getAsterCreds(ex);
+    if (!creds) throw new Error("AsterDex: missing wallet/signer credentials for close");
+
+    try {
+      const stepSize = await asterFetchMarketStepSize(symbol);
+      closeQty = roundToStepSize(closeQty, stepSize);
+    } catch (_) {}
+    if (closeQty <= 0) closeQty = qty;
+
+    const orderResult = await asterClosePosition(symbol, positionSide, closeQty, creds.walletAddress, creds.signerAddress, creds.privateKey);
+    return {
+      orderId:  String(orderResult.orderId),
+      feeCost:  0,
+      avgPrice: orderResult.avgPrice ? Number(orderResult.avgPrice) : null,
+    };
+  }
+  // ─────────────────────────────────────────────────────────────────────────
 
   // Apply exchange precision rounding if available
   try {
