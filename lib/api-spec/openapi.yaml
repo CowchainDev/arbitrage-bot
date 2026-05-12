@@ -1333,6 +1333,10 @@ components:
           type: number
           nullable: true
           description: Running cumulative net PnL (realizedPnl + funding) up to and including this trade; null if any preceding trade has no funding data
+        fundingRateSpread:
+          type: number
+          nullable: true
+          description: Net funding rate spread (long rate minus short rate) at trade close. Null for older trades.
         symbol:
           type: string
           description: Trading pair symbol

@@ -17,6 +17,8 @@ export interface PnlChartPoint {
   funding: number | null;
   /** Running cumulative net PnL (realizedPnl + funding) up to and including this trade; null if any preceding trade has no funding data */
   cumNetPnl: number | null;
+  /** Net funding rate spread (long rate minus short rate) at trade close. Null for older trades. */
+  fundingRateSpread?: number | null;
   /** Trading pair symbol */
   symbol: string;
 }

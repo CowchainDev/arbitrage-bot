@@ -126,6 +126,7 @@ router.get("/trades/pnl-chart", requireAuth, async (req: Request, res: Response)
         closeTime: closedTradesTable.closeTime,
         realizedPnl: closedTradesTable.realizedPnl,
         fundingPaidUsd: closedTradesTable.fundingPaidUsd,
+        fundingRateSpread: closedTradesTable.fundingRateSpread,
         symbol: closedTradesTable.symbol,
       })
       .from(closedTradesTable)
@@ -149,6 +150,7 @@ router.get("/trades/pnl-chart", requireAuth, async (req: Request, res: Response)
         cumPnl: parseFloat(cumPnl.toFixed(2)),
         funding,
         cumNetPnl: cumNetPnl !== null ? parseFloat(cumNetPnl.toFixed(2)) : null,
+        fundingRateSpread: r.fundingRateSpread != null ? Number(r.fundingRateSpread) : null,
         symbol: r.symbol,
       };
     });

@@ -17,6 +17,7 @@ import {
   Tooltip,
   Legend,
   ResponsiveContainer,
+  ReferenceLine,
 } from "recharts";
 import { useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
@@ -69,6 +70,105 @@ interface CumulativePoint {
   cumNetPnl: number | null;
   pnl: number;
   symbol: string;
+}
+
+interface SpreadPoint {
+  closeTime: string;
+  spreadPct: number | null;
+  rollingAvgPct: number | null;
+  symbol: string;
+}
+
+const ROLLING_WINDOW = 5;
+
+function FundingRateSpreadChart({ points }: { points: PnlChartPoint[] }) {
+  const chartData = useMemo<SpreadPoint[]>(() => {
+    const withSpread = points.filter((p) => p.fundingRateSpread != null);
+    return withSpread.map((p, i) => {
+      const window = withSpread.slice(Math.max(0, i - ROLLING_WINDOW + 1), i + 1);
+      const avg = window.reduce((sum, w) => sum + (w.fundingRateSpread! * 100), 0) / window.length;
+      return {
+        closeTime: format(new Date(p.closeTime), "MM/dd HH:mm"),
+        spreadPct: parseFloat((p.fundingRateSpread! * 100).toFixed(4)),
+        rollingAvgPct: parseFloat(avg.toFixed(4)),
+        symbol: p.symbol,
+      };
+    });
+  }, [points]);
+
+  if (chartData.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-40 text-muted-foreground text-sm">
+        No funding rate spread data yet
+      </div>
+    );
+  }
+
+  return (
+    <ResponsiveContainer width="100%" height={220}>
+      <LineChart data={chartData} margin={{ top: 4, right: 16, left: 4, bottom: 4 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+        <XAxis
+          dataKey="closeTime"
+          tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+          tickLine={false}
+          axisLine={false}
+        />
+        <YAxis
+          tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+          tickLine={false}
+          axisLine={false}
+          tickFormatter={(v) => `${v}%`}
+        />
+        <Tooltip
+          contentStyle={{
+            background: "hsl(var(--card))",
+            border: "1px solid hsl(var(--border))",
+            borderRadius: "6px",
+            fontSize: "12px",
+            fontFamily: "monospace",
+          }}
+          formatter={(value: number, name: string, props: { payload?: SpreadPoint }) => {
+            const symbol = props.payload?.symbol ?? "";
+            const sign = value >= 0 ? "+" : "";
+            if (name === "spreadPct") return [`${sign}${value.toFixed(4)}%`, `Rate spread (${symbol})`];
+            if (name === "rollingAvgPct") return [`${sign}${value.toFixed(4)}%`, `${ROLLING_WINDOW}-trade avg`];
+            return [`${sign}${value.toFixed(4)}%`, name];
+          }}
+          labelStyle={{ color: "hsl(var(--muted-foreground))" }}
+        />
+        <ReferenceLine y={0} stroke="hsl(var(--border))" strokeDasharray="4 2" />
+        <Legend
+          wrapperStyle={{ fontSize: "11px", paddingTop: "8px" }}
+          formatter={(value) => {
+            if (value === "spreadPct") return "Rate spread at close";
+            if (value === "rollingAvgPct") return `${ROLLING_WINDOW}-trade rolling avg`;
+            return value;
+          }}
+        />
+        <Line
+          type="monotone"
+          dataKey="spreadPct"
+          name="spreadPct"
+          stroke="hsl(var(--muted-foreground))"
+          strokeWidth={1.5}
+          dot={{ r: 3, fill: "hsl(var(--muted-foreground))" }}
+          activeDot={{ r: 5 }}
+          connectNulls={false}
+        />
+        <Line
+          type="monotone"
+          dataKey="rollingAvgPct"
+          name="rollingAvgPct"
+          stroke="hsl(38 92% 50%)"
+          strokeWidth={2}
+          strokeDasharray="5 3"
+          dot={false}
+          activeDot={{ r: 5 }}
+        />
+      </LineChart>
+    </ResponsiveContainer>
+  );
 }
 
 function CumulativePnlChart({ points }: { points: PnlChartPoint[] }) {
@@ -606,6 +706,28 @@ export default function History() {
           </div>
         ) : (
           <CumulativePnlChart points={chartPoints} />
+        )}
+      </div>
+
+      <div className="bg-card border border-border rounded-lg p-4">
+        <div className="flex items-center gap-2 mb-4">
+          <BarChart2 className="w-4 h-4 text-primary" />
+          <h2 className="text-sm font-semibold">Funding Rate Spread Over Time</h2>
+          <span className="text-xs text-muted-foreground ml-1">per-trade · {ROLLING_WINDOW}-trade rolling avg</span>
+          {pnlChartQuery.isFetching && (
+            <span className="ml-auto text-xs text-muted-foreground animate-pulse">Refreshing…</span>
+          )}
+        </div>
+        {pnlChartQuery.isLoading ? (
+          <div className="flex items-center justify-center h-40 text-muted-foreground text-sm animate-pulse">
+            Loading…
+          </div>
+        ) : pnlChartQuery.isError ? (
+          <div className="flex items-center justify-center h-40 text-destructive text-sm">
+            Failed to load chart data.
+          </div>
+        ) : (
+          <FundingRateSpreadChart points={chartPoints} />
         )}
       </div>
 
