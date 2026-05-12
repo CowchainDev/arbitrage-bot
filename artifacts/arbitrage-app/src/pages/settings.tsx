@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { KeyRound, Eye, EyeOff, CheckCircle, Trash2, ExternalLink, Bell, Volume2, VolumeX, Server, Save, AlertTriangle, DatabaseZap } from "lucide-react";
+import { KeyRound, Eye, EyeOff, CheckCircle, Trash2, ExternalLink, Bell, Volume2, VolumeX, Server, Save, AlertTriangle, DatabaseZap, FlaskConical, XCircle, Loader2 } from "lucide-react";
 import { useAlertSettings } from "@/hooks/use-alert-settings";
 import { useWatchedTokens } from "@/hooks/use-watched-tokens";
 import { useToast } from "@/hooks/use-toast";
@@ -51,10 +51,45 @@ function ExchangeCard({ meta }: { meta: ExchangeMeta }) {
   const [showPass, setShowPass] = useState(false);
   const [syncStatus, setSyncStatus] = useState<"idle" | "syncing" | "ok" | "error">("idle");
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [testStatus, setTestStatus] = useState<"idle" | "testing" | "ok" | "error">("idle");
+  const [testMessage, setTestMessage] = useState("");
 
   const needsPassphrase = meta.hasPassphrase || meta.hasSignerAddress;
   const hasChanges = apiKey !== (creds?.apiKey ?? "") || apiSecret !== (creds?.apiSecret ?? "") || passphrase !== (creds?.passphrase ?? "");
   const canSave = !!apiKey && !!apiSecret && (!needsPassphrase || !!passphrase);
+  const canTest = canSave;
+
+  function resetTestOnChange() {
+    if (testStatus !== "idle") { setTestStatus("idle"); setTestMessage(""); }
+  }
+
+  const handleTest = async () => {
+    setTestStatus("testing");
+    setTestMessage("");
+    try {
+      const res = await fetch("/api/exchanges/test-credentials", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          exchange: meta.id,
+          apiKey,
+          apiSecret,
+          ...(needsPassphrase ? { passphrase } : {}),
+        }),
+      });
+      const data = await res.json() as { ok: boolean; usdtBalance?: number; message?: string };
+      if (data.ok) {
+        setTestStatus("ok");
+        setTestMessage(data.usdtBalance != null ? `Connected · ${data.usdtBalance.toFixed(2)} USDT` : "Connected");
+      } else {
+        setTestStatus("error");
+        setTestMessage(data.message ?? "Connection failed");
+      }
+    } catch {
+      setTestStatus("error");
+      setTestMessage("Could not reach the server");
+    }
+  };
 
   const handleSave = async () => {
     const c = { apiKey, apiSecret, ...(needsPassphrase ? { passphrase } : {}) };
@@ -131,7 +166,7 @@ function ExchangeCard({ meta }: { meta: ExchangeMeta }) {
           <label className="text-xs text-muted-foreground uppercase tracking-wider">{meta.hasWalletAuth ? "Wallet Address" : "API Key"}</label>
           <Input
             value={apiKey}
-            onChange={(e) => { setApiKey(e.target.value); setSyncStatus("idle"); }}
+            onChange={(e) => { setApiKey(e.target.value); setSyncStatus("idle"); resetTestOnChange(); }}
             placeholder={meta.hasWalletAuth ? "0x…" : `Enter ${meta.label} API Key`}
             className="font-mono bg-background border-border text-sm"
             autoComplete="off"
@@ -144,7 +179,7 @@ function ExchangeCard({ meta }: { meta: ExchangeMeta }) {
           <div className="relative">
             <Input
               value={apiSecret}
-              onChange={(e) => { setApiSecret(e.target.value); setSyncStatus("idle"); }}
+              onChange={(e) => { setApiSecret(e.target.value); setSyncStatus("idle"); resetTestOnChange(); }}
               type={showSecret ? "text" : "password"}
               placeholder={meta.hasWalletAuth ? "0x…" : `Enter ${meta.label} API Secret`}
               className="font-mono bg-background border-border text-sm pr-10"
@@ -172,7 +207,7 @@ function ExchangeCard({ meta }: { meta: ExchangeMeta }) {
             <div className="relative">
               <Input
                 value={passphrase}
-                onChange={(e) => { setPassphrase(e.target.value); setSyncStatus("idle"); }}
+                onChange={(e) => { setPassphrase(e.target.value); setSyncStatus("idle"); resetTestOnChange(); }}
                 type={meta.hasSignerAddress ? "text" : (showPass ? "text" : "password")}
                 placeholder={meta.hasSignerAddress ? "0x… API wallet address (signer)" : "Enter OKX API Passphrase"}
                 className="font-mono bg-background border-border text-sm pr-10"
@@ -194,7 +229,7 @@ function ExchangeCard({ meta }: { meta: ExchangeMeta }) {
         )}
       </div>
 
-      <div className="flex items-center gap-2 pt-1">
+      <div className="flex items-center gap-2 pt-1 flex-wrap">
         <Button
           type="button"
           onClick={handleSave}
@@ -203,7 +238,21 @@ function ExchangeCard({ meta }: { meta: ExchangeMeta }) {
           data-testid={`button-save-${meta.id}`}
         >
           <Save className="w-3.5 h-3.5 mr-1.5" />
-          {storeCredential.isPending ? "Saving…" : hasChanges ? "Save" : "Save"}
+          {storeCredential.isPending ? "Saving…" : "Save"}
+        </Button>
+
+        <Button
+          type="button"
+          variant="outline"
+          onClick={handleTest}
+          disabled={!canTest || testStatus === "testing"}
+          className="h-8 text-sm text-muted-foreground"
+          data-testid={`button-test-${meta.id}`}
+        >
+          {testStatus === "testing"
+            ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+            : <FlaskConical className="w-3.5 h-3.5 mr-1.5" />}
+          {testStatus === "testing" ? "Testing…" : "Test"}
         </Button>
 
         {hasCreds && (
@@ -230,12 +279,25 @@ function ExchangeCard({ meta }: { meta: ExchangeMeta }) {
           </button>
         )}
 
-        {syncStatus === "ok" && (
+        {testStatus === "ok" && (
+          <span className="flex items-center gap-1 text-xs text-primary ml-auto" data-testid={`test-ok-${meta.id}`}>
+            <CheckCircle className="w-3.5 h-3.5" /> {testMessage}
+          </span>
+        )}
+
+        {syncStatus === "ok" && testStatus !== "ok" && (
           <span className="flex items-center gap-1 text-xs text-primary ml-auto" data-testid={`sync-ok-${meta.id}`}>
             <Server className="w-3.5 h-3.5" /> Synced
           </span>
         )}
       </div>
+
+      {testStatus === "error" && (
+        <div className="flex items-start gap-2 rounded-md border border-destructive/60 bg-destructive/10 px-3 py-2.5" data-testid={`test-error-${meta.id}`}>
+          <XCircle className="w-3.5 h-3.5 text-destructive mt-0.5 shrink-0" />
+          <p className="text-xs text-destructive leading-snug">{testMessage}</p>
+        </div>
+      )}
 
       {syncStatus === "error" && (
         <div className="flex items-start gap-2 rounded-md border border-destructive/60 bg-destructive/10 px-3 py-2.5" data-testid={`sync-error-${meta.id}`}>

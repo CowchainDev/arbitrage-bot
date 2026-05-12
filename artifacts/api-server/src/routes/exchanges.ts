@@ -2324,4 +2324,63 @@ router.get("/exchanges/credential-failures", requireAuth, (req: Request, res: Re
   res.json({ failures });
 });
 
+const TESTABLE_EXCHANGES = ["bybit", "binance", "gate", "okx", "mexc", "aster", "hyper"] as const;
+
+router.post("/exchanges/test-credentials", requireAuth, async (req: Request, res: Response): Promise<void> => {
+  const { exchange, apiKey, apiSecret, passphrase } = req.body as {
+    exchange: string;
+    apiKey: string;
+    apiSecret: string;
+    passphrase?: string;
+  };
+
+  if (!exchange || !apiKey || !apiSecret) {
+    res.status(400).json({ ok: false, message: "exchange, apiKey, and apiSecret are required" });
+    return;
+  }
+  if (!(TESTABLE_EXCHANGES as readonly string[]).includes(exchange)) {
+    res.status(400).json({ ok: false, message: `Unsupported exchange: ${exchange}` });
+    return;
+  }
+
+  try {
+    let usdtBalance: number | undefined;
+
+    if (exchange === "aster") {
+      // AsterDex uses custom EIP-712 auth: apiKey=walletAddress, apiSecret=privateKey, passphrase=signerAddress
+      if (!passphrase) {
+        res.status(400).json({ ok: false, message: "AsterDex requires a signer address" });
+        return;
+      }
+      const assets = await asterFetchBalance(apiKey, passphrase, apiSecret);
+      const usdtAsset = (assets as { asset: string; balance: string }[]).find((a) => a.asset === "USDT");
+      if (usdtAsset) usdtBalance = Number(usdtAsset.balance);
+    } else {
+      const ex = createExchangeForName(exchange, apiKey, apiSecret, passphrase);
+      let bal: Record<string, unknown>;
+      switch (exchange) {
+        case "bybit":   bal = await ex.fetchBalance({ type: "linear" }); break;
+        case "binance": bal = await ex.fetchBalance({ type: "future" }); break;
+        case "okx":     bal = await ex.fetchBalance({ type: "swap" }); break;
+        case "mexc":    bal = await ex.fetchBalance({ type: "swap" }); break;
+        default:        bal = await ex.fetchBalance(); break;
+      }
+      const raw = (bal as any)?.USDT?.total ?? (bal as any)?.total?.USDT ?? null;
+      if (raw != null) usdtBalance = Number(raw);
+    }
+
+    res.json({ ok: true, usdtBalance });
+  } catch (err) {
+    const msg = String((err as { message?: string }).message ?? err);
+    const isAuth = /authentication|invalid.?api.?key|api.?key.*(invalid|wrong|bad)|ip.*(whitelist|restrict)|whitelist|forbidden|401|403/i.test(msg);
+    req.log.warn({ exchange, err }, "Credential test failed");
+    res.json({
+      ok: false,
+      message: isAuth
+        ? `Authentication failed — check your API key, secret${passphrase != null ? ", and passphrase/signer address" : ""}. If your exchange requires IP whitelisting, ensure the server IP is allowed.`
+        : `Connection failed: ${msg.length > 220 ? msg.slice(0, 220) + "…" : msg}`,
+    });
+  }
+});
+
 export default router;
