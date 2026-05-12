@@ -1,9 +1,9 @@
 import { Router, type IRouter } from "express";
 import { sql } from "drizzle-orm";
 import { db } from "@workspace/db";
-import { botLegsTable, botConfigsTable, closedTradesTable } from "@workspace/db";
+import { botLegsTable, botConfigsTable, closedTradesTable, credentialsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
-import { requireBotSecret } from "../middleware/auth";
+import { requireBotSecret, requireAuth } from "../middleware/auth";
 import {
   getStoredCredentials,
   type SupportedExchange,
@@ -533,8 +533,8 @@ router.post("/admin/backfill-pnl", requireBotSecret, async (req, res) => {
         const exchangeB = (config.exchangeB ?? "binance") as SupportedExchange;
 
         const [credsA, credsB] = await Promise.all([
-          getStoredCredentials(exchangeA),
-          getStoredCredentials(exchangeB),
+          getStoredCredentials(config.userId, exchangeA),
+          getStoredCredentials(config.userId, exchangeB),
         ]);
 
         const marketSymbol = `${leg.symbol}/USDT:USDT`;
@@ -636,6 +636,42 @@ router.post("/admin/backfill-pnl", requireBotSecret, async (req, res) => {
   } catch (err) {
     req.log.error({ err }, "backfill-pnl: fatal error");
     res.status(500).json({ error: "backfill_failed", message: String(err) });
+  }
+});
+
+// POST /api/admin/migrate-user
+// Associates all legacy rows (user_id = '') with the currently signed-in
+// user's Clerk ID.  Safe to run multiple times — only touches rows where
+// user_id is still empty.  Covers credentials, bot_configs, and closed_trades.
+router.post("/admin/migrate-user", requireAuth, async (req, res) => {
+  const userId = (req as any).userId as string;
+  try {
+    const [credsResult, configsResult, tradesResult] = await Promise.all([
+      db
+        .update(credentialsTable)
+        .set({ userId })
+        .where(eq(credentialsTable.userId, "")),
+      db
+        .update(botConfigsTable)
+        .set({ userId })
+        .where(eq(botConfigsTable.userId, "")),
+      db
+        .update(closedTradesTable)
+        .set({ userId })
+        .where(eq(closedTradesTable.userId, "")),
+    ]);
+
+    const updated = {
+      credentials: (credsResult as unknown as { rowCount?: number }).rowCount ?? 0,
+      botConfigs: (configsResult as unknown as { rowCount?: number }).rowCount ?? 0,
+      closedTrades: (tradesResult as unknown as { rowCount?: number }).rowCount ?? 0,
+    };
+
+    req.log.info({ userId, updated }, "migrate-user: complete");
+    res.json({ userId, updated });
+  } catch (err) {
+    req.log.error({ err }, "migrate-user: fatal error");
+    res.status(500).json({ error: "migrate_failed", message: String(err) });
   }
 });
 

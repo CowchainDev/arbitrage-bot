@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { KeyRound, Eye, EyeOff, CheckCircle, Trash2, ExternalLink, Bell, Volume2, VolumeX, Server, Save, AlertTriangle } from "lucide-react";
+import { KeyRound, Eye, EyeOff, CheckCircle, Trash2, ExternalLink, Bell, Volume2, VolumeX, Server, Save, AlertTriangle, DatabaseZap } from "lucide-react";
 import { useAlertSettings } from "@/hooks/use-alert-settings";
 import { useWatchedTokens } from "@/hooks/use-watched-tokens";
 import { useToast } from "@/hooks/use-toast";
@@ -241,6 +241,27 @@ export default function Settings() {
   const { watched, updateThreshold } = useWatchedTokens();
   const { toast } = useToast();
   const [requestingPush, setRequestingPush] = useState(false);
+  const [migrateStatus, setMigrateStatus] = useState<"idle" | "running" | "done" | "error">("idle");
+  const [migrateResult, setMigrateResult] = useState<{ credentials: number; botConfigs: number; closedTrades: number } | null>(null);
+
+  async function handleMigrate() {
+    setMigrateStatus("running");
+    setMigrateResult(null);
+    try {
+      const res = await fetch("/api/admin/migrate-user", { method: "POST" });
+      if (!res.ok) throw new Error(await res.text());
+      const data = await res.json() as { updated: { credentials: number; botConfigs: number; closedTrades: number } };
+      setMigrateResult(data.updated);
+      setMigrateStatus("done");
+      toast({
+        title: "Migration complete",
+        description: `${data.updated.botConfigs} bots, ${data.updated.closedTrades} trades, ${data.updated.credentials} credentials linked to your account.`,
+      });
+    } catch {
+      setMigrateStatus("error");
+      toast({ title: "Migration failed", description: "Could not migrate legacy data. Try again.", variant: "destructive" });
+    }
+  }
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
@@ -341,6 +362,33 @@ export default function Settings() {
             ))}
           </div>
         )}
+      </div>
+
+      {/* Legacy data migration */}
+      <div className="bg-card border border-border rounded-md p-5 space-y-3">
+        <div className="flex items-center gap-2">
+          <DatabaseZap className="w-3.5 h-3.5 text-primary" />
+          <span className="font-semibold text-sm">Migrate Legacy Data</span>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          If your bots, trade history, or API keys were created before multi-user accounts were enabled, they won't appear in your account yet. Click below to claim them — only unowned rows (created before sign-in existed) are affected. Safe to run more than once.
+        </p>
+        {migrateResult && migrateStatus === "done" && (
+          <div className="rounded-md bg-primary/10 border border-primary/30 px-3 py-2 text-xs font-mono text-primary space-y-0.5">
+            <div>{migrateResult.botConfigs} bot config{migrateResult.botConfigs !== 1 ? "s" : ""} claimed</div>
+            <div>{migrateResult.closedTrades} closed trade{migrateResult.closedTrades !== 1 ? "s" : ""} claimed</div>
+            <div>{migrateResult.credentials} API credential{migrateResult.credentials !== 1 ? "s" : ""} claimed</div>
+          </div>
+        )}
+        <Button
+          onClick={handleMigrate}
+          disabled={migrateStatus === "running"}
+          variant="outline"
+          className="h-8 text-sm"
+          data-testid="btn-migrate-user"
+        >
+          {migrateStatus === "running" ? "Migrating…" : migrateStatus === "done" ? "Run again" : "Claim legacy data"}
+        </Button>
       </div>
     </div>
   );
