@@ -7,15 +7,21 @@ import {
   boolean,
   integer,
   index,
+  unique,
 } from "drizzle-orm/pg-core";
 
-export const credentialsTable = pgTable("credentials", {
-  exchange: text("exchange").primaryKey(),
-  apiKey: text("api_key").notNull(),
-  apiSecret: text("api_secret").notNull(),
-  passphrase: text("passphrase"),
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
-});
+export const credentialsTable = pgTable(
+  "credentials",
+  {
+    userId: text("user_id").notNull(),
+    exchange: text("exchange").notNull(),
+    apiKey: text("api_key").notNull(),
+    apiSecret: text("api_secret").notNull(),
+    passphrase: text("passphrase"),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [unique("credentials_user_exchange").on(t.userId, t.exchange)],
+);
 
 export type Credential = typeof credentialsTable.$inferSelect;
 export type InsertCredential = typeof credentialsTable.$inferInsert;
@@ -24,6 +30,7 @@ export const closedTradesTable = pgTable(
   "closed_trades",
   {
     id: serial("id").primaryKey(),
+    userId: text("user_id").notNull().default(""),
     symbol: text("symbol").notNull(),
     longExchange: text("long_exchange").notNull(),
     shortExchange: text("short_exchange").notNull(),
@@ -46,31 +53,42 @@ export const closedTradesTable = pgTable(
     entryTime: timestamp("entry_time").notNull().defaultNow(),
     closeTime: timestamp("close_time").notNull().defaultNow(),
   },
-  (t) => [index("idx_closed_trades_close_time").on(t.closeTime)],
+  (t) => [
+    index("idx_closed_trades_close_time").on(t.closeTime),
+    index("idx_closed_trades_user_id").on(t.userId),
+  ],
 );
 
 export type ClosedTrade = typeof closedTradesTable.$inferSelect;
 export type InsertClosedTrade = typeof closedTradesTable.$inferInsert;
 
-export const botConfigsTable = pgTable("bot_configs", {
-  id: serial("id").primaryKey(),
-  symbol: text("symbol").notNull().unique(),
-  enabled: boolean("enabled").notNull().default(false),
-  enterSpreadPct: numeric("enter_spread_pct", { precision: 20, scale: 8 }).notNull().default("0.05"),
-  closeSpreadPct: numeric("close_spread_pct", { precision: 20, scale: 8 }).notNull().default("0.01"),
-  stopLossSpreadPct: numeric("stop_loss_spread_pct", { precision: 20, scale: 8 }).notNull().default("0"),
-  orderSizeUsd: numeric("order_size_usd", { precision: 20, scale: 8 }).notNull().default("50"),
-  maxOrders: integer("max_orders").notNull().default(3),
-  forceStopUsd: numeric("force_stop_usd", { precision: 20, scale: 8 }).notNull().default("20"),
-  bybitLeverage: integer("bybit_leverage").notNull().default(1),
-  binanceLeverage: integer("binance_leverage").notNull().default(1),
-  exchangeA: text("exchange_a").notNull().default("bybit"),
-  exchangeB: text("exchange_b").notNull().default("binance"),
-  leverageA: integer("leverage_a").notNull().default(1),
-  leverageB: integer("leverage_b").notNull().default(1),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
-});
+export const botConfigsTable = pgTable(
+  "bot_configs",
+  {
+    id: serial("id").primaryKey(),
+    userId: text("user_id").notNull().default(""),
+    symbol: text("symbol").notNull(),
+    enabled: boolean("enabled").notNull().default(false),
+    enterSpreadPct: numeric("enter_spread_pct", { precision: 20, scale: 8 }).notNull().default("0.05"),
+    closeSpreadPct: numeric("close_spread_pct", { precision: 20, scale: 8 }).notNull().default("0.01"),
+    stopLossSpreadPct: numeric("stop_loss_spread_pct", { precision: 20, scale: 8 }).notNull().default("0"),
+    orderSizeUsd: numeric("order_size_usd", { precision: 20, scale: 8 }).notNull().default("50"),
+    maxOrders: integer("max_orders").notNull().default(3),
+    forceStopUsd: numeric("force_stop_usd", { precision: 20, scale: 8 }).notNull().default("20"),
+    bybitLeverage: integer("bybit_leverage").notNull().default(1),
+    binanceLeverage: integer("binance_leverage").notNull().default(1),
+    exchangeA: text("exchange_a").notNull().default("bybit"),
+    exchangeB: text("exchange_b").notNull().default("binance"),
+    leverageA: integer("leverage_a").notNull().default(1),
+    leverageB: integer("leverage_b").notNull().default(1),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [
+    unique("bot_configs_user_symbol").on(t.userId, t.symbol),
+    index("idx_bot_configs_user_id").on(t.userId),
+  ],
+);
 
 export type BotConfig = typeof botConfigsTable.$inferSelect;
 export type InsertBotConfig = typeof botConfigsTable.$inferInsert;

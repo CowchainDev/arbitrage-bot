@@ -1,5 +1,6 @@
 import { Link, useLocation } from "wouter";
-import { Settings, LayoutDashboard, Activity, History, Bot, Sun, Moon } from "lucide-react";
+import { Settings, LayoutDashboard, Activity, History, Bot, Sun, Moon, LogOut } from "lucide-react";
+import { useClerk, useUser } from "@clerk/react";
 import { useApiCredentials } from "@/hooks/use-api-credentials";
 import { useGetExchangeBalances, getGetExchangeBalancesQueryKey } from "@workspace/api-client-react";
 import { useConnectionStatus } from "@/contexts/connection-status";
@@ -166,6 +167,36 @@ function ThemeToggle() {
   );
 }
 
+function UserMenu() {
+  const { signOut } = useClerk();
+  const { user, isLoaded } = useUser();
+
+  if (!isLoaded || !user) return null;
+
+  const displayName = user.firstName
+    ? `${user.firstName}${user.lastName ? ` ${user.lastName}` : ""}`
+    : (user.emailAddresses[0]?.emailAddress ?? "User");
+
+  return (
+    <div className="flex items-center gap-2 border-l border-border pl-2">
+      <div className="hidden sm:flex flex-col items-end">
+        <span className="text-xs font-medium text-foreground leading-none">{displayName}</span>
+        <span className="text-[10px] text-muted-foreground leading-none mt-0.5">
+          {user.emailAddresses[0]?.emailAddress}
+        </span>
+      </div>
+      <button
+        onClick={() => signOut()}
+        className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+        title="Sign out"
+        aria-label="Sign out"
+      >
+        <LogOut className="w-4 h-4" />
+      </button>
+    </div>
+  );
+}
+
 export function Layout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col font-mono text-sm">
@@ -197,6 +228,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <NotificationBell />
             <ThemeToggle />
             <HeaderBalances />
+            <UserMenu />
           </div>
         </div>
       </header>

@@ -2,15 +2,16 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { StoreCredentialBody } from "@workspace/api-zod";
 import { db } from "@workspace/db";
 import { credentialsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
-import { requireBotSecret } from "../middleware/auth";
+import { eq, and } from "drizzle-orm";
+import { requireAuth } from "../middleware/auth";
 
 const router: IRouter = Router();
 
 export type SupportedExchange = "bybit" | "binance" | "gate" | "okx" | "mexc" | "aster" | "hyper";
 export const SUPPORTED_EXCHANGES: SupportedExchange[] = ["bybit", "binance", "gate", "okx", "mexc", "aster", "hyper"];
 
-router.post("/credentials", requireBotSecret, async (req: Request, res: Response) => {
+router.post("/credentials", requireAuth, async (req: Request, res: Response) => {
+  const userId = (req as any).userId as string;
   const parsed = StoreCredentialBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "bad_request", message: parsed.error.message });
@@ -23,9 +24,9 @@ router.post("/credentials", requireBotSecret, async (req: Request, res: Response
   try {
     await db
       .insert(credentialsTable)
-      .values({ exchange, apiKey, apiSecret, passphrase, updatedAt: new Date() })
+      .values({ userId, exchange, apiKey, apiSecret, passphrase, updatedAt: new Date() })
       .onConflictDoUpdate({
-        target: credentialsTable.exchange,
+        target: [credentialsTable.userId, credentialsTable.exchange],
         set: { apiKey, apiSecret, passphrase, updatedAt: new Date() },
       });
 
@@ -36,11 +37,13 @@ router.post("/credentials", requireBotSecret, async (req: Request, res: Response
   }
 });
 
-router.get("/credentials", requireBotSecret, async (_req: Request, res: Response) => {
+router.get("/credentials", requireAuth, async (req: Request, res: Response) => {
+  const userId = (req as any).userId as string;
   try {
     const rows = await db
       .select({ exchange: credentialsTable.exchange, updatedAt: credentialsTable.updatedAt })
-      .from(credentialsTable);
+      .from(credentialsTable)
+      .where(eq(credentialsTable.userId, userId));
 
     res.json({ exchanges: rows.map((r) => ({ exchange: r.exchange, updatedAt: r.updatedAt })) });
   } catch {
@@ -48,14 +51,17 @@ router.get("/credentials", requireBotSecret, async (_req: Request, res: Response
   }
 });
 
-router.delete("/credentials/:exchange", requireBotSecret, async (req: Request, res: Response) => {
+router.delete("/credentials/:exchange", requireAuth, async (req: Request, res: Response) => {
+  const userId = (req as any).userId as string;
   const { exchange } = req.params;
   if (!SUPPORTED_EXCHANGES.includes(exchange as SupportedExchange)) {
     res.status(400).json({ error: "bad_request", message: "Unknown exchange" });
     return;
   }
   try {
-    await db.delete(credentialsTable).where(eq(credentialsTable.exchange, exchange as string));
+    await db
+      .delete(credentialsTable)
+      .where(and(eq(credentialsTable.userId, userId), eq(credentialsTable.exchange, String(exchange))));
     res.json({ exchange, deleted: true });
   } catch (err) {
     req.log.error({ err }, "Failed to delete credentials");
@@ -63,12 +69,15 @@ router.delete("/credentials/:exchange", requireBotSecret, async (req: Request, r
   }
 });
 
-export async function getStoredCredentials(exchange: SupportedExchange): Promise<{ apiKey: string; apiSecret: string; passphrase?: string | null } | null> {
+export async function getStoredCredentials(
+  userId: string,
+  exchange: SupportedExchange,
+): Promise<{ apiKey: string; apiSecret: string; passphrase?: string | null } | null> {
   try {
     const [row] = await db
       .select({ apiKey: credentialsTable.apiKey, apiSecret: credentialsTable.apiSecret, passphrase: credentialsTable.passphrase })
       .from(credentialsTable)
-      .where(eq(credentialsTable.exchange, exchange))
+      .where(and(eq(credentialsTable.userId, userId), eq(credentialsTable.exchange, exchange)))
       .limit(1);
     return row ?? null;
   } catch {

@@ -100,8 +100,8 @@ router.post("/admin/backfill-fees", requireBotSecret, async (req, res) => {
         const exchangeB = config.exchangeB ?? "binance";
 
         const [credsA, credsB] = await Promise.all([
-          getStoredCredentials(exchangeA as SupportedExchange),
-          getStoredCredentials(exchangeB as SupportedExchange),
+          getStoredCredentials(config.userId, exchangeA as SupportedExchange),
+          getStoredCredentials(config.userId, exchangeB as SupportedExchange),
         ]);
         if (!credsA || !credsB) continue;
 

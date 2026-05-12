@@ -4,7 +4,7 @@ import { botConfigsTable, botLegsTable, type BotConfig, type BotLeg, type Insert
 import { eq, and, desc } from "drizzle-orm";
 import { CreateBotBody, UpdateBotBody } from "@workspace/api-zod";
 import { closeAllLegsForBot } from "../services/bot-watcher";
-import { requireBotSecret } from "../middleware/auth";
+import { requireAuth } from "../middleware/auth";
 
 const router: IRouter = Router();
 
@@ -36,16 +36,22 @@ function normalizeBotLeg(leg: BotLeg) {
   };
 }
 
-router.get("/bots", requireBotSecret, async (_req: Request, res: Response) => {
+router.get("/bots", requireAuth, async (req: Request, res: Response) => {
+  const userId = (req as any).userId as string;
   try {
-    const bots = await db.select().from(botConfigsTable).orderBy(botConfigsTable.createdAt);
+    const bots = await db
+      .select()
+      .from(botConfigsTable)
+      .where(eq(botConfigsTable.userId, userId))
+      .orderBy(botConfigsTable.createdAt);
     res.json({ bots: bots.map(normalizeBotConfig) });
   } catch (err) {
     res.status(500).json({ error: "internal_error", message: "Failed to fetch bots" });
   }
 });
 
-router.post("/bots", requireBotSecret, async (req: Request, res: Response) => {
+router.post("/bots", requireAuth, async (req: Request, res: Response) => {
+  const userId = (req as any).userId as string;
   const parsed = CreateBotBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "bad_request", message: parsed.error.message });
@@ -62,6 +68,7 @@ router.post("/bots", requireBotSecret, async (req: Request, res: Response) => {
     const [bot] = await db
       .insert(botConfigsTable)
       .values({
+        userId,
         symbol: symbol.toUpperCase(),
         enabled: false,
         enterSpreadPct: String(enterSpreadPct),
@@ -88,7 +95,8 @@ router.post("/bots", requireBotSecret, async (req: Request, res: Response) => {
   }
 });
 
-router.put("/bots/:id", requireBotSecret, async (req: Request, res: Response) => {
+router.put("/bots/:id", requireAuth, async (req: Request, res: Response) => {
+  const userId = (req as any).userId as string;
   const id = Number(req.params.id);
   if (!id) {
     res.status(400).json({ error: "bad_request", message: "Invalid bot id" });
@@ -107,8 +115,6 @@ router.put("/bots/:id", requireBotSecret, async (req: Request, res: Response) =>
     exchangeA, exchangeB, leverageA, leverageB, stopLossSpreadPct,
   } = parsed.data;
 
-  // Typed as Partial<InsertBotConfig> (not Record<string, unknown>) so TypeScript
-  // enforces that only real botConfigsTable columns with correct value types are written.
   const updates: Partial<InsertBotConfig> = { updatedAt: new Date() };
   if (enterSpreadPct !== undefined) updates.enterSpreadPct = String(enterSpreadPct);
   if (closeSpreadPct !== undefined) updates.closeSpreadPct = String(closeSpreadPct);
@@ -127,7 +133,7 @@ router.put("/bots/:id", requireBotSecret, async (req: Request, res: Response) =>
     const [bot] = await db
       .update(botConfigsTable)
       .set(updates)
-      .where(eq(botConfigsTable.id, id))
+      .where(and(eq(botConfigsTable.id, id), eq(botConfigsTable.userId, userId)))
       .returning();
 
     if (!bot) {
@@ -141,7 +147,8 @@ router.put("/bots/:id", requireBotSecret, async (req: Request, res: Response) =>
   }
 });
 
-router.delete("/bots/:id", requireBotSecret, async (req: Request, res: Response) => {
+router.delete("/bots/:id", requireAuth, async (req: Request, res: Response) => {
+  const userId = (req as any).userId as string;
   const id = Number(req.params.id);
   if (!id) {
     res.status(400).json({ error: "bad_request", message: "Invalid bot id" });
@@ -149,24 +156,24 @@ router.delete("/bots/:id", requireBotSecret, async (req: Request, res: Response)
   }
 
   try {
-    await db.delete(botLegsTable).where(eq(botLegsTable.botConfigId, id));
-    const [deleted] = await db
-      .delete(botConfigsTable)
-      .where(eq(botConfigsTable.id, id))
-      .returning();
-
-    if (!deleted) {
+    const [existing] = await db
+      .select({ id: botConfigsTable.id })
+      .from(botConfigsTable)
+      .where(and(eq(botConfigsTable.id, id), eq(botConfigsTable.userId, userId)));
+    if (!existing) {
       res.status(404).json({ error: "not_found", message: "Bot not found" });
       return;
     }
-
+    await db.delete(botLegsTable).where(eq(botLegsTable.botConfigId, id));
+    await db.delete(botConfigsTable).where(eq(botConfigsTable.id, id));
     res.json({ deleted: true });
   } catch (err) {
     res.status(500).json({ error: "internal_error", message: "Failed to delete bot" });
   }
 });
 
-router.post("/bots/:id/start", requireBotSecret, async (req: Request, res: Response) => {
+router.post("/bots/:id/start", requireAuth, async (req: Request, res: Response) => {
+  const userId = (req as any).userId as string;
   const id = Number(req.params.id);
   if (!id) {
     res.status(400).json({ error: "bad_request", message: "Invalid bot id" });
@@ -177,7 +184,7 @@ router.post("/bots/:id/start", requireBotSecret, async (req: Request, res: Respo
     const [bot] = await db
       .update(botConfigsTable)
       .set({ enabled: true, updatedAt: new Date() })
-      .where(eq(botConfigsTable.id, id))
+      .where(and(eq(botConfigsTable.id, id), eq(botConfigsTable.userId, userId)))
       .returning();
 
     if (!bot) {
@@ -191,7 +198,8 @@ router.post("/bots/:id/start", requireBotSecret, async (req: Request, res: Respo
   }
 });
 
-router.post("/bots/:id/stop", requireBotSecret, async (req: Request, res: Response) => {
+router.post("/bots/:id/stop", requireAuth, async (req: Request, res: Response) => {
+  const userId = (req as any).userId as string;
   const id = Number(req.params.id);
   if (!id) {
     res.status(400).json({ error: "bad_request", message: "Invalid bot id" });
@@ -202,7 +210,7 @@ router.post("/bots/:id/stop", requireBotSecret, async (req: Request, res: Respon
     const [bot] = await db
       .update(botConfigsTable)
       .set({ enabled: false, updatedAt: new Date() })
-      .where(eq(botConfigsTable.id, id))
+      .where(and(eq(botConfigsTable.id, id), eq(botConfigsTable.userId, userId)))
       .returning();
 
     if (!bot) {
@@ -216,7 +224,8 @@ router.post("/bots/:id/stop", requireBotSecret, async (req: Request, res: Respon
   }
 });
 
-router.post("/bots/:id/stop-and-close", requireBotSecret, async (req: Request, res: Response) => {
+router.post("/bots/:id/stop-and-close", requireAuth, async (req: Request, res: Response) => {
+  const userId = (req as any).userId as string;
   const id = Number(req.params.id);
   if (!id) {
     res.status(400).json({ error: "bad_request", message: "Invalid bot id" });
@@ -227,7 +236,7 @@ router.post("/bots/:id/stop-and-close", requireBotSecret, async (req: Request, r
     const [bot] = await db
       .update(botConfigsTable)
       .set({ enabled: false, updatedAt: new Date() })
-      .where(eq(botConfigsTable.id, id))
+      .where(and(eq(botConfigsTable.id, id), eq(botConfigsTable.userId, userId)))
       .returning();
 
     if (!bot) {
@@ -242,7 +251,8 @@ router.post("/bots/:id/stop-and-close", requireBotSecret, async (req: Request, r
   }
 });
 
-router.get("/bots/:id/stats", requireBotSecret, async (req: Request, res: Response) => {
+router.get("/bots/:id/stats", requireAuth, async (req: Request, res: Response) => {
+  const userId = (req as any).userId as string;
   const id = Number(req.params.id);
   if (!id) {
     res.status(400).json({ error: "bad_request", message: "Invalid bot id" });
@@ -253,7 +263,7 @@ router.get("/bots/:id/stats", requireBotSecret, async (req: Request, res: Respon
     const [bot] = await db
       .select({ id: botConfigsTable.id })
       .from(botConfigsTable)
-      .where(eq(botConfigsTable.id, id));
+      .where(and(eq(botConfigsTable.id, id), eq(botConfigsTable.userId, userId)));
     if (!bot) {
       res.status(404).json({ error: "not_found", message: "Bot not found" });
       return;
@@ -265,7 +275,6 @@ router.get("/bots/:id/stats", requireBotSecret, async (req: Request, res: Respon
       .where(and(eq(botLegsTable.botConfigId, id), eq(botLegsTable.status, "closed")));
 
     const count = closedLegs.length;
-
     let totalRealizedPnlUsd = 0;
     let sumEntrySpread = 0;
     let sumExitSpread = 0;
@@ -277,7 +286,6 @@ router.get("/bots/:id/stats", requireBotSecret, async (req: Request, res: Respon
       const binanceQty = Number(leg.binanceQty);
       const bybitEntry = Number(leg.bybitEntry);
       const binanceEntry = Number(leg.binanceEntry);
-
       if (leg.realizedPnlUsd != null) totalRealizedPnlUsd += Number(leg.realizedPnlUsd);
       sumEntrySpread += Number(leg.spreadAtEntry);
       if (leg.spreadAtExit != null) {
@@ -288,11 +296,7 @@ router.get("/bots/:id/stats", requireBotSecret, async (req: Request, res: Respon
     }
 
     const EXCHANGE_DISPLAY: Record<string, string> = {
-      bybit: "Bybit",
-      binance: "Binance",
-      okx: "OKX",
-      gate: "Gate",
-      mexc: "MEXC",
+      bybit: "Bybit", binance: "Binance", okx: "OKX", gate: "Gate", mexc: "MEXC",
     };
     const displayExchange = (name: string) => EXCHANGE_DISPLAY[name.toLowerCase()] ?? name;
     const closedLegsByPair: Record<string, number> = {};
@@ -317,7 +321,8 @@ router.get("/bots/:id/stats", requireBotSecret, async (req: Request, res: Respon
   }
 });
 
-router.get("/bots/:id/leg-history", requireBotSecret, async (req: Request, res: Response) => {
+router.get("/bots/:id/leg-history", requireAuth, async (req: Request, res: Response) => {
+  const userId = (req as any).userId as string;
   const id = Number(req.params.id);
   if (!id) {
     res.status(400).json({ error: "bad_request", message: "Invalid bot id" });
@@ -325,7 +330,10 @@ router.get("/bots/:id/leg-history", requireBotSecret, async (req: Request, res: 
   }
 
   try {
-    const [bot] = await db.select({ id: botConfigsTable.id }).from(botConfigsTable).where(eq(botConfigsTable.id, id));
+    const [bot] = await db
+      .select({ id: botConfigsTable.id })
+      .from(botConfigsTable)
+      .where(and(eq(botConfigsTable.id, id), eq(botConfigsTable.userId, userId)));
     if (!bot) {
       res.status(404).json({ error: "not_found", message: "Bot not found" });
       return;
@@ -357,7 +365,8 @@ router.get("/bots/:id/leg-history", requireBotSecret, async (req: Request, res: 
   }
 });
 
-router.get("/bots/:id/legs", requireBotSecret, async (req: Request, res: Response) => {
+router.get("/bots/:id/legs", requireAuth, async (req: Request, res: Response) => {
+  const userId = (req as any).userId as string;
   const id = Number(req.params.id);
   if (!id) {
     res.status(400).json({ error: "bad_request", message: "Invalid bot id" });
@@ -367,7 +376,10 @@ router.get("/bots/:id/legs", requireBotSecret, async (req: Request, res: Respons
   const status = req.query.status === "closed" ? "closed" : "open";
 
   try {
-    const [bot] = await db.select({ id: botConfigsTable.id }).from(botConfigsTable).where(eq(botConfigsTable.id, id));
+    const [bot] = await db
+      .select({ id: botConfigsTable.id })
+      .from(botConfigsTable)
+      .where(and(eq(botConfigsTable.id, id), eq(botConfigsTable.userId, userId)));
     if (!bot) {
       res.status(404).json({ error: "not_found", message: "Bot not found" });
       return;

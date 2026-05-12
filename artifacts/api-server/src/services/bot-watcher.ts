@@ -63,17 +63,18 @@ const LEG_OPEN_FAILURE_COOLDOWN_MS = 60_000; // 60 s back-off on any open failur
  */
 const MIN_LEG_HOLD_MS = 15_000; // 15 s — covers ~3 full price-cache refresh cycles
 
-async function getCachedCredentials(exchange: SupportedExchange): Promise<CredEntry | null> {
-  const cached = credCache.get(exchange);
+async function getCachedCredentials(userId: string, exchange: SupportedExchange): Promise<CredEntry | null> {
+  const cacheKey = `${userId}:${exchange}`;
+  const cached = credCache.get(cacheKey);
   if (cached && Date.now() - cached.ts < CRED_CACHE_TTL_MS) {
     return cached.data;
   }
-  const fresh = await getStoredCredentials(exchange);
+  const fresh = await getStoredCredentials(userId, exchange);
   if (!fresh) {
-    credCache.delete(exchange);
+    credCache.delete(cacheKey);
     return null;
   }
-  credCache.set(exchange, { data: fresh, ts: Date.now() });
+  credCache.set(cacheKey, { data: fresh, ts: Date.now() });
   return fresh;
 }
 
@@ -169,10 +170,11 @@ async function getExchangePairForBot(
   config: BotConfig,
 ): Promise<{ exA: SupportedCcxtExchange; exB: SupportedCcxtExchange } | null> {
   const { exchangeA, exchangeB } = botExchangeNames(config);
+  const userId = config.userId;
 
   const [credsA, credsB] = await Promise.all([
-    getCachedCredentials(exchangeA as SupportedExchange),
-    getCachedCredentials(exchangeB as SupportedExchange),
+    getCachedCredentials(userId, exchangeA as SupportedExchange),
+    getCachedCredentials(userId, exchangeB as SupportedExchange),
   ]);
 
   if (!credsA || !credsB) {
@@ -380,6 +382,7 @@ async function closeLeg(
   await withDbRetry(
     () =>
       db.insert(closedTradesTable).values({
+        userId: config.userId,
         symbol: leg.symbol,
         longExchange: longExchangeName,
         shortExchange: shortExchangeName,
@@ -488,8 +491,8 @@ async function processBotConfig(config: BotConfig, canOpen: boolean): Promise<vo
 
   if (spreadMeetsThreshold && belowMaxOrders && cooldownElapsed && failureCooldownElapsed) {
     const [credsA, credsB] = await Promise.all([
-      getCachedCredentials(exchangeA as SupportedExchange),
-      getCachedCredentials(exchangeB as SupportedExchange),
+      getCachedCredentials(config.userId, exchangeA as SupportedExchange),
+      getCachedCredentials(config.userId, exchangeB as SupportedExchange),
     ]);
     if (!credsA || !credsB) {
       logger.warn(
@@ -589,6 +592,7 @@ export async function closeAllLegsForBot(botId: number): Promise<{ closed: numbe
       }).where(eq(botLegsTable.id, leg.id));
       try {
         await db.insert(closedTradesTable).values({
+          userId: botConfig.userId,
           symbol: leg.symbol,
           longExchange: leg.bybitSide === "long" ? exchangeA : exchangeB,
           shortExchange: leg.bybitSide === "short" ? exchangeA : exchangeB,
@@ -636,29 +640,26 @@ async function reconcileOpenLegs(): Promise<void> {
 
   const activePositionsByExchange = new Map<string, Set<string>>();
 
-  const allExchanges = new Set<string>();
   for (const config of botConfigs) {
-    allExchanges.add(config.exchangeA ?? "bybit");
-    allExchanges.add(config.exchangeB ?? "binance");
-  }
-
-  for (const exName of allExchanges) {
-    const creds = await getStoredCredentials(exName as SupportedExchange);
-    if (!creds) continue;
-    try {
-      const ex = createExchangeForName(exName, creds.apiKey, creds.apiSecret);
-      const fetchType = exName === "binance" ? "future" : "linear";
-      const positions = await ex.fetchPositions(undefined, { type: fetchType });
-      const active = new Set<string>();
-      for (const pos of positions) {
-        if ((pos.contracts ?? 0) === 0) continue;
-        const sym = (pos.symbol ?? "").split("/")[0];
-        const side = pos.side === "long" ? "long" : "short";
-        active.add(`${sym}:${side}`);
+    for (const exName of [config.exchangeA ?? "bybit", config.exchangeB ?? "binance"]) {
+      const creds = await getCachedCredentials(config.userId, exName as SupportedExchange);
+      if (!creds) continue;
+      if (activePositionsByExchange.has(exName)) continue;
+      try {
+        const ex = createExchangeForName(exName, creds.apiKey, creds.apiSecret);
+        const fetchType = exName === "binance" ? "future" : "linear";
+        const positions = await ex.fetchPositions(undefined, { type: fetchType });
+        const active = new Set<string>();
+        for (const pos of positions) {
+          if ((pos.contracts ?? 0) === 0) continue;
+          const sym = (pos.symbol ?? "").split("/")[0];
+          const side = pos.side === "long" ? "long" : "short";
+          active.add(`${sym}:${side}`);
+        }
+        activePositionsByExchange.set(exName, active);
+      } catch (err) {
+        logger.warn({ err, exchange: exName }, "Reconcile: failed to fetch positions from exchange");
       }
-      activePositionsByExchange.set(exName, active);
-    } catch (err) {
-      logger.warn({ err, exchange: exName }, "Reconcile: failed to fetch positions from exchange");
     }
   }
 

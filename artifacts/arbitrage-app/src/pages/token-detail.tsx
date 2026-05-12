@@ -25,7 +25,6 @@ import {
 import type { ExchangeKlinePoint, BotConfig, BotLeg, TokenSpread, GetExchangeKlinesInterval } from "@workspace/api-client-react";
 import { TokenDetailPanel } from "@/components/token-detail-panel";
 import { useBots } from "@/hooks/use-bots";
-import { useBotSecret } from "@/hooks/use-bot-secret";
 import { usePriceStream } from "@/hooks/use-price-stream";
 import { useApiCredentials } from "@/hooks/use-api-credentials";
 import { useToast } from "@/hooks/use-toast";
@@ -625,13 +624,11 @@ function OpenPositionsSection({
   bot,
   openLegs,
   tokens,
-  botRequestOptions,
   requestHeaders,
 }: {
   bot: BotConfig;
   openLegs: BotLeg[];
   tokens: TokenSpread[];
-  botRequestOptions?: RequestInit;
   requestHeaders: RequestInit | undefined;
 }) {
   const [expanded, setExpanded] = useState(true);
@@ -643,7 +640,7 @@ function OpenPositionsSection({
   );
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const stopAndClose = useStopAndCloseBot({ request: botRequestOptions });
+  const stopAndClose = useStopAndCloseBot();
 
   const positions = useMemo(
     () => openLegs.map((leg) => botLegToPosition(leg, tokens, bot)),
@@ -832,9 +829,6 @@ export default function TokenDetail({ params }: { params: { symbol: string } }) 
       },
     }
   );
-
-  const { getBotRequestOptions } = useBotSecret();
-  const botRequestOptions = getBotRequestOptions();
 
   const { getRequestHeaders } = useApiCredentials();
   const requestHeaders = getRequestHeaders();
@@ -1311,7 +1305,6 @@ export default function TokenDetail({ params }: { params: { symbol: string } }) 
               bot={botStatus.bot}
               openLegs={botStatus.openLegs}
               tokens={allTokens ?? []}
-              botRequestOptions={botRequestOptions}
               requestHeaders={requestHeaders}
             />
           )}

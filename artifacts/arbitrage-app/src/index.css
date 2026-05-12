@@ -1,5 +1,11 @@
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap');
+@layer theme, base, clerk, components, utilities;
 @import "tailwindcss";
+
+.cl-formFieldInput::placeholder {
+  color: hsl(215 15% 45%);
+  opacity: 1;
+}
 @import "tw-animate-css";
 @plugin "@tailwindcss/typography";
 

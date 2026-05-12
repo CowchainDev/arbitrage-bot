@@ -16,7 +16,6 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
-import { useBotSecret } from "@/hooks/use-bot-secret";
 import { getExchangeName } from "@/lib/exchange-config";
 
 function getExchangeTokenData(token: TokenSpread, exchange: string) {
@@ -61,11 +60,8 @@ export function TokenDetailPanel({
   bot?: BotConfig;
   botOpenLegsCount: number;
 }) {
-  const { getBotRequestOptions } = useBotSecret();
-  const botRequestOptions = getBotRequestOptions();
-
   // Check which exchanges have credentials synced to the server
-  const { data: credentialStatus, isLoading: credStatusLoading } = useGetCredentialStatus({ request: botRequestOptions });
+  const { data: credentialStatus, isLoading: credStatusLoading } = useGetCredentialStatus();
   const serverSyncedExchanges = new Set(credentialStatus?.exchanges.map((e) => e.exchange) ?? []);
   const [botEnterSpread, setBotEnterSpread] = useState(() => {
     if (bot) return String(bot.enterSpreadPct);
@@ -129,11 +125,11 @@ export function TokenDetailPanel({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bot?.id, token.symbol]);
 
-  const createBotMutation = useCreateBot({ request: botRequestOptions });
-  const updateBotMutation = useUpdateBot({ request: botRequestOptions });
-  const startBotMutation = useStartBot({ request: botRequestOptions });
-  const stopBotMutation = useStopBot({ request: botRequestOptions });
-  const stopAndCloseBotMutation = useStopAndCloseBot({ request: botRequestOptions });
+  const createBotMutation = useCreateBot();
+  const updateBotMutation = useUpdateBot();
+  const startBotMutation = useStartBot();
+  const stopBotMutation = useStopBot();
+  const stopAndCloseBotMutation = useStopAndCloseBot();
 
   useEffect(() => { try { localStorage.setItem("arbitrage-botExchangeA", botExchangeA); } catch {} }, [botExchangeA]);
   useEffect(() => { try { localStorage.setItem("arbitrage-botExchangeB", botExchangeB); } catch {} }, [botExchangeB]);
