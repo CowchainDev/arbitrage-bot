@@ -111,7 +111,7 @@ function msToCountdown(ms: number | null): string | null {
 function FundingCountdownDisplay({
   nextFundingA, nextFundingB, labelA, labelB,
 }: { nextFundingA: string | null; nextFundingB: string | null; labelA: string; labelB: string }) {
-  const now = useNow();
+  const now = useNow(1000);
   const cdA = msToCountdown(nextFundingA ? new Date(nextFundingA).getTime() - now : null);
   const cdB = msToCountdown(nextFundingB ? new Date(nextFundingB).getTime() - now : null);
   if (!cdA && !cdB) return null;
@@ -189,7 +189,7 @@ export function BotSummaryRow({
   exchangeA?: string;
   exchangeB?: string;
 }) {
-  const now = useNow();
+  const now = useNow(1000);
 
   const symbol = positions[0].symbol;
   const totalPnl = positions.reduce((s, p) => s + (p.totalPnl ?? 0), 0);
@@ -361,7 +361,7 @@ export function PositionRow({
   const [isClosing, setIsClosing] = useState(false);
   const [closeResult, setCloseResult] = useState<ClosePositionResult | null>(null);
   const [closeError, setCloseError] = useState<string | null>(null);
-  const now = useNow();
+  const now = useNow(1000);
   const closePosition = useClosePosition({ request: requestHeaders });
   const queryClient = useQueryClient();
 

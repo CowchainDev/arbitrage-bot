@@ -117,7 +117,7 @@ function getExchangeFields(token: TokenSpread, ex: string): { ask: number | unde
 }
 
 function useFundingCountdown(nextFundingA: string | undefined | null, nextFundingB: string | undefined | null): string {
-  const now = useNow();
+  const now = useNow(1000);
   const msA = nextFundingA ? new Date(nextFundingA).getTime() - now : null;
   const msB = nextFundingB ? new Date(nextFundingB).getTime() - now : null;
   const ms = [msA, msB].filter((m): m is number => m != null && m > 0).sort((a, b) => a - b)[0] ?? null;
