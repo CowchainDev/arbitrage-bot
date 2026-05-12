@@ -585,6 +585,29 @@ async function processBotConfig(config: BotConfig, canOpen: boolean): Promise<vo
 
   if (!canOpen) return;
 
+  // ── Early credential check ─────────────────────────────────────────────────
+  // Runs on every tick (credentials are cached for 30 s — no DB hit most ticks)
+  // so that a "missing credentials" warning surfaces immediately even when the
+  // spread has not yet reached the entry threshold.
+  const [credsA, credsB] = await Promise.all([
+    getCachedCredentials(config.userId, exchangeA as SupportedExchange),
+    getCachedCredentials(config.userId, exchangeB as SupportedExchange),
+  ]);
+  if (!credsA || !credsB) {
+    logger.warn(
+      { symbol: config.symbol, exchangeA, exchangeB, missingA: !credsA, missingB: !credsB },
+      "Bot: skipping open — server credentials not synced for exchange pair",
+    );
+    if (!credsA && recordCredFailure(config.userId, exchangeA, "API credentials missing")) {
+      botEventBus.emitBotEvent({ kind: "credential_error", exchange: exchangeA, message: `${exchangeA} API credentials missing — add them in Settings` });
+    }
+    if (!credsB && recordCredFailure(config.userId, exchangeB, "API credentials missing")) {
+      botEventBus.emitBotEvent({ kind: "credential_error", exchange: exchangeB, message: `${exchangeB} API credentials missing — add them in Settings` });
+    }
+    return;
+  }
+  // ──────────────────────────────────────────────────────────────────────────
+
   const remainingOpen = openLegs.length - confirmedClosedCount;
   const spreadMeetsThreshold = Math.abs(spreadPct) >= enterSpread;
   const belowMaxOrders = remainingOpen < config.maxOrders;
@@ -601,24 +624,7 @@ async function processBotConfig(config: BotConfig, canOpen: boolean): Promise<vo
   const failureCooldownElapsed = Date.now() - lastFailMs >= LEG_OPEN_FAILURE_COOLDOWN_MS;
 
   if (spreadMeetsThreshold && belowMaxOrders && cooldownElapsed && failureCooldownElapsed) {
-    const [credsA, credsB] = await Promise.all([
-      getCachedCredentials(config.userId, exchangeA as SupportedExchange),
-      getCachedCredentials(config.userId, exchangeB as SupportedExchange),
-    ]);
-    if (!credsA || !credsB) {
-      logger.warn(
-        { symbol: config.symbol, exchangeA, exchangeB, missingA: !credsA, missingB: !credsB },
-        "Bot: skipping open — server credentials not synced for exchange pair",
-      );
-      const missingMsg = "No API credentials saved — go to Settings to add them";
-      if (!credsA && recordCredFailure(config.userId, exchangeA, missingMsg)) {
-        botEventBus.emitBotEvent({ kind: "credential_error", exchange: exchangeA, message: `${exchangeA} API credentials missing` });
-      }
-      if (!credsB && recordCredFailure(config.userId, exchangeB, missingMsg)) {
-        botEventBus.emitBotEvent({ kind: "credential_error", exchange: exchangeB, message: `${exchangeB} API credentials missing` });
-      }
-      return;
-    }
+    // Credentials were already verified present above; pass to openLeg via config.
     const opened = await openLeg(config, spreadPct);
     if (opened) {
       lastLegOpenedAt.set(config.id, Date.now());
@@ -1009,6 +1015,32 @@ function startWatcherLoop(): void {
   watcherTimer = setTimeout(tick, WATCHER_INTERVAL_MS);
 }
 
+/**
+ * Probes credentials for every currently-enabled bot immediately on startup.
+ * Called after the credential cache is warmed so that auth errors (bad keys,
+ * expired secrets, IP whitelist mismatches) surface via credential_error events
+ * without waiting for the spread threshold to be reached.
+ */
+async function probeAllEnabledBotsOnStartup(): Promise<void> {
+  const enabledBots = await db
+    .select()
+    .from(botConfigsTable)
+    .where(eq(botConfigsTable.enabled, true));
+
+  if (enabledBots.length === 0) return;
+
+  logger.info(
+    { count: enabledBots.length },
+    "Bot watcher: probing credentials for all enabled bots on startup",
+  );
+
+  await Promise.allSettled(
+    enabledBots.map((bot) => probeCredentialsForBot(bot).catch((err) => {
+      logger.warn({ err, botId: bot.id }, "Bot watcher: startup credential probe failed");
+    })),
+  );
+}
+
 export function startBotWatcher(): void {
   if (running) return;
   running = true;
@@ -1027,6 +1059,13 @@ export function startBotWatcher(): void {
       startReconcileLoop();
       startWatcherLoop();
       logger.info("Bot watcher started");
+
+      // Fire-and-forget: probe credentials for all enabled bots so that auth
+      // errors (bad keys, IP whitelist failures) emit credential_error events
+      // immediately on server restart — before any trade is attempted.
+      probeAllEnabledBotsOnStartup().catch((err) =>
+        logger.warn({ err }, "Bot watcher: startup credential probe sweep failed"),
+      );
     });
 }
 
