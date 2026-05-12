@@ -81,6 +81,18 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
 
   const handleMessage = useCallback((msg: NotificationMessage) => {
     const { event, ts } = msg;
+
+    if (event.kind === "credential_ok") {
+      // Recovery signal — update failing-exchanges state only; no bell entry, no toast.
+      setFailingExchanges((prev) => {
+        if (!prev.has(event.exchange)) return prev;
+        const next = new Set(prev);
+        next.delete(event.exchange);
+        return next;
+      });
+      return;
+    }
+
     const id = String(++idCounter.current);
     const entry: NotificationEntry = { id, ts, event, read: false };
     setNotifications((prev) => [entry, ...prev].slice(0, MAX_HISTORY));
@@ -91,15 +103,6 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
         next.add(event.exchange);
         return next;
       });
-    } else if (event.kind === "credential_ok") {
-      // Recovery signal — remove from failing set without adding to notification history.
-      setFailingExchanges((prev) => {
-        if (!prev.has(event.exchange)) return prev;
-        const next = new Set(prev);
-        next.delete(event.exchange);
-        return next;
-      });
-      return;
     } else if (event.kind === "leg_opened") {
       setFailingExchanges((prev) => {
         if (!prev.has(event.exchangeA) && !prev.has(event.exchangeB)) return prev;
