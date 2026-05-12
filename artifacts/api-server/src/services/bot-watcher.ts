@@ -1048,24 +1048,28 @@ export function startBotWatcher(): void {
   // Price refresh doesn't need credentials — start it immediately.
   startPriceRefreshLoop();
 
-  // Pre-warm credentials before the first watcher tick fires so bots
-  // restored from DB on restart never see a cold cache.
+  // Startup sequence:
+  //   1. Pre-warm credential cache (DB reads, fast)
+  //   2. Probe all enabled bots via fetchBalance (validates API keys, catches
+  //      auth errors before any trade is attempted)
+  //   3. Start the reconcile and watcher loops only after probing completes
+  //
+  // Sequencing the probe before startWatcherLoop() ensures that the first
+  // watcher tick cannot race against the probe — credential_error events are
+  // guaranteed to fire first.
   warmCredentialCache()
     .catch((err) =>
       logger.warn({ err }, "Bot watcher: credential cache warmup failed — continuing without pre-warm"),
+    )
+    .then(() => probeAllEnabledBotsOnStartup())
+    .catch((err) =>
+      logger.warn({ err }, "Bot watcher: startup credential probe sweep failed — starting loops anyway"),
     )
     .finally(() => {
       if (!running) return;
       startReconcileLoop();
       startWatcherLoop();
       logger.info("Bot watcher started");
-
-      // Fire-and-forget: probe credentials for all enabled bots so that auth
-      // errors (bad keys, IP whitelist failures) emit credential_error events
-      // immediately on server restart — before any trade is attempted.
-      probeAllEnabledBotsOnStartup().catch((err) =>
-        logger.warn({ err }, "Bot watcher: startup credential probe sweep failed"),
-      );
     });
 }
 
