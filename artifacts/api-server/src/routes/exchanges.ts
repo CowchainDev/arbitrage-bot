@@ -1648,6 +1648,8 @@ router.post("/exchanges/close-position", async (req: Request, res: Response) => 
           fundingPaidUsd: estimatedFundingUsd != null ? String(estimatedFundingUsd) : undefined,
           entryTime: entryTime ? new Date(entryTime) : new Date(),
           closeTime: new Date(),
+          // Client-provided PnL (formula estimate), not exchange-reported.
+          pnlFromExchange: false,
         });
       } catch {
         // Non-fatal: DB logging failure should not abort position close
