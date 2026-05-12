@@ -1062,7 +1062,7 @@ export default function Dashboard() {
       )}
 
       {/* Open Positions */}
-      {positions.length > 0 && (
+      {(positions.length > 0 || !hasCredentials) && (
         <div className="bg-card border border-border rounded overflow-hidden shrink-0">
           <button
             onClick={() => setShowPositions(!showPositions)}
@@ -1099,7 +1099,14 @@ export default function Dashboard() {
               {showPositions ? <ChevronUp className="w-3.5 h-3.5 text-muted-foreground" /> : <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />}
             </div>
           </button>
-          {showPositions && (
+          {showPositions && !hasCredentials && positions.length === 0 && (
+            <div className="px-4 py-5 text-center text-xs text-muted-foreground border-t border-border/40">
+              No credentials —{" "}
+              <Link href="/settings" className="underline hover:text-primary">add API keys in Settings</Link>
+              {" "}to see live positions.
+            </div>
+          )}
+          {showPositions && (hasCredentials || positions.length > 0) && (
             <div>
               <div className="grid grid-cols-11 gap-2 px-3 py-1.5 text-[10px] text-muted-foreground uppercase tracking-wider bg-muted/30 font-semibold border-t border-border/40">
                 <span>Symbol</span>

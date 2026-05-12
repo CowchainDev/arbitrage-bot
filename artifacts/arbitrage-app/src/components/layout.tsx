@@ -80,9 +80,12 @@ function HeaderBalances() {
 
   if (!hasAnyCredentials) {
     return (
-      <div className="text-destructive font-medium bg-destructive/10 px-3 py-1 rounded text-xs">
-        API Keys missing. Configuration required.
-      </div>
+      <Link
+        href="/settings"
+        className="flex items-center gap-1.5 text-destructive font-medium bg-destructive/10 hover:bg-destructive/20 border border-destructive/20 px-3 py-1 rounded text-xs transition-colors"
+      >
+        Add API keys →
+      </Link>
     );
   }
 
