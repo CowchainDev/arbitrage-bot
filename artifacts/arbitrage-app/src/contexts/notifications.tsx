@@ -15,6 +15,7 @@ type NotificationsContextValue = {
   markAllRead: () => void;
   clearAll: () => void;
   dismissOne: (id: string) => void;
+  restoreOne: (entry: NotificationEntry) => void;
   failingExchanges: Set<string>;
 };
 
@@ -154,9 +155,18 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     setNotifications((prev) => prev.filter((n) => n.id !== id));
   }, []);
 
+  const restoreOne = useCallback((entry: NotificationEntry) => {
+    setNotifications((prev) => {
+      if (prev.some((n) => n.id === entry.id)) return prev;
+      const next = [...prev, entry];
+      next.sort((a, b) => b.ts - a.ts);
+      return next.slice(0, MAX_HISTORY);
+    });
+  }, []);
+
   const value = useMemo(
-    () => ({ notifications, unreadCount, markAllRead, clearAll, dismissOne, failingExchanges }),
-    [notifications, unreadCount, markAllRead, clearAll, dismissOne, failingExchanges],
+    () => ({ notifications, unreadCount, markAllRead, clearAll, dismissOne, restoreOne, failingExchanges }),
+    [notifications, unreadCount, markAllRead, clearAll, dismissOne, restoreOne, failingExchanges],
   );
 
   return (

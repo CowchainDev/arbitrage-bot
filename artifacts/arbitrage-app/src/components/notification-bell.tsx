@@ -1,5 +1,6 @@
 import { Bell, CheckCheck, Trash2, ChevronDown, Copy, Check, X } from "lucide-react";
 import { useState, useRef, useEffect, useCallback } from "react";
+import { toast } from "sonner";
 import { useNotifications, type NotificationEntry } from "@/contexts/notifications";
 import type { BotEvent } from "@/hooks/use-notification-stream";
 
@@ -67,7 +68,7 @@ function formatTime(ts: number): string {
   return new Date(ts).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
-function NotificationRow({ n, onDismiss }: { n: NotificationEntry; onDismiss: (id: string) => void }) {
+function NotificationRow({ n, onDismiss }: { n: NotificationEntry; onDismiss: (entry: NotificationEntry) => void }) {
   const [expanded, setExpanded] = useState(false);
   const [overflows, setOverflows] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -96,8 +97,8 @@ function NotificationRow({ n, onDismiss }: { n: NotificationEntry; onDismiss: (i
 
   const handleDismiss = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
-    onDismiss(n.id);
-  }, [n.id, onDismiss]);
+    onDismiss(n);
+  }, [n, onDismiss]);
 
   return (
     <div
@@ -156,7 +157,7 @@ function NotificationRow({ n, onDismiss }: { n: NotificationEntry; onDismiss: (i
 }
 
 export function NotificationBell() {
-  const { notifications, unreadCount, markAllRead, clearAll, dismissOne } = useNotifications();
+  const { notifications, unreadCount, markAllRead, clearAll, dismissOne, restoreOne } = useNotifications();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -175,6 +176,17 @@ export function NotificationBell() {
     setOpen(next);
     if (next) markAllRead();
   }
+
+  const handleDismissWithUndo = useCallback((entry: NotificationEntry) => {
+    dismissOne(entry.id);
+    toast("Notification dismissed", {
+      duration: 4000,
+      action: {
+        label: "Undo",
+        onClick: () => restoreOne(entry),
+      },
+    });
+  }, [dismissOne, restoreOne]);
 
   return (
     <div ref={ref} className="relative">
@@ -218,7 +230,9 @@ export function NotificationBell() {
                 No notifications yet
               </div>
             ) : (
-              notifications.map((n) => <NotificationRow key={n.id} n={n} onDismiss={dismissOne} />)
+              notifications.map((n) => (
+                <NotificationRow key={n.id} n={n} onDismiss={handleDismissWithUndo} />
+              ))
             )}
           </div>
         </div>
