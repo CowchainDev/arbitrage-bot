@@ -15,4 +15,5 @@ export const OrderRequestExchange = {
   gate: "gate",
   okx: "okx",
   mexc: "mexc",
+  hyper: "hyper",
 } as const;

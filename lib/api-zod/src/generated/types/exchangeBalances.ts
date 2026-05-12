@@ -15,4 +15,11 @@ export interface ExchangeBalances {
   bybitPnl?: number;
   /** Unrealized P&L on Binance */
   binancePnl?: number;
+  okx?: number;
+  okxPnl?: number;
+  mexc?: number;
+  mexcPnl?: number;
+  /** USDC balance in HyperLiquid futures wallet */
+  hyper?: number;
+  hyperPnl?: number;
 }

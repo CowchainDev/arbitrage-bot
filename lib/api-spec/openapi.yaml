@@ -705,7 +705,7 @@ paths:
           required: true
           schema:
             type: string
-            enum: [bybit, binance, gate, okx, mexc]
+            enum: [bybit, binance, gate, okx, mexc, aster, hyper]
       responses:
         "200":
           description: Credential deleted
@@ -737,6 +737,25 @@ paths:
       operationId: getTrades
       tags: [trades]
       summary: Get trade history with aggregate stats
+      parameters:
+        - in: query
+          name: symbol
+          schema:
+            type: string
+          required: false
+          description: Filter by trading symbol (e.g. BTC, ETH). Case-insensitive exact match.
+        - in: query
+          name: dateFrom
+          schema:
+            type: string
+          required: false
+          description: Start of date range (ISO 8601). Filters trades closed on or after this date.
+        - in: query
+          name: dateTo
+          schema:
+            type: string
+          required: false
+          description: End of date range (ISO 8601). Filters trades closed on or before this date.
       responses:
         "200":
           description: Trade history and stats
@@ -744,6 +763,26 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/TradeHistoryResponse"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+  /trades/symbols:
+    get:
+      operationId: getTradesSymbols
+      tags: [trades]
+      summary: Get all distinct trading symbols in the user's trade history
+      description: Returns a sorted list of all unique symbols the user has ever traded. Useful for populating symbol filter dropdowns.
+      responses:
+        "200":
+          description: List of distinct symbols
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TradeSymbolsResponse"
         "500":
           description: Server error
           content:
@@ -865,6 +904,31 @@ components:
           type: number
         mexcAsk:
           type: number
+        asterPrice:
+          type: number
+        asterFundingRate:
+          type: number
+        asterNextFunding:
+          type: string
+        asterBid:
+          type: number
+        asterAsk:
+          type: number
+        hyperPrice:
+          type: number
+          nullable: true
+        hyperFundingRate:
+          type: number
+          nullable: true
+        hyperNextFunding:
+          type: string
+          nullable: true
+        hyperBid:
+          type: number
+          nullable: true
+        hyperAsk:
+          type: number
+          nullable: true
         bestSpreadPct:
           type: number
           description: Highest absolute spread across all tracked exchange pairs
@@ -901,6 +965,19 @@ components:
         binancePnl:
           type: number
           description: Unrealized P&L on Binance
+        okx:
+          type: number
+        okxPnl:
+          type: number
+        mexc:
+          type: number
+        mexcPnl:
+          type: number
+        hyper:
+          type: number
+          description: USDC balance in HyperLiquid futures wallet
+        hyperPnl:
+          type: number
       required:
         - bybit
         - binance
@@ -910,7 +987,7 @@ components:
       properties:
         exchange:
           type: string
-          enum: [bybit, binance, gate, okx, mexc]
+          enum: [bybit, binance, gate, okx, mexc, hyper]
         symbol:
           type: string
           description: Token symbol e.g. BTC
@@ -1198,6 +1275,10 @@ components:
         netPnl:
           type: number
           description: totalPnl + totalFunding — the true bottom-line performance including funding.
+        avgFundingRateSpread:
+          type: number
+          nullable: true
+          description: Average funding rate spread at close across all trades in the result set. Null if no trades have funding rate spread data.
       required:
         - totalTrades
         - winningTrades
@@ -1207,6 +1288,17 @@ components:
         - worstTrade
         - totalFunding
         - netPnl
+
+    TradeSymbolsResponse:
+      type: object
+      properties:
+        symbols:
+          type: array
+          items:
+            type: string
+          description: Sorted list of all distinct trading symbols in the user's history
+      required:
+        - symbols
 
     TradeHistoryResponse:
       type: object
@@ -1267,7 +1359,7 @@ components:
       properties:
         exchange:
           type: string
-          enum: [bybit, binance, gate, okx, mexc]
+          enum: [bybit, binance, gate, okx, mexc, aster, hyper]
           description: Exchange identifier
         apiKey:
           type: string

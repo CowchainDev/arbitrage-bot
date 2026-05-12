@@ -120,6 +120,16 @@ export const GetExchangePricesResponseItem = zod.object({
   mexcNextFunding: zod.string().optional(),
   mexcBid: zod.number().optional(),
   mexcAsk: zod.number().optional(),
+  asterPrice: zod.number().optional(),
+  asterFundingRate: zod.number().optional(),
+  asterNextFunding: zod.string().optional(),
+  asterBid: zod.number().optional(),
+  asterAsk: zod.number().optional(),
+  hyperPrice: zod.number().nullish(),
+  hyperFundingRate: zod.number().nullish(),
+  hyperNextFunding: zod.string().nullish(),
+  hyperBid: zod.number().nullish(),
+  hyperAsk: zod.number().nullish(),
   bestSpreadPct: zod
     .number()
     .optional()
@@ -168,6 +178,15 @@ export const GetExchangeBalancesResponse = zod.object({
   binance: zod.number().describe("USDT balance in Binance futures wallet"),
   bybitPnl: zod.number().optional().describe("Unrealized P&L on Bybit"),
   binancePnl: zod.number().optional().describe("Unrealized P&L on Binance"),
+  okx: zod.number().optional(),
+  okxPnl: zod.number().optional(),
+  mexc: zod.number().optional(),
+  mexcPnl: zod.number().optional(),
+  hyper: zod
+    .number()
+    .optional()
+    .describe("USDC balance in HyperLiquid futures wallet"),
+  hyperPnl: zod.number().optional(),
 });
 
 /**
@@ -181,7 +200,7 @@ export const PlaceOrderHeader = zod.object({
 });
 
 export const PlaceOrderBody = zod.object({
-  exchange: zod.enum(["bybit", "binance", "gate", "okx", "mexc", "aster", "hyper"]),
+  exchange: zod.enum(["bybit", "binance", "gate", "okx", "mexc", "hyper"]),
   symbol: zod.string().describe("Token symbol e.g. BTC"),
   side: zod.enum(["long", "short"]),
   usdAmount: zod.number().describe("Order size in USD"),
@@ -877,7 +896,15 @@ export const GetCredentialStatusResponse = zod.object({
  * @summary Remove stored API credentials for an exchange
  */
 export const DeleteCredentialParams = zod.object({
-  exchange: zod.enum(["bybit", "binance", "gate", "okx", "mexc"]),
+  exchange: zod.enum([
+    "bybit",
+    "binance",
+    "gate",
+    "okx",
+    "mexc",
+    "aster",
+    "hyper",
+  ]),
 });
 
 export const DeleteCredentialResponse = zod.object({
@@ -888,6 +915,27 @@ export const DeleteCredentialResponse = zod.object({
 /**
  * @summary Get trade history with aggregate stats
  */
+export const GetTradesQueryParams = zod.object({
+  symbol: zod.coerce
+    .string()
+    .optional()
+    .describe(
+      "Filter by trading symbol (e.g. BTC, ETH). Case-insensitive exact match.",
+    ),
+  dateFrom: zod.coerce
+    .string()
+    .optional()
+    .describe(
+      "Start of date range (ISO 8601). Filters trades closed on or after this date.",
+    ),
+  dateTo: zod.coerce
+    .string()
+    .optional()
+    .describe(
+      "End of date range (ISO 8601). Filters trades closed on or before this date.",
+    ),
+});
+
 export const GetTradesResponse = zod.object({
   trades: zod.array(
     zod.object({
@@ -917,6 +965,12 @@ export const GetTradesResponse = zod.object({
         .nullish()
         .describe(
           "Estimated net funding captured over the life of the trade (positive = received, negative = paid). Null for older trades recorded before this feature.",
+        ),
+      fundingRateSpread: zod
+        .number()
+        .nullish()
+        .describe(
+          "The net funding rate spread (long rate minus short rate) at the time the trade was closed. Positive means long side received more than short side paid. Null for older trades.",
         ),
       spreadAtExit: zod
         .number()
@@ -964,7 +1018,25 @@ export const GetTradesResponse = zod.object({
       .describe(
         "totalPnl + totalFunding — the true bottom-line performance including funding.",
       ),
+    avgFundingRateSpread: zod
+      .number()
+      .nullish()
+      .describe(
+        "Average funding rate spread at close across all trades in the result set. Null if no trades have funding rate spread data.",
+      ),
   }),
+});
+
+/**
+ * Returns a sorted list of all unique symbols the user has ever traded. Useful for populating symbol filter dropdowns.
+ * @summary Get all distinct trading symbols in the user's trade history
+ */
+export const GetTradesSymbolsResponse = zod.object({
+  symbols: zod
+    .array(zod.string())
+    .describe(
+      "Sorted list of all distinct trading symbols in the user's history",
+    ),
 });
 
 /**

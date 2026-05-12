@@ -308,8 +308,13 @@ export interface TradeStats {
   totalFunding: number;
   /** totalPnl + totalFunding — the true bottom-line performance including funding. */
   netPnl: number;
-  /** Average funding rate spread across trades where the value is available. Null if no trades have this data. */
+  /** Average funding rate spread at close across all trades in the result set. Null if no trades have funding rate spread data. */
   avgFundingRateSpread?: number | null;
+}
+
+export interface TradeSymbolsResponse {
+  /** Sorted list of all distinct trading symbols in the user's history */
+  symbols: string[];
 }
 
 export interface TradeHistoryResponse {
@@ -602,4 +607,19 @@ export type StopAndCloseBot200 = {
 export type DeleteCredential200 = {
   exchange: string;
   deleted: boolean;
+};
+
+export type GetTradesParams = {
+  /**
+   * Filter by trading symbol (e.g. BTC, ETH). Case-insensitive exact match.
+   */
+  symbol?: string;
+  /**
+   * Start of date range (ISO 8601). Filters trades closed on or after this date.
+   */
+  dateFrom?: string;
+  /**
+   * End of date range (ISO 8601). Filters trades closed on or before this date.
+   */
+  dateTo?: string;
 };

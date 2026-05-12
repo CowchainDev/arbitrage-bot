@@ -5,8 +5,9 @@ import {
   getGetTradesQueryKey,
   useGetTradesPnlChart,
   getGetTradesPnlChartQueryKey,
+  useGetTradesSymbols,
 } from "@workspace/api-client-react";
-import type { ClosedTrade, PnlChartPoint } from "@workspace/api-client-react";
+import type { ClosedTrade, PnlChartPoint, GetTradesParams } from "@workspace/api-client-react";
 import {
   LineChart,
   Line,
@@ -19,7 +20,7 @@ import {
 } from "recharts";
 import { useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { TrendingUp, BarChart2, Activity, Info, RefreshCw } from "lucide-react";
+import { TrendingUp, BarChart2, Activity, Info, RefreshCw, Filter, X } from "lucide-react";
 
 function StatCard({
   label,
@@ -360,6 +361,24 @@ export default function History() {
   const [backfilling, setBackfilling] = useState(false);
   const [backfillResult, setBackfillResult] = useState<string | null>(null);
 
+  const [symbolFilter, setSymbolFilter] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+
+  const activeParams = useMemo<GetTradesParams>(() => {
+    const p: GetTradesParams = {};
+    if (symbolFilter) p.symbol = symbolFilter;
+    if (dateFrom) p.dateFrom = new Date(dateFrom).toISOString();
+    if (dateTo) {
+      const end = new Date(dateTo);
+      end.setHours(23, 59, 59, 999);
+      p.dateTo = end.toISOString();
+    }
+    return p;
+  }, [symbolFilter, dateFrom, dateTo]);
+
+  const hasActiveFilter = !!(symbolFilter || dateFrom || dateTo);
+
   const runBackfill = async () => {
     setBackfilling(true);
     setBackfillResult(null);
@@ -379,12 +398,19 @@ export default function History() {
     }
   };
 
-  const tradesQuery = useGetTrades({
-    query: {
-      queryKey: getGetTradesQueryKey(),
-      refetchInterval: 30000,
-    },
+  const symbolsQuery = useGetTradesSymbols({
+    query: { queryKey: ["/api/trades/symbols"], staleTime: 60000 },
   });
+
+  const tradesQuery = useGetTrades(
+    activeParams,
+    {
+      query: {
+        queryKey: getGetTradesQueryKey(activeParams),
+        refetchInterval: 30000,
+      },
+    },
+  );
 
   const pnlChartQuery = useGetTradesPnlChart({
     query: {
@@ -392,6 +418,8 @@ export default function History() {
       refetchInterval: 30000,
     },
   });
+
+  const availableSymbols = symbolsQuery.data?.symbols ?? [];
 
   const data = tradesQuery.data;
   const trades = data?.trades ?? [];
@@ -413,6 +441,12 @@ export default function History() {
       ? { open: stats.totalOpenFees, close: stats.totalCloseFees }
       : null;
 
+  const clearFilters = () => {
+    setSymbolFilter("");
+    setDateFrom("");
+    setDateTo("");
+  };
+
   return (
     <div className="max-w-6xl mx-auto space-y-6">
       <div className="flex items-center gap-2">
@@ -429,11 +463,70 @@ export default function History() {
         </div>
       )}
 
+      <div className="bg-card border border-border rounded-lg px-4 py-3 flex flex-wrap items-end gap-3">
+        <div className="flex items-center gap-2 text-xs text-muted-foreground mr-1">
+          <Filter className="w-3.5 h-3.5" />
+          <span className="font-medium">Filters</span>
+        </div>
+
+        <div className="flex flex-col gap-1">
+          <label className="text-xs text-muted-foreground">Symbol</label>
+          <select
+            value={symbolFilter}
+            onChange={(e) => setSymbolFilter(e.target.value)}
+            className="h-8 px-2 text-xs rounded-md border border-border bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary min-w-[110px]"
+          >
+            <option value="">All symbols</option>
+            {availableSymbols.map((s) => (
+              <option key={s} value={s}>{s}</option>
+            ))}
+          </select>
+        </div>
+
+        <div className="flex flex-col gap-1">
+          <label className="text-xs text-muted-foreground">From</label>
+          <input
+            type="date"
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+            max={dateTo || undefined}
+            className="h-8 px-2 text-xs rounded-md border border-border bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+          />
+        </div>
+
+        <div className="flex flex-col gap-1">
+          <label className="text-xs text-muted-foreground">To</label>
+          <input
+            type="date"
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+            min={dateFrom || undefined}
+            className="h-8 px-2 text-xs rounded-md border border-border bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+          />
+        </div>
+
+        {hasActiveFilter && (
+          <button
+            onClick={clearFilters}
+            className="flex items-center gap-1 h-8 px-2 text-xs text-muted-foreground hover:text-foreground border border-border rounded-md transition-colors self-end"
+          >
+            <X className="w-3 h-3" />
+            Clear
+          </button>
+        )}
+
+        {hasActiveFilter && (
+          <span className="self-end text-xs text-muted-foreground ml-auto">
+            Showing filtered results
+          </span>
+        )}
+      </div>
+
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-4 gap-3">
         <StatCard
           label="Total Trades"
           value={stats ? String(stats.totalTrades) : "—"}
-          sub="all time"
+          sub={hasActiveFilter ? "filtered" : "all time"}
         />
         <StatCard
           label="Win Rate"

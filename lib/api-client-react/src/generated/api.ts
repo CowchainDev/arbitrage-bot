@@ -32,6 +32,7 @@ import type {
   ExchangeBalances,
   ExchangeKlinesResponse,
   GetExchangeKlinesParams,
+  GetTradesParams,
   HealthStatus,
   JumpInRequest,
   JumpInResult,
@@ -44,6 +45,7 @@ import type {
   StoreCredentialResult,
   TokenSpread,
   TradeHistoryResponse,
+  TradeSymbolsResponse,
   UpdateBotRequest,
 } from "./api.schemas";
 
@@ -1717,13 +1719,13 @@ export function useGetCredentialStatus<
  * @summary Remove stored API credentials for an exchange
  */
 export const getDeleteCredentialUrl = (
-  exchange: "bybit" | "binance" | "gate" | "okx" | "mexc",
+  exchange: "bybit" | "binance" | "gate" | "okx" | "mexc" | "aster" | "hyper",
 ) => {
   return `/api/credentials/${exchange}`;
 };
 
 export const deleteCredential = async (
-  exchange: "bybit" | "binance" | "gate" | "okx" | "mexc",
+  exchange: "bybit" | "binance" | "gate" | "okx" | "mexc" | "aster" | "hyper",
   options?: RequestInit,
 ): Promise<DeleteCredential200> => {
   return customFetch<DeleteCredential200>(getDeleteCredentialUrl(exchange), {
@@ -1739,14 +1741,25 @@ export const getDeleteCredentialMutationOptions = <
   mutation?: UseMutationOptions<
     Awaited<ReturnType<typeof deleteCredential>>,
     TError,
-    { exchange: "bybit" | "binance" | "gate" | "okx" | "mexc" },
+    {
+      exchange:
+        | "bybit"
+        | "binance"
+        | "gate"
+        | "okx"
+        | "mexc"
+        | "aster"
+        | "hyper";
+    },
     TContext
   >;
   request?: SecondParameter<typeof customFetch>;
 }): UseMutationOptions<
   Awaited<ReturnType<typeof deleteCredential>>,
   TError,
-  { exchange: "bybit" | "binance" | "gate" | "okx" | "mexc" },
+  {
+    exchange: "bybit" | "binance" | "gate" | "okx" | "mexc" | "aster" | "hyper";
+  },
   TContext
 > => {
   const mutationKey = ["deleteCredential"];
@@ -1760,7 +1773,16 @@ export const getDeleteCredentialMutationOptions = <
 
   const mutationFn: MutationFunction<
     Awaited<ReturnType<typeof deleteCredential>>,
-    { exchange: "bybit" | "binance" | "gate" | "okx" | "mexc" }
+    {
+      exchange:
+        | "bybit"
+        | "binance"
+        | "gate"
+        | "okx"
+        | "mexc"
+        | "aster"
+        | "hyper";
+    }
   > = (props) => {
     const { exchange } = props ?? {};
 
@@ -1786,14 +1808,25 @@ export const useDeleteCredential = <
   mutation?: UseMutationOptions<
     Awaited<ReturnType<typeof deleteCredential>>,
     TError,
-    { exchange: "bybit" | "binance" | "gate" | "okx" | "mexc" },
+    {
+      exchange:
+        | "bybit"
+        | "binance"
+        | "gate"
+        | "okx"
+        | "mexc"
+        | "aster"
+        | "hyper";
+    },
     TContext
   >;
   request?: SecondParameter<typeof customFetch>;
 }): UseMutationResult<
   Awaited<ReturnType<typeof deleteCredential>>,
   TError,
-  { exchange: "bybit" | "binance" | "gate" | "okx" | "mexc" },
+  {
+    exchange: "bybit" | "binance" | "gate" | "okx" | "mexc" | "aster" | "hyper";
+  },
   TContext
 > => {
   return useMutation(getDeleteCredentialMutationOptions(options));
@@ -1802,37 +1835,57 @@ export const useDeleteCredential = <
 /**
  * @summary Get trade history with aggregate stats
  */
-export const getGetTradesUrl = () => {
-  return `/api/trades`;
+export const getGetTradesUrl = (params?: GetTradesParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/trades?${stringifiedParams}`
+    : `/api/trades`;
 };
 
 export const getTrades = async (
+  params?: GetTradesParams,
   options?: RequestInit,
 ): Promise<TradeHistoryResponse> => {
-  return customFetch<TradeHistoryResponse>(getGetTradesUrl(), {
+  return customFetch<TradeHistoryResponse>(getGetTradesUrl(params), {
     ...options,
     method: "GET",
   });
 };
 
-export const getGetTradesQueryKey = () => {
-  return [`/api/trades`] as const;
+export const getGetTradesQueryKey = (params?: GetTradesParams) => {
+  return [`/api/trades`, ...(params ? [params] : [])] as const;
 };
 
 export const getGetTradesQueryOptions = <
   TData = Awaited<ReturnType<typeof getTrades>>,
   TError = ErrorType<ApiError>,
->(options?: {
-  query?: UseQueryOptions<Awaited<ReturnType<typeof getTrades>>, TError, TData>;
-  request?: SecondParameter<typeof customFetch>;
-}) => {
+>(
+  params?: GetTradesParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getTrades>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
   const { query: queryOptions, request: requestOptions } = options ?? {};
 
-  const queryKey = queryOptions?.queryKey ?? getGetTradesQueryKey();
+  const queryKey = queryOptions?.queryKey ?? getGetTradesQueryKey(params);
 
   const queryFn: QueryFunction<Awaited<ReturnType<typeof getTrades>>> = ({
     signal,
-  }) => getTrades({ signal, ...requestOptions });
+  }) => getTrades(params, { signal, ...requestOptions });
 
   return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
     Awaited<ReturnType<typeof getTrades>>,
@@ -1853,11 +1906,94 @@ export type GetTradesQueryError = ErrorType<ApiError>;
 export function useGetTrades<
   TData = Awaited<ReturnType<typeof getTrades>>,
   TError = ErrorType<ApiError>,
+>(
+  params?: GetTradesParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getTrades>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetTradesQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * Returns a sorted list of all unique symbols the user has ever traded. Useful for populating symbol filter dropdowns.
+ * @summary Get all distinct trading symbols in the user's trade history
+ */
+export const getGetTradesSymbolsUrl = () => {
+  return `/api/trades/symbols`;
+};
+
+export const getTradesSymbols = async (
+  options?: RequestInit,
+): Promise<TradeSymbolsResponse> => {
+  return customFetch<TradeSymbolsResponse>(getGetTradesSymbolsUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetTradesSymbolsQueryKey = () => {
+  return [`/api/trades/symbols`] as const;
+};
+
+export const getGetTradesSymbolsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getTradesSymbols>>,
+  TError = ErrorType<ApiError>,
 >(options?: {
-  query?: UseQueryOptions<Awaited<ReturnType<typeof getTrades>>, TError, TData>;
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getTradesSymbols>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetTradesSymbolsQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getTradesSymbols>>
+  > = ({ signal }) => getTradesSymbols({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getTradesSymbols>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetTradesSymbolsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getTradesSymbols>>
+>;
+export type GetTradesSymbolsQueryError = ErrorType<ApiError>;
+
+/**
+ * @summary Get all distinct trading symbols in the user's trade history
+ */
+
+export function useGetTradesSymbols<
+  TData = Awaited<ReturnType<typeof getTradesSymbols>>,
+  TError = ErrorType<ApiError>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getTradesSymbols>>,
+    TError,
+    TData
+  >;
   request?: SecondParameter<typeof customFetch>;
 }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-  const queryOptions = getGetTradesQueryOptions(options);
+  const queryOptions = getGetTradesSymbolsQueryOptions(options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

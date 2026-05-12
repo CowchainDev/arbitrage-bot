@@ -1,7 +1,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db } from "@workspace/db";
 import { closedTradesTable } from "@workspace/db";
-import { eq, and, desc, sql, count, sum, max, min, avg } from "drizzle-orm";
+import { eq, and, desc, sql, count, sum, max, min, avg, gte, lte, ilike } from "drizzle-orm";
 import { requireAuth } from "../middleware/auth";
 
 const router: IRouter = Router();
@@ -16,12 +16,24 @@ router.get("/trades", requireAuth, async (req: Request, res: Response) => {
   const limit = Math.min(Math.max(1, isNaN(rawLimit) ? DEFAULT_LIMIT : rawLimit), MAX_LIMIT);
   const offset = Math.max(0, isNaN(rawOffset) ? 0 : rawOffset);
 
+  const symbolFilter = typeof req.query["symbol"] === "string" && req.query["symbol"] ? req.query["symbol"] : null;
+  const dateFrom = typeof req.query["dateFrom"] === "string" && req.query["dateFrom"] ? new Date(req.query["dateFrom"]) : null;
+  const dateTo = typeof req.query["dateTo"] === "string" && req.query["dateTo"] ? new Date(req.query["dateTo"]) : null;
+
+  const conditions = [
+    eq(closedTradesTable.userId, userId),
+    ...(symbolFilter ? [ilike(closedTradesTable.symbol, symbolFilter)] : []),
+    ...(dateFrom && !isNaN(dateFrom.getTime()) ? [gte(closedTradesTable.closeTime, dateFrom)] : []),
+    ...(dateTo && !isNaN(dateTo.getTime()) ? [lte(closedTradesTable.closeTime, dateTo)] : []),
+  ];
+  const whereClause = and(...conditions);
+
   try {
     const [trades, statsRows] = await Promise.all([
       db
         .select()
         .from(closedTradesTable)
-        .where(eq(closedTradesTable.userId, userId))
+        .where(whereClause)
         .orderBy(desc(closedTradesTable.closeTime))
         .limit(limit)
         .offset(offset),
@@ -39,7 +51,7 @@ router.get("/trades", requireAuth, async (req: Request, res: Response) => {
           avgFundingRateSpread: avg(closedTradesTable.fundingRateSpread),
         })
         .from(closedTradesTable)
-        .where(eq(closedTradesTable.userId, userId)),
+        .where(whereClause),
     ]);
 
     const s = statsRows[0];
@@ -88,6 +100,21 @@ router.get("/trades", requireAuth, async (req: Request, res: Response) => {
   } catch (err) {
     req.log.error({ err }, "Error fetching trades");
     res.status(500).json({ error: "internal_error", message: "Failed to fetch trades" });
+  }
+});
+
+router.get("/trades/symbols", requireAuth, async (req: Request, res: Response) => {
+  const userId = (req as any).userId as string;
+  try {
+    const rows = await db
+      .selectDistinct({ symbol: closedTradesTable.symbol })
+      .from(closedTradesTable)
+      .where(eq(closedTradesTable.userId, userId))
+      .orderBy(closedTradesTable.symbol);
+    res.json({ symbols: rows.map((r) => r.symbol) });
+  } catch (err) {
+    req.log.error({ err }, "Error fetching trade symbols");
+    res.status(500).json({ error: "internal_error", message: "Failed to fetch symbols" });
   }
 });
 

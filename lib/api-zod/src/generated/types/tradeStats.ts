@@ -21,6 +21,6 @@ export interface TradeStats {
   totalFunding: number;
   /** totalPnl + totalFunding — the true bottom-line performance including funding. */
   netPnl: number;
-  /** Average funding rate spread across trades where the value is available. Null if no trades have this data. */
+  /** Average funding rate spread at close across all trades in the result set. Null if no trades have funding rate spread data. */
   avgFundingRateSpread?: number | null;
 }

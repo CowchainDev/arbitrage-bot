@@ -46,6 +46,16 @@ export interface TokenSpread {
   mexcNextFunding?: string;
   mexcBid?: number;
   mexcAsk?: number;
+  asterPrice?: number;
+  asterFundingRate?: number;
+  asterNextFunding?: string;
+  asterBid?: number;
+  asterAsk?: number;
+  hyperPrice?: number | null;
+  hyperFundingRate?: number | null;
+  hyperNextFunding?: string | null;
+  hyperBid?: number | null;
+  hyperAsk?: number | null;
   /** Highest absolute spread across all tracked exchange pairs */
   bestSpreadPct?: number;
   /** Exponential moving average of bestSpreadPct (α≈0.006, ~10-min half-life at 5s refresh) */
