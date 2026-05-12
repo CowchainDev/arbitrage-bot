@@ -408,6 +408,11 @@ function BotCard({ bot, openLegs }: { bot: BotConfig; openLegs: BotLeg[] }) {
                 onChange={(e) => setEditOrderSize(e.target.value)}
                 placeholder="e.g. 50"
               />
+              <span className="text-[10px] text-muted-foreground/60 leading-tight">
+                {Number(editOrderSize) > 0
+                  ? `= $${(Number(editOrderSize) / 2).toFixed(2)} per exchange`
+                  : "split equally between both exchanges"}
+              </span>
             </div>
             <div className="flex flex-col gap-1">
               <label className="text-muted-foreground">Max orders</label>
