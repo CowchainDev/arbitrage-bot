@@ -1050,20 +1050,16 @@ export async function probeCredentialsForBot(config: BotConfig): Promise<void> {
     getCachedCredentials(userId, exchangeB as SupportedExchange),
   ]);
 
-  if (!credsA) {
-    if (recordCredFailure(userId, exchangeA, "API credentials missing")) {
-      botEventBus.emitBotEvent({ kind: "credential_error", exchange: exchangeA, message: `${exchangeA} API credentials missing — add them in Settings` });
-    }
-  }
-  if (!credsB) {
-    if (recordCredFailure(userId, exchangeB, "API credentials missing")) {
-      botEventBus.emitBotEvent({ kind: "credential_error", exchange: exchangeB, message: `${exchangeB} API credentials missing — add them in Settings` });
-    }
-  }
-  if (!credsA || !credsB) return;
-
+  // Each exchange is probed independently so a missing/broken credential on
+  // one side never silently prevents the other side from being validated.
   await Promise.allSettled([
     (async () => {
+      if (!credsA) {
+        if (recordCredFailure(userId, exchangeA, "API credentials missing")) {
+          botEventBus.emitBotEvent({ kind: "credential_error", exchange: exchangeA, message: `${exchangeA} API credentials missing — add them in Settings` });
+        }
+        return;
+      }
       try {
         const exA = createExchangeForName(exchangeA, credsA.apiKey, credsA.apiSecret, credsA.passphrase ?? undefined);
         await exA.fetchBalance();
@@ -1078,9 +1074,17 @@ export async function probeCredentialsForBot(config: BotConfig): Promise<void> {
             botEventBus.emitBotEvent({ kind: "credential_error", exchange: exchangeA, message: `${exchangeA} credentials rejected — check API key or IP whitelist` });
           }
         }
+        // Non-auth errors (rate limit, network) are not flagged —
+        // they don't indicate bad credentials.
       }
     })(),
     (async () => {
+      if (!credsB) {
+        if (recordCredFailure(userId, exchangeB, "API credentials missing")) {
+          botEventBus.emitBotEvent({ kind: "credential_error", exchange: exchangeB, message: `${exchangeB} API credentials missing — add them in Settings` });
+        }
+        return;
+      }
       try {
         const exB = createExchangeForName(exchangeB, credsB.apiKey, credsB.apiSecret, credsB.passphrase ?? undefined);
         await exB.fetchBalance();

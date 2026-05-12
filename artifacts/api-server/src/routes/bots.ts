@@ -5,6 +5,7 @@ import { eq, and, desc } from "drizzle-orm";
 import { CreateBotBody, UpdateBotBody } from "@workspace/api-zod";
 import { closeAllLegsForBot, probeCredentialsForBot } from "../services/bot-watcher";
 import { requireAuth } from "../middleware/auth";
+import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
 
@@ -215,7 +216,9 @@ router.post("/bots/:id/start", requireAuth, async (req: Request, res: Response) 
 
     // Fire-and-forget: probe credentials immediately so the frontend gets a
     // credential_error event before the first watcher tick even fires.
-    probeCredentialsForBot(bot).catch(() => {});
+    probeCredentialsForBot(bot).catch((err) => {
+      logger.warn({ err, botId: id }, "Bot start: credential probe error");
+    });
 
     res.json({ bot: normalizeBotConfig(bot) });
   } catch (err) {
