@@ -44,6 +44,15 @@ const credCache = new Map<string, { data: CredEntry; ts: number }>();
 const lastLegOpenedAt = new Map<number, number>();
 const LEG_OPEN_COOLDOWN_MS = 2 * WATCHER_INTERVAL_MS; // ~3 s
 
+/**
+ * Tracks the last timestamp (ms) at which each bot's openLeg() attempt failed
+ * (e.g. second-leg auth error, order rejection). Enforces a longer back-off so
+ * the bot does not hammer the exchange every 1.5 s while the issue persists,
+ * which would continuously create-then-compensate the first leg.
+ */
+const lastLegFailedAt = new Map<number, number>();
+const LEG_OPEN_FAILURE_COOLDOWN_MS = 60_000; // 60 s back-off on any open failure
+
 async function getCachedCredentials(exchange: SupportedExchange): Promise<CredEntry | null> {
   const cached = credCache.get(exchange);
   if (cached && Date.now() - cached.ts < CRED_CACHE_TTL_MS) {
@@ -425,7 +434,13 @@ async function processBotConfig(config: BotConfig, canOpen: boolean): Promise<vo
   const lastOpenMs = lastLegOpenedAt.get(config.id) ?? 0;
   const cooldownElapsed = Date.now() - lastOpenMs >= LEG_OPEN_COOLDOWN_MS;
 
-  if (spreadMeetsThreshold && belowMaxOrders && cooldownElapsed) {
+  // Failure back-off: when a previous openLeg() attempt failed (e.g. second-leg auth
+  // error), wait 60 s before retrying. Without this the bot hammers the exchange every
+  // 1.5 s, continuously opening-then-compensating the first leg.
+  const lastFailMs = lastLegFailedAt.get(config.id) ?? 0;
+  const failureCooldownElapsed = Date.now() - lastFailMs >= LEG_OPEN_FAILURE_COOLDOWN_MS;
+
+  if (spreadMeetsThreshold && belowMaxOrders && cooldownElapsed && failureCooldownElapsed) {
     const [credsA, credsB] = await Promise.all([
       getCachedCredentials(exchangeA as SupportedExchange),
       getCachedCredentials(exchangeB as SupportedExchange),
@@ -440,11 +455,22 @@ async function processBotConfig(config: BotConfig, canOpen: boolean): Promise<vo
     const opened = await openLeg(config, spreadPct);
     if (opened) {
       lastLegOpenedAt.set(config.id, Date.now());
+    } else {
+      lastLegFailedAt.set(config.id, Date.now());
+      logger.warn(
+        { symbol: config.symbol, backOffMs: LEG_OPEN_FAILURE_COOLDOWN_MS },
+        "Bot: leg open failed — backing off before next attempt",
+      );
     }
   } else if (spreadMeetsThreshold && belowMaxOrders && !cooldownElapsed) {
     logger.debug(
       { symbol: config.symbol, cooldownRemainingMs: LEG_OPEN_COOLDOWN_MS - (Date.now() - lastOpenMs) },
       "Bot: spread meets threshold but cooldown not elapsed — skipping open this tick",
+    );
+  } else if (spreadMeetsThreshold && belowMaxOrders && !failureCooldownElapsed) {
+    logger.debug(
+      { symbol: config.symbol, backOffRemainingMs: LEG_OPEN_FAILURE_COOLDOWN_MS - (Date.now() - lastFailMs) },
+      "Bot: spread meets threshold but failure back-off active — skipping open this tick",
     );
   }
 }
