@@ -36,6 +36,20 @@
       "when": 1747267200000,
       "tag": "0004_drop_symbol_unique",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1778601203100,
+      "tag": "0005_cloudy_roxanne_simpson",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1778601600000,
+      "tag": "0006_add_user_id",
+      "breakpoints": true
     }
   ]
 }
