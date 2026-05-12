@@ -825,19 +825,27 @@ async function warmCredentialCache(): Promise<void> {
     return;
   }
 
+  // Deduplicate (userId, exchange) pairs — many bots may share credentials.
+  const uniquePairs = new Map<string, { userId: string; exchange: SupportedExchange }>();
+  for (const config of enabledBots) {
+    const { exchangeA, exchangeB } = botExchangeNames(config);
+    for (const ex of [exchangeA, exchangeB]) {
+      const key = `${config.userId}:${ex}`;
+      if (!uniquePairs.has(key)) {
+        uniquePairs.set(key, { userId: config.userId, exchange: ex as SupportedExchange });
+      }
+    }
+  }
+
   logger.info(
-    { count: enabledBots.length },
+    { bots: enabledBots.length, credentialPairs: uniquePairs.size },
     "Bot watcher: warming credential cache for enabled bots",
   );
 
   const results = await Promise.allSettled(
-    enabledBots.flatMap((config) => {
-      const { exchangeA, exchangeB } = botExchangeNames(config);
-      return [
-        getCachedCredentials(config.userId, exchangeA as SupportedExchange),
-        getCachedCredentials(config.userId, exchangeB as SupportedExchange),
-      ];
-    }),
+    Array.from(uniquePairs.values()).map(({ userId, exchange }) =>
+      getCachedCredentials(userId, exchange),
+    ),
   );
 
   const loaded = results.filter(
