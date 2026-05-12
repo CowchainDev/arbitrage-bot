@@ -446,15 +446,21 @@ function TradeTable({ trades }: { trades: ClosedTrade[] }) {
                     {trade.pnlFromExchange === false && (
                       <span
                         className="text-muted-foreground font-normal text-xs"
-                        aria-label="estimated"
-                        title="Estimated — calculated from entry/exit spread and fees (exchange did not report PnL)"
+                        aria-label={trade.pnlPartial ? "partial-backfill" : "estimated"}
+                        title={
+                          trade.pnlPartial
+                            ? "Partial backfill — only one exchange returned historical PnL; the missing side was treated as zero. This figure may be incomplete."
+                            : "Estimated — calculated from entry/exit spread and fees (exchange did not report PnL)"
+                        }
                       >~</span>
                     )}
                     <span title={
                       trade.pnlFromExchange === true
                         ? "Exchange-reported — authoritative figure from the exchange"
                         : trade.pnlFromExchange === false
-                          ? "Estimated — calculated from entry/exit spread and fees (exchange did not report PnL)"
+                          ? trade.pnlPartial
+                            ? "Partial backfill — only one exchange returned historical PnL; the missing side was treated as zero. This figure may be incomplete."
+                            : "Estimated — calculated from entry/exit spread and fees (exchange did not report PnL)"
                           : undefined
                     }>
                       {formatPnl(trade.realizedPnl)}

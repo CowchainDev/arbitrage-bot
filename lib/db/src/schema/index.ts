@@ -51,6 +51,7 @@ export const closedTradesTable = pgTable(
     spreadAtExit: numeric("spread_at_exit", { precision: 20, scale: 8 }),
     closeReason: text("close_reason"),
     pnlFromExchange: boolean("pnl_from_exchange"),
+    pnlPartial: boolean("pnl_partial"),
     entryTime: timestamp("entry_time").notNull().defaultNow(),
     closeTime: timestamp("close_time").notNull().defaultNow(),
   },

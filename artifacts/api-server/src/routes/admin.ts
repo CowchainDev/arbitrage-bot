@@ -617,6 +617,9 @@ router.post("/admin/backfill-pnl", requireBotSecret, async (req, res) => {
                 // Full backfills are exchange-verified; partial backfills
                 // (one side missing) are still estimated.
                 pnlFromExchange: !isPartial,
+                // Flag partial rows so the UI can show a more specific
+                // warning than the generic "estimated locally" message.
+                pnlPartial: isPartial || null,
               })
               .where(eq(closedTradesTable.id, match.id));
           }

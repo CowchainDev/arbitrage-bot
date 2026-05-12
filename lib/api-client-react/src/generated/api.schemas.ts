@@ -290,6 +290,8 @@ export interface ClosedTrade {
   closeReason?: string | null;
   /** True when realizedPnl was reported directly by the exchange. False when it was calculated locally using the spread formula. Null for older trades recorded before this field was added. */
   pnlFromExchange?: boolean | null;
+  /** True when this figure came from a partial backfill — one exchange returned historical PnL but the other did not (the missing side was treated as zero). Always null/absent for live trades. */
+  pnlPartial?: boolean | null;
   quantity: number;
   entryTime: string;
   closeTime: string;
