@@ -28,6 +28,10 @@ args = "typecheck-db"
 task = "workflow.run"
 args = "typecheck-api-zod"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "typecheck-arbitrage-app"
+
 [[workflows.workflow]]
 name = "typecheck-api-server"
 author = "agent"
@@ -60,6 +64,17 @@ isValidation = true
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "pnpm --filter @workspace/api-zod exec tsc --noEmit --project tsconfig.json"
+
+[[workflows.workflow]]
+name = "typecheck-arbitrage-app"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "pnpm --filter @workspace/arbitrage-app exec tsc --noEmit --project tsconfig.json"
+
+[workflows.workflow.metadata]
+isValidation = true
 
 [agent]
 stack = "PNPM_WORKSPACE"
