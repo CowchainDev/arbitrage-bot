@@ -1030,6 +1030,76 @@ export function startBotWatcher(): void {
     });
 }
 
+/**
+ * Probes exchange credentials for a bot immediately on startup by doing a
+ * lightweight fetchBalance on each exchange. If credentials are missing or
+ * rejected with an auth error, a credential_error event is emitted right away
+ * so the frontend can show a warning before the first trade attempt.
+ *
+ * Non-auth failures (rate limits, network timeouts) are intentionally ignored —
+ * they don't indicate bad credentials.
+ *
+ * Call fire-and-forget: `probeCredentialsForBot(bot).catch(() => {})`.
+ */
+export async function probeCredentialsForBot(config: BotConfig): Promise<void> {
+  const { exchangeA, exchangeB } = botExchangeNames(config);
+  const { userId } = config;
+
+  const [credsA, credsB] = await Promise.all([
+    getCachedCredentials(userId, exchangeA as SupportedExchange),
+    getCachedCredentials(userId, exchangeB as SupportedExchange),
+  ]);
+
+  if (!credsA) {
+    if (recordCredFailure(userId, exchangeA, "API credentials missing")) {
+      botEventBus.emitBotEvent({ kind: "credential_error", exchange: exchangeA, message: `${exchangeA} API credentials missing — add them in Settings` });
+    }
+  }
+  if (!credsB) {
+    if (recordCredFailure(userId, exchangeB, "API credentials missing")) {
+      botEventBus.emitBotEvent({ kind: "credential_error", exchange: exchangeB, message: `${exchangeB} API credentials missing — add them in Settings` });
+    }
+  }
+  if (!credsA || !credsB) return;
+
+  await Promise.allSettled([
+    (async () => {
+      try {
+        const exA = createExchangeForName(exchangeA, credsA.apiKey, credsA.apiSecret, credsA.passphrase ?? undefined);
+        await exA.fetchBalance();
+        if (clearCredFailure(userId, exchangeA)) {
+          botEventBus.emitBotEvent({ kind: "credential_ok", exchange: exchangeA });
+        }
+      } catch (err) {
+        if (isAuthError(err)) {
+          const msg = String((err as { message?: string }).message ?? err);
+          logger.warn({ exchange: exchangeA, botId: config.id }, "Bot startup credential probe: auth error");
+          if (recordCredFailure(userId, exchangeA, msg)) {
+            botEventBus.emitBotEvent({ kind: "credential_error", exchange: exchangeA, message: `${exchangeA} credentials rejected — check API key or IP whitelist` });
+          }
+        }
+      }
+    })(),
+    (async () => {
+      try {
+        const exB = createExchangeForName(exchangeB, credsB.apiKey, credsB.apiSecret, credsB.passphrase ?? undefined);
+        await exB.fetchBalance();
+        if (clearCredFailure(userId, exchangeB)) {
+          botEventBus.emitBotEvent({ kind: "credential_ok", exchange: exchangeB });
+        }
+      } catch (err) {
+        if (isAuthError(err)) {
+          const msg = String((err as { message?: string }).message ?? err);
+          logger.warn({ exchange: exchangeB, botId: config.id }, "Bot startup credential probe: auth error");
+          if (recordCredFailure(userId, exchangeB, msg)) {
+            botEventBus.emitBotEvent({ kind: "credential_error", exchange: exchangeB, message: `${exchangeB} credentials rejected — check API key or IP whitelist` });
+          }
+        }
+      }
+    })(),
+  ]);
+}
+
 /** Returns all currently recorded credential failures for a given user. */
 export function getCredentialFailuresForUser(userId: string): Array<{ exchange: string; message: string }> {
   const result: Array<{ exchange: string; message: string }> = [];

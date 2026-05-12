@@ -3,7 +3,7 @@ import { db } from "@workspace/db";
 import { botConfigsTable, botLegsTable, type BotConfig, type BotLeg, type InsertBotConfig } from "@workspace/db";
 import { eq, and, desc } from "drizzle-orm";
 import { CreateBotBody, UpdateBotBody } from "@workspace/api-zod";
-import { closeAllLegsForBot } from "../services/bot-watcher";
+import { closeAllLegsForBot, probeCredentialsForBot } from "../services/bot-watcher";
 import { requireAuth } from "../middleware/auth";
 
 const router: IRouter = Router();
@@ -212,6 +212,10 @@ router.post("/bots/:id/start", requireAuth, async (req: Request, res: Response) 
       res.status(404).json({ error: "not_found", message: "Bot not found" });
       return;
     }
+
+    // Fire-and-forget: probe credentials immediately so the frontend gets a
+    // credential_error event before the first watcher tick even fires.
+    probeCredentialsForBot(bot).catch(() => {});
 
     res.json({ bot: normalizeBotConfig(bot) });
   } catch (err) {
