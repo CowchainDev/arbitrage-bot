@@ -450,33 +450,66 @@ export const CreateBotHeader = zod.object({
 
 export const CreateBotBody = zod.object({
   symbol: zod.string().describe("Token symbol e.g. BTC"),
-  enterSpreadPct: zod.number().min(0.0001).describe("Minimum spread % to open a new leg"),
+  enterSpreadPct: zod
+    .number()
+    .min(0.0001, "enterSpreadPct must be greater than zero")
+    .describe("Minimum spread % to open a new leg"),
   closeSpreadPct: zod
     .number()
-    .min(0.0001)
+    .min(0.0001, "closeSpreadPct must be greater than zero")
     .describe("Spread % at which open legs are closed (take profit)"),
   stopLossSpreadPct: zod
     .number()
-    .min(0)
+    .min(0, "stopLossSpreadPct must be 0 or greater (use 0 to disable)")
     .optional()
     .describe(
       "Spread % at which a widening position is closed (stop loss, 0 = disabled)",
     ),
-  orderSizeUsd: zod.number().min(1).describe("Total USD size per leg"),
-  maxOrders: zod.number().int().min(1).optional().describe("Maximum concurrent open legs"),
+  orderSizeUsd: zod
+    .number()
+    .min(1, "orderSizeUsd must be at least $1")
+    .describe("Total USD size per leg"),
+  maxOrders: zod
+    .number()
+    .int("maxOrders must be a whole number")
+    .min(1, "maxOrders must be at least 1")
+    .optional()
+    .describe("Maximum concurrent open legs"),
   forceStopUsd: zod
     .number()
     .optional()
     .describe("Force-stop loss threshold in USD"),
-  bybitLeverage: zod.number().int().min(1).max(125).optional(),
-  binanceLeverage: zod.number().int().min(1).max(125).optional(),
+  bybitLeverage: zod
+    .number()
+    .int("bybitLeverage must be a whole number")
+    .min(1, "bybitLeverage must be at least 1")
+    .max(125, "bybitLeverage cannot exceed 125")
+    .optional(),
+  binanceLeverage: zod
+    .number()
+    .int("binanceLeverage must be a whole number")
+    .min(1, "binanceLeverage must be at least 1")
+    .max(125, "binanceLeverage cannot exceed 125")
+    .optional(),
   exchangeA: zod.string().optional().describe("First exchange (default bybit)"),
   exchangeB: zod
     .string()
     .optional()
     .describe("Second exchange (default binance)"),
-  leverageA: zod.number().int().min(1).max(125).optional().describe("Leverage for exchange A"),
-  leverageB: zod.number().int().min(1).max(125).optional().describe("Leverage for exchange B"),
+  leverageA: zod
+    .number()
+    .int("leverageA must be a whole number")
+    .min(1, "leverageA must be at least 1")
+    .max(125, "leverageA cannot exceed 125")
+    .optional()
+    .describe("Leverage for exchange A"),
+  leverageB: zod
+    .number()
+    .int("leverageB must be a whole number")
+    .min(1, "leverageB must be at least 1")
+    .max(125, "leverageB cannot exceed 125")
+    .optional()
+    .describe("Leverage for exchange B"),
 });
 
 export const CreateBotResponse = zod.object({

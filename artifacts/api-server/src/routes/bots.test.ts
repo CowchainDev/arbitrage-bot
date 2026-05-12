@@ -530,4 +530,15 @@ describe("POST /api/bots – inverted spread cross-field check", () => {
     expect(res.status).toBe(400);
     expect(res.body.error).toBe("bad_request");
   });
+
+  it("returns a user-friendly message when orderSizeUsd is zero", async () => {
+    const res = await request(app)
+      .post("/api/bots")
+      .send({ symbol: "BTC", enterSpreadPct: 0.3, closeSpreadPct: 0.1, orderSizeUsd: 0 })
+      .set("Content-Type", "application/json");
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("bad_request");
+    expect(res.body.message).toMatch(/orderSizeUsd must be at least/i);
+  });
 });
