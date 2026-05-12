@@ -1,5 +1,5 @@
-import { Bell, CheckCheck, Trash2, ChevronDown } from "lucide-react";
-import { useState, useRef, useEffect } from "react";
+import { Bell, CheckCheck, Trash2, ChevronDown, Copy, Check } from "lucide-react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useNotifications, type NotificationEntry } from "@/contexts/notifications";
 import type { BotEvent } from "@/hooks/use-notification-stream";
 
@@ -60,7 +60,9 @@ function formatTime(ts: number): string {
 function NotificationRow({ n }: { n: NotificationEntry }) {
   const [expanded, setExpanded] = useState(false);
   const [overflows, setOverflows] = useState(false);
+  const [copied, setCopied] = useState(false);
   const descRef = useRef<HTMLParagraphElement>(null);
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const el = descRef.current;
@@ -68,7 +70,18 @@ function NotificationRow({ n }: { n: NotificationEntry }) {
     setOverflows(el.scrollHeight > el.clientHeight + 1);
   }, []);
 
+  useEffect(() => () => { if (copyTimerRef.current) clearTimeout(copyTimerRef.current); }, []);
+
   const canExpand = overflows || expanded;
+
+  const handleCopy = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    const text = formatDescription(n.event);
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      copyTimerRef.current = setTimeout(() => setCopied(false), 1500);
+    }).catch(() => {});
+  }, [n.event]);
 
   return (
     <div
@@ -91,12 +104,27 @@ function NotificationRow({ n }: { n: NotificationEntry }) {
               )}
             </div>
           </div>
-          <p
-            ref={descRef}
-            className={`text-[11px] text-muted-foreground mt-0.5 leading-snug break-all ${expanded ? "" : "line-clamp-2"}`}
-          >
-            {formatDescription(n.event)}
-          </p>
+          <div className="relative">
+            <p
+              ref={descRef}
+              className={`text-[11px] text-muted-foreground mt-0.5 leading-snug break-all ${expanded ? "pr-6" : "line-clamp-2"}`}
+            >
+              {formatDescription(n.event)}
+            </p>
+            {expanded && (
+              <button
+                onClick={handleCopy}
+                title={copied ? "Copied!" : "Copy to clipboard"}
+                aria-label={copied ? "Copied!" : "Copy message to clipboard"}
+                className="absolute top-0.5 right-0 p-0.5 rounded text-muted-foreground/60 hover:text-foreground hover:bg-muted transition-colors"
+              >
+                {copied
+                  ? <Check className="w-3 h-3 text-primary" />
+                  : <Copy className="w-3 h-3" />
+                }
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>
