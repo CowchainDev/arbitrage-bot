@@ -28,6 +28,8 @@ export interface ClosedTrade {
   spreadAtExit?: number | null;
   /** Why the trade was closed (e.g. take_profit, stop_loss, force_stop, manual). Null for older trades. */
   closeReason?: string | null;
+  /** True when realizedPnl was reported directly by the exchange. False when it was calculated locally using the spread formula. Null for older trades recorded before this field was added. */
+  pnlFromExchange?: boolean | null;
   quantity: number;
   entryTime: string;
   closeTime: string;
