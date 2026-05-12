@@ -23,7 +23,7 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { TrendingUp, BarChart2, Activity, Info, RefreshCw, Filter, X, ShieldAlert } from "lucide-react";
-import { Link } from "wouter";
+import { Link, useSearchParams } from "wouter";
 
 function StatCard({
   label,
@@ -477,9 +477,17 @@ export default function History() {
   const [backfilling, setBackfilling] = useState(false);
   const [backfillResult, setBackfillResult] = useState<string | null>(null);
 
-  const [symbolFilter, setSymbolFilter] = useState("");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const symbolFilter = searchParams.get("symbol") ?? "";
+  const dateFrom = searchParams.get("dateFrom") ?? "";
+  const dateTo = searchParams.get("dateTo") ?? "";
+
+  const setSymbolFilter = (v: string) =>
+    setSearchParams((p) => { const n = new URLSearchParams(p); v ? n.set("symbol", v) : n.delete("symbol"); return n; });
+  const setDateFrom = (v: string) =>
+    setSearchParams((p) => { const n = new URLSearchParams(p); v ? n.set("dateFrom", v) : n.delete("dateFrom"); return n; });
+  const setDateTo = (v: string) =>
+    setSearchParams((p) => { const n = new URLSearchParams(p); v ? n.set("dateTo", v) : n.delete("dateTo"); return n; });
 
   const activeParams = useMemo<GetTradesParams>(() => {
     const p: GetTradesParams = {};
@@ -557,11 +565,8 @@ export default function History() {
       ? { open: stats.totalOpenFees, close: stats.totalCloseFees }
       : null;
 
-  const clearFilters = () => {
-    setSymbolFilter("");
-    setDateFrom("");
-    setDateTo("");
-  };
+  const clearFilters = () =>
+    setSearchParams(new URLSearchParams());
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
