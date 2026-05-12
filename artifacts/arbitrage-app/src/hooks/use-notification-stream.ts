@@ -6,7 +6,8 @@ export type BotEvent =
   | { kind: "leg_open_failed"; symbol: string; exchange: string; message: string }
   | { kind: "order_too_small"; symbol: string }
   | { kind: "compensation_failed"; symbol: string; exchange: string }
-  | { kind: "force_stop"; symbol: string; totalPnl: number };
+  | { kind: "force_stop"; symbol: string; totalPnl: number }
+  | { kind: "credential_error"; exchange: string; message: string };
 
 export type NotificationMessage = { type: "bot_event"; event: BotEvent; ts: number };
 

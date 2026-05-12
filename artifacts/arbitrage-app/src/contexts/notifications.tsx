@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, useRef, type ReactNode } from "react";
+import { createContext, useContext, useState, useCallback, useRef, useMemo, type ReactNode } from "react";
 import { toast } from "sonner";
 import { useNotificationStream, type BotEvent, type NotificationMessage } from "@/hooks/use-notification-stream";
 
@@ -14,6 +14,7 @@ type NotificationsContextValue = {
   unreadCount: number;
   markAllRead: () => void;
   clearAll: () => void;
+  failingExchanges: Set<string>;
 };
 
 const NotificationsContext = createContext<NotificationsContextValue | null>(null);
@@ -58,11 +59,18 @@ function formatToast(event: BotEvent): { title: string; description?: string; va
         description: `Total PnL: $${event.totalPnl.toFixed(2)}`,
         variant: "warning",
       };
+    case "credential_error":
+      return {
+        title: `${event.exchange} credentials invalid`,
+        description: event.message,
+        variant: "error",
+      };
   }
 }
 
 export function NotificationsProvider({ children }: { children: ReactNode }) {
   const [notifications, setNotifications] = useState<NotificationEntry[]>([]);
+  const [failingExchanges, setFailingExchanges] = useState<Set<string>>(new Set());
   const idCounter = useRef(0);
 
   const handleMessage = useCallback((msg: NotificationMessage) => {
@@ -70,6 +78,22 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     const id = String(++idCounter.current);
     const entry: NotificationEntry = { id, ts, event, read: false };
     setNotifications((prev) => [entry, ...prev].slice(0, MAX_HISTORY));
+
+    if (event.kind === "credential_error") {
+      setFailingExchanges((prev) => {
+        const next = new Set(prev);
+        next.add(event.exchange);
+        return next;
+      });
+    } else if (event.kind === "leg_opened") {
+      setFailingExchanges((prev) => {
+        if (!prev.has(event.exchangeA) && !prev.has(event.exchangeB)) return prev;
+        const next = new Set(prev);
+        next.delete(event.exchangeA);
+        next.delete(event.exchangeB);
+        return next;
+      });
+    }
 
     const { title, description, variant } = formatToast(event);
     if (variant === "success") toast.success(title, { description });
@@ -90,8 +114,13 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     setNotifications([]);
   }, []);
 
+  const value = useMemo(
+    () => ({ notifications, unreadCount, markAllRead, clearAll, failingExchanges }),
+    [notifications, unreadCount, markAllRead, clearAll, failingExchanges],
+  );
+
   return (
-    <NotificationsContext.Provider value={{ notifications, unreadCount, markAllRead, clearAll }}>
+    <NotificationsContext.Provider value={value}>
       {children}
     </NotificationsContext.Provider>
   );

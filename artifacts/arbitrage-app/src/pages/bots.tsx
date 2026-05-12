@@ -1,12 +1,13 @@
 import { useState, useEffect, useRef } from "react";
 import { Link } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
-import { Bot, Power, TrendingUp, TrendingDown, Layers, XCircle, Trash2, LineChart, Pencil, Check, X } from "lucide-react";
+import { Bot, Power, TrendingUp, TrendingDown, Layers, XCircle, Trash2, LineChart, Pencil, Check, X, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { useBots } from "@/hooks/use-bots";
 import { useApiCredentials } from "@/hooks/use-api-credentials";
+import { useNotifications } from "@/contexts/notifications";
 import {
   useStartBot,
   useStopBot,
@@ -135,6 +136,9 @@ function capitalize(s: string) {
 }
 
 function BotCard({ bot, openLegs }: { bot: BotConfig; openLegs: BotLeg[] }) {
+  const { failingExchanges } = useNotifications();
+  const credentialError = failingExchanges.has(bot.exchangeA) || failingExchanges.has(bot.exchangeB);
+  const failingNames = [bot.exchangeA, bot.exchangeB].filter((ex) => failingExchanges.has(ex));
   const [busy, setBusy] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -361,6 +365,17 @@ function BotCard({ bot, openLegs }: { bot: BotConfig; openLegs: BotLeg[] }) {
           )}
         </div>
       </div>
+
+      {credentialError && !isEditing && (
+        <div className="flex items-start gap-2 rounded-md bg-destructive/10 border border-destructive/30 px-3 py-2 text-xs text-destructive">
+          <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+          <span>
+            <span className="font-semibold">Credentials invalid</span>
+            {" — "}
+            {failingNames.map(capitalize).join(" & ")} rejected the API key. Check key, secret, and IP whitelist in Settings.
+          </span>
+        </div>
+      )}
 
       {isEditing ? (
         <div className="flex flex-col gap-2">

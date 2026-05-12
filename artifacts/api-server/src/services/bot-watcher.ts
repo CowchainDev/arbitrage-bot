@@ -37,6 +37,36 @@ type CredEntry = { apiKey: string; apiSecret: string; passphrase?: string | null
 const credCache = new Map<string, { data: CredEntry; ts: number }>();
 
 /**
+ * Tracks known credential failures per user+exchange. Key = `${userId}:${exchange}`.
+ * Used to deduplicate credential_error events — only the first failure emits an event;
+ * subsequent ticks with the same failure are silent. Cleared when credentials succeed.
+ */
+const credFailures = new Map<string, string>();
+
+function isAuthError(err: unknown): boolean {
+  if (err == null) return false;
+  const name = (err as { name?: string }).name ?? "";
+  const msg = String((err as { message?: string }).message ?? err);
+  return (
+    name === "AuthenticationError" ||
+    name === "PermissionDenied" ||
+    /authentication|invalid.?api.?key|api.?key.*(invalid|wrong|bad)|ip.*(whitelist|restrict)|whitelist|forbidden|401|403/i.test(msg)
+  );
+}
+
+/** Records a credential failure. Returns true only if this is a newly-seen failure (so we emit once). */
+function recordCredFailure(userId: string, exchange: string, message: string): boolean {
+  const key = `${userId}:${exchange}`;
+  const isNew = !credFailures.has(key);
+  credFailures.set(key, message);
+  return isNew;
+}
+
+function clearCredFailure(userId: string, exchange: string): void {
+  credFailures.delete(`${userId}:${exchange}`);
+}
+
+/**
  * Tracks the last timestamp (ms) at which each bot opened a new leg.
  * Enforces a 2-tick cooldown between consecutive leg openings so that
  * multiple slots don't all fire at once when conditions are broadly met.
@@ -75,6 +105,8 @@ async function getCachedCredentials(userId: string, exchange: SupportedExchange)
     return null;
   }
   credCache.set(cacheKey, { data: fresh, ts: Date.now() });
+  // Credentials are present in DB — clear any previously recorded missing-creds failure.
+  clearCredFailure(userId, exchange);
   return fresh;
 }
 
@@ -213,6 +245,12 @@ async function openLeg(config: BotConfig, spreadPct: number): Promise<boolean> {
   } catch (err) {
     logger.error({ err, symbol: config.symbol, exchange: exchangeA }, `Bot: ${exchangeA} leg open failed`);
     botEventBus.emitBotEvent({ kind: "leg_open_failed", symbol: config.symbol, exchange: exchangeA, message: String(err) });
+    if (isAuthError(err)) {
+      const msg = String((err as { message?: string }).message ?? err);
+      if (recordCredFailure(config.userId, exchangeA, msg)) {
+        botEventBus.emitBotEvent({ kind: "credential_error", exchange: exchangeA, message: `${exchangeA} credentials rejected — check API key or IP whitelist` });
+      }
+    }
     return false;
   }
 
@@ -245,10 +283,19 @@ async function openLeg(config: BotConfig, spreadPct: number): Promise<boolean> {
 
     logger.info({ symbol: config.symbol, exchangeA, sideA, exchangeB, sideB, spreadPct }, "Bot: opened new leg");
     botEventBus.emitBotEvent({ kind: "leg_opened", symbol: config.symbol, exchangeA, sideA, exchangeB, sideB, spreadPct, usdAmount: Number(config.orderSizeUsd) });
+    // Orders succeeded — clear any prior credential failure records for both exchanges.
+    clearCredFailure(config.userId, exchangeA);
+    clearCredFailure(config.userId, exchangeB);
     return true;
   } catch (err) {
     logger.error({ err, symbol: config.symbol, exchange: exchangeB }, `Bot: ${exchangeB} leg open failed, compensating ${exchangeA}`);
     botEventBus.emitBotEvent({ kind: "leg_open_failed", symbol: config.symbol, exchange: exchangeB, message: String(err) });
+    if (isAuthError(err)) {
+      const msg = String((err as { message?: string }).message ?? err);
+      if (recordCredFailure(config.userId, exchangeB, msg)) {
+        botEventBus.emitBotEvent({ kind: "credential_error", exchange: exchangeB, message: `${exchangeB} credentials rejected — check API key or IP whitelist` });
+      }
+    }
     const compensateSide = sideA === "long" ? "sell" : "buy";
     try {
       await exA.createMarketOrder(`${config.symbol}/USDT:USDT`, compensateSide, resultA.filledQty, undefined, { reduceOnly: true });
@@ -499,6 +546,13 @@ async function processBotConfig(config: BotConfig, canOpen: boolean): Promise<vo
         { symbol: config.symbol, exchangeA, exchangeB, missingA: !credsA, missingB: !credsB },
         "Bot: skipping open — server credentials not synced for exchange pair",
       );
+      const missingMsg = "No API credentials saved — go to Settings to add them";
+      if (!credsA && recordCredFailure(config.userId, exchangeA, missingMsg)) {
+        botEventBus.emitBotEvent({ kind: "credential_error", exchange: exchangeA, message: `${exchangeA} API credentials missing` });
+      }
+      if (!credsB && recordCredFailure(config.userId, exchangeB, missingMsg)) {
+        botEventBus.emitBotEvent({ kind: "credential_error", exchange: exchangeB, message: `${exchangeB} API credentials missing` });
+      }
       return;
     }
     const opened = await openLeg(config, spreadPct);

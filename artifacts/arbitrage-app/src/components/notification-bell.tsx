@@ -11,6 +11,7 @@ function eventColor(event: BotEvent): string {
     case "order_too_small": return "text-amber-400";
     case "compensation_failed": return "text-destructive";
     case "force_stop": return "text-amber-400";
+    case "credential_error": return "text-destructive";
   }
 }
 
@@ -22,6 +23,7 @@ function eventDot(event: BotEvent): string {
     case "order_too_small": return "bg-amber-400";
     case "compensation_failed": return "bg-destructive";
     case "force_stop": return "bg-amber-400";
+    case "credential_error": return "bg-destructive";
   }
 }
 
@@ -33,6 +35,7 @@ function formatTitle(event: BotEvent): string {
     case "order_too_small": return `${event.symbol} too small`;
     case "compensation_failed": return `${event.symbol} comp. failed`;
     case "force_stop": return `${event.symbol} force stop`;
+    case "credential_error": return `${event.exchange} credentials invalid`;
   }
 }
 
@@ -50,6 +53,8 @@ function formatDescription(event: BotEvent): string {
       return `Manual action needed on ${event.exchange}`;
     case "force_stop":
       return `Total PnL: $${event.totalPnl.toFixed(2)}`;
+    case "credential_error":
+      return event.message;
   }
 }
 
