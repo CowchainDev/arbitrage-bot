@@ -641,30 +641,69 @@ router.post("/admin/backfill-pnl", requireBotSecret, async (req, res) => {
 
 // POST /api/admin/migrate-user
 // Associates all legacy rows (user_id = '') with the currently signed-in
-// user's Clerk ID.  Safe to run multiple times — only touches rows where
-// user_id is still empty.  Covers credentials, bot_configs, and closed_trades.
-router.post("/admin/migrate-user", requireAuth, async (req, res) => {
+// user's Clerk ID.  Requires both a valid Clerk session AND the X-Bot-Secret
+// header (when BOT_SECRET is configured).  If the ADMIN_USER_ID env var is
+// set only that specific Clerk user may execute the migration, preventing any
+// other authenticated user from claiming unowned legacy data.
+//
+// Conflict-safety: credentials and bot_configs have unique constraints on
+// (user_id, exchange) and (user_id, symbol) respectively.  We skip any row
+// that would violate an existing record owned by the same user rather than
+// erroring out.  All writes run inside a single transaction — partial failure
+// rolls everything back.
+//
+// Idempotency: subsequent calls return 0 updated rows because the WHERE
+// user_id = '' filter no longer matches anything.
+router.post("/admin/migrate-user", requireBotSecret, requireAuth, async (req, res) => {
   const userId = (req as any).userId as string;
+
+  // Optional admin allowlist: if ADMIN_USER_ID is set, only that user may run.
+  const adminUserId = process.env["ADMIN_USER_ID"];
+  if (adminUserId && userId !== adminUserId) {
+    res.status(403).json({ error: "forbidden", message: "Only the configured admin user may run this migration." });
+    return;
+  }
+
   try {
-    const [credsResult, configsResult, tradesResult] = await Promise.all([
-      db
-        .update(credentialsTable)
-        .set({ userId })
-        .where(eq(credentialsTable.userId, "")),
-      db
-        .update(botConfigsTable)
-        .set({ userId })
-        .where(eq(botConfigsTable.userId, "")),
-      db
-        .update(closedTradesTable)
-        .set({ userId })
-        .where(eq(closedTradesTable.userId, "")),
-    ]);
+    const { credsUpdated, configsUpdated, tradesUpdated } = await db.transaction(async (tx) => {
+      // credentials: unique on (user_id, exchange) — skip rows that would conflict
+      const credsResult = await tx.execute(sql`
+        UPDATE credentials
+        SET    user_id = ${userId}
+        WHERE  user_id = ''
+          AND  exchange NOT IN (
+                 SELECT exchange FROM credentials WHERE user_id = ${userId}
+               )
+      `);
+
+      // bot_configs: unique on (user_id, symbol) — skip rows that would conflict
+      const configsResult = await tx.execute(sql`
+        UPDATE bot_configs
+        SET    user_id = ${userId}
+        WHERE  user_id = ''
+          AND  symbol NOT IN (
+                 SELECT symbol FROM bot_configs WHERE user_id = ${userId}
+               )
+      `);
+
+      // closed_trades: only has an index on user_id (no unique conflict possible)
+      const tradesResult = await tx.execute(sql`
+        UPDATE closed_trades
+        SET    user_id = ${userId}
+        WHERE  user_id = ''
+      `);
+
+      return {
+        credsUpdated:   (credsResult   as unknown as { rowCount?: number }).rowCount ?? 0,
+        configsUpdated: (configsResult as unknown as { rowCount?: number }).rowCount ?? 0,
+        tradesUpdated:  (tradesResult  as unknown as { rowCount?: number }).rowCount ?? 0,
+      };
+    });
 
     const updated = {
-      credentials: (credsResult as unknown as { rowCount?: number }).rowCount ?? 0,
-      botConfigs: (configsResult as unknown as { rowCount?: number }).rowCount ?? 0,
-      closedTrades: (tradesResult as unknown as { rowCount?: number }).rowCount ?? 0,
+      credentials: credsUpdated,
+      botConfigs:  configsUpdated,
+      closedTrades: tradesUpdated,
     };
 
     req.log.info({ userId, updated }, "migrate-user: complete");
