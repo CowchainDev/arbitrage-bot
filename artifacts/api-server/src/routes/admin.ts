@@ -493,13 +493,14 @@ router.post("/admin/backfill-pnl", requireBotSecret, async (req, res) => {
     const results: Array<{
       legId: number;
       symbol: string;
-      pnlA: number;
-      pnlB: number;
+      pnlA: number | null;
+      pnlB: number | null;
       combinedPnl: number;
       closedTradeId: number | null;
       oldTradePnl: number | null;
     }> = [];
     const skipped: number[] = [];
+    const partial: number[] = [];
 
     // Helper: fetch an order then extract its exchange-reported realized PnL.
     // Returns null if the exchange no longer has history or does not expose PnL.
@@ -558,20 +559,28 @@ router.post("/admin/backfill-pnl", requireBotSecret, async (req, res) => {
             : Promise.resolve(leg.binanceOrderId ? null : 0),
         ]);
 
-        // Only update when every side that has an order ID returned authoritative
-        // data.  If any such side returned null (exchange history expired or
-        // credentials missing), leave the row unchanged — a zero-substituted
-        // total would be less accurate than the existing formula estimate.
-        if (pnlA === null || pnlB === null) {
+        // If neither side returned any data there is nothing to write.
+        if (pnlA === null && pnlB === null) {
           req.log.info(
-            { legId: leg.id, symbol: leg.symbol, pnlA, pnlB },
-            "backfill-pnl: skipping leg — exchange history unavailable for one or more sides",
+            { legId: leg.id, symbol: leg.symbol },
+            "backfill-pnl: skipping leg — no exchange PnL available for either side",
           );
           skipped.push(leg.id);
           continue;
         }
 
-        const combinedPnl = pnlA + pnlB;
+        // Detect one-sided (partial) results — one exchange returned data but
+        // the other did not (credentials missing, history expired, etc.).
+        const isPartial = pnlA === null || pnlB === null;
+        if (isPartial) {
+          req.log.warn(
+            { legId: leg.id, symbol: leg.symbol, pnlA, pnlB },
+            "backfill-pnl: partial update — only one exchange returned PnL; the missing side is treated as zero",
+          );
+          partial.push(leg.id);
+        }
+
+        const combinedPnl = (pnlA ?? 0) + (pnlB ?? 0);
 
         // Find the single best-matching closed_trade using SQL ordering so the
         // result is deterministic even when multiple close events for the same
@@ -603,7 +612,12 @@ router.post("/admin/backfill-pnl", requireBotSecret, async (req, res) => {
           if (match) {
             await tx
               .update(closedTradesTable)
-              .set({ realizedPnl: String(combinedPnl) })
+              .set({
+                realizedPnl: String(combinedPnl),
+                // Partial backfills are not fully exchange-verified — mark as
+                // estimated so the UI can show the "~" indicator.
+                ...(isPartial ? { pnlFromExchange: false } : {}),
+              })
               .where(eq(closedTradesTable.id, match.id));
           }
 
@@ -623,13 +637,14 @@ router.post("/admin/backfill-pnl", requireBotSecret, async (req, res) => {
     }
 
     req.log.info(
-      { processed: closedLegs.length, updated: results.length, skipped: skipped.length },
+      { processed: closedLegs.length, updated: results.length, partial: partial.length, skipped: skipped.length },
       "backfill-pnl: complete",
     );
 
     res.json({
       processed: closedLegs.length,
       updated: results.length,
+      partial,
       skipped: skipped.length,
       results,
     });
