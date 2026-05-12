@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
+import { useNow } from "@/hooks/useNow";
 import { formatFee } from "@/lib/utils";
 import { ChevronDown, ChevronUp, LineChart } from "lucide-react";
 import { Link } from "wouter";
@@ -110,11 +111,7 @@ function msToCountdown(ms: number | null): string | null {
 function FundingCountdownDisplay({
   nextFundingA, nextFundingB, labelA, labelB,
 }: { nextFundingA: string | null; nextFundingB: string | null; labelA: string; labelB: string }) {
-  const [now, setNow] = useState(Date.now);
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, []);
+  const now = useNow();
   const cdA = msToCountdown(nextFundingA ? new Date(nextFundingA).getTime() - now : null);
   const cdB = msToCountdown(nextFundingB ? new Date(nextFundingB).getTime() - now : null);
   if (!cdA && !cdB) return null;
@@ -192,11 +189,7 @@ export function BotSummaryRow({
   exchangeA?: string;
   exchangeB?: string;
 }) {
-  const [now, setNow] = useState(Date.now);
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, []);
+  const now = useNow();
 
   const symbol = positions[0].symbol;
   const totalPnl = positions.reduce((s, p) => s + (p.totalPnl ?? 0), 0);
@@ -368,14 +361,9 @@ export function PositionRow({
   const [isClosing, setIsClosing] = useState(false);
   const [closeResult, setCloseResult] = useState<ClosePositionResult | null>(null);
   const [closeError, setCloseError] = useState<string | null>(null);
-  const [now, setNow] = useState(Date.now);
+  const now = useNow();
   const closePosition = useClosePosition({ request: requestHeaders });
   const queryClient = useQueryClient();
-
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, []);
 
   const exA = exchangeA ?? "bybit";
   const exB = exchangeB ?? "binance";
