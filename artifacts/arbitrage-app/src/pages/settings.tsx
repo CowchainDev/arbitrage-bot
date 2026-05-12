@@ -77,10 +77,10 @@ function ExchangeCard({ meta }: { meta: ExchangeMeta }) {
           ...(needsPassphrase ? { passphrase } : {}),
         }),
       });
-      const data = await res.json() as { ok: boolean; usdtBalance?: number; message?: string };
+      const data = await res.json() as { ok: boolean; balance?: number; currency?: string; message?: string };
       if (data.ok) {
         setTestStatus("ok");
-        setTestMessage(data.usdtBalance != null ? `Connected · ${data.usdtBalance.toFixed(2)} USDT` : "Connected");
+        setTestMessage(data.balance != null ? `Connected · ${data.balance.toFixed(2)} ${data.currency ?? "USDT"}` : "Connected");
       } else {
         setTestStatus("error");
         setTestMessage(data.message ?? "Connection failed");

@@ -2344,7 +2344,9 @@ router.post("/exchanges/test-credentials", requireAuth, async (req: Request, res
   }
 
   try {
-    let usdtBalance: number | undefined;
+    let balance: number | undefined;
+    // HyperLiquid settles in USDC; all other exchanges use USDT.
+    const settleCurrency = exchange === "hyper" ? "USDC" : "USDT";
 
     if (exchange === "aster") {
       // AsterDex uses custom EIP-712 auth: apiKey=walletAddress, apiSecret=privateKey, passphrase=signerAddress
@@ -2354,7 +2356,7 @@ router.post("/exchanges/test-credentials", requireAuth, async (req: Request, res
       }
       const assets = await asterFetchBalance(apiKey, passphrase, apiSecret);
       const usdtAsset = (assets as { asset: string; balance: string }[]).find((a) => a.asset === "USDT");
-      if (usdtAsset) usdtBalance = Number(usdtAsset.balance);
+      if (usdtAsset) balance = Number(usdtAsset.balance);
     } else {
       const ex = createExchangeForName(exchange, apiKey, apiSecret, passphrase);
       let bal: Record<string, unknown>;
@@ -2365,22 +2367,23 @@ router.post("/exchanges/test-credentials", requireAuth, async (req: Request, res
         case "mexc":    bal = await ex.fetchBalance({ type: "swap" }); break;
         default:        bal = await ex.fetchBalance(); break;
       }
-      // HyperLiquid settles in USDC; all other CCXT exchanges use USDT.
-      const currency = exchange === "hyper" ? "USDC" : "USDT";
-      const currencyBal = bal[currency] as Record<string, number | string> | undefined;
+      const currencyBal = bal[settleCurrency] as Record<string, number | string> | undefined;
       const raw = currencyBal?.free ?? currencyBal?.total ?? null;
-      if (raw != null) usdtBalance = Number(raw);
+      if (raw != null) balance = Number(raw);
     }
 
-    res.json({ ok: true, usdtBalance });
+    res.json({ ok: true, balance, currency: settleCurrency });
   } catch (err) {
     const msg = String((err as { message?: string }).message ?? err);
     const isAuth = /authentication|invalid.?api.?key|api.?key.*(invalid|wrong|bad)|ip.*(whitelist|restrict)|whitelist|forbidden|401|403/i.test(msg);
     req.log.warn({ exchange, err }, "Credential test failed");
+    // Provide a sanitized upstream snippet for auth failures to give the user
+    // a specific reason (e.g. "Invalid API-key" vs "IP not whitelisted").
+    const snippet = msg.replace(/[\r\n]+/g, " ").replace(/\s{2,}/g, " ").slice(0, 160);
     res.json({
       ok: false,
       message: isAuth
-        ? `Authentication failed — check your API key, secret${passphrase != null ? ", and passphrase/signer address" : ""}. If your exchange requires IP whitelisting, ensure the server IP is allowed.`
+        ? `Authentication failed — ${snippet}`
         : `Connection failed: ${msg.length > 220 ? msg.slice(0, 220) + "…" : msg}`,
     });
   }
