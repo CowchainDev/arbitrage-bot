@@ -385,40 +385,66 @@ async function closeLeg(
     );
   }
 
-  // Prefer exchange-reported realized PnL (authoritative — accounts for blended cost basis,
-  // partial fills, and prior DCA). The exchange values are used as-is (no extra fee
-  // adjustments) because each exchange has different PnL field semantics; applying a global
-  // fee subtraction would cause systematic drift. Fall back to local spread formula only
-  // when the exchange does not provide a value.
-  let realizedPnl: number;
-  let pnlSource: "exchange" | "formula";
-  if (result.exchangeRealizedPnlA != null && result.exchangeRealizedPnlB != null) {
-    realizedPnl = result.exchangeRealizedPnlA + result.exchangeRealizedPnlB;
-    pnlSource = "exchange";
-    logger.info(
-      {
-        legId: leg.id,
-        symbol: leg.symbol,
-        exchangePnlA: result.exchangeRealizedPnlA,
-        exchangePnlB: result.exchangeRealizedPnlB,
-        realizedPnl,
-      },
-      "Bot: using exchange-reported realized PnL",
-    );
-  } else {
-    realizedPnl = computeLegPnl(leg, closePriceA, closePriceB, closeFees);
-    pnlSource = "formula";
-    logger.info(
-      {
-        legId: leg.id,
-        symbol: leg.symbol,
-        exchangePnlA: result.exchangeRealizedPnlA,
-        exchangePnlB: result.exchangeRealizedPnlB,
-        realizedPnl,
-      },
-      "Bot: exchange PnL unavailable — using local spread formula as fallback",
-    );
-  }
+  // Compute per-leg PnL independently: use exchange value when available, spread formula
+  // otherwise. Fee policy by source:
+  //   - Exchange leg: value used as-is, with NO additional fee subtraction. Each exchange
+  //     accounts for fees differently inside its own PnL field (e.g. Bybit's closedPnl is
+  //     already net of maker/taker fees). Applying a blanket deduction would cause
+  //     systematic drift and double-counting.
+  //   - Formula leg: gross price-spread PnL minus the per-leg open and close fees for that
+  //     leg only, so the formula path stays self-consistent whether one or both legs fall
+  //     back. When both legs are formula-sourced the result equals the old computeLegPnl()
+  //     output (rawPnlA + rawPnlB − allOpenFees − allCloseFees).
+  const qtyA = Number(leg.bybitQty);
+  const qtyB = Number(leg.binanceQty);
+  const entryA = Number(leg.bybitEntry);
+  const entryB = Number(leg.binanceEntry);
+
+  const rawFormulaPnlA =
+    leg.bybitSide === "long"
+      ? (closePriceA - entryA) * qtyA
+      : (entryA - closePriceA) * qtyA;
+  const rawFormulaPnlB =
+    leg.binanceSide === "long"
+      ? (closePriceB - entryB) * qtyB
+      : (entryB - closePriceB) * qtyB;
+
+  const legAPnlSource: "exchange" | "formula" =
+    result.exchangeRealizedPnlA != null ? "exchange" : "formula";
+  const legBPnlSource: "exchange" | "formula" =
+    result.exchangeRealizedPnlB != null ? "exchange" : "formula";
+
+  const pnlA =
+    result.exchangeRealizedPnlA != null
+      ? result.exchangeRealizedPnlA
+      : rawFormulaPnlA - Number(leg.openFeeA ?? 0) - result.closeFeeA;
+  const pnlB =
+    result.exchangeRealizedPnlB != null
+      ? result.exchangeRealizedPnlB
+      : rawFormulaPnlB - Number(leg.openFeeB ?? 0) - result.closeFeeB;
+
+  const realizedPnl = pnlA + pnlB;
+  const pnlSource: "exchange" | "formula" | "blended" =
+    legAPnlSource === legBPnlSource ? legAPnlSource : "blended";
+
+  logger.info(
+    {
+      legId: leg.id,
+      symbol: leg.symbol,
+      exchangePnlA: result.exchangeRealizedPnlA,
+      exchangePnlB: result.exchangeRealizedPnlB,
+      pnlA,
+      pnlB,
+      legAPnlSource,
+      legBPnlSource,
+      realizedPnl,
+    },
+    pnlSource === "exchange"
+      ? "Bot: using exchange-reported realized PnL for both legs"
+      : pnlSource === "formula"
+      ? "Bot: exchange PnL unavailable for both legs — using local spread formula"
+      : "Bot: blended PnL — one leg from exchange, one from spread formula",
+  );
   const totalFees =
     Number(leg.openFeeA ?? 0) + Number(leg.openFeeB ?? 0) + closeFees;
   const spreadAtExit = getSpreadPct(closePriceA, closePriceB);
@@ -703,7 +729,42 @@ export async function closeAllLegsForBot(botId: number): Promise<{ closed: numbe
         );
       }
 
-      const realizedPnl = computeLegPnl(leg, closePriceA, closePriceB, closeFees);
+      // Compute per-leg PnL independently — exchange value if available, formula otherwise.
+      // Fee policy: exchange legs are used as-is (exchange PnL already reflects fees in
+      // exchange-specific ways); formula legs subtract per-leg open and close fees only.
+      // See the closeLeg function comment for full rationale.
+      const scQtyA = Number(leg.bybitQty);
+      const scQtyB = Number(leg.binanceQty);
+      const scEntryA = Number(leg.bybitEntry);
+      const scEntryB = Number(leg.binanceEntry);
+
+      const scRawFormulaPnlA =
+        leg.bybitSide === "long"
+          ? (closePriceA - scEntryA) * scQtyA
+          : (scEntryA - closePriceA) * scQtyA;
+      const scRawFormulaPnlB =
+        leg.binanceSide === "long"
+          ? (closePriceB - scEntryB) * scQtyB
+          : (scEntryB - closePriceB) * scQtyB;
+
+      const scLegAPnlSource: "exchange" | "formula" =
+        result.exchangeRealizedPnlA != null ? "exchange" : "formula";
+      const scLegBPnlSource: "exchange" | "formula" =
+        result.exchangeRealizedPnlB != null ? "exchange" : "formula";
+
+      const scPnlA =
+        result.exchangeRealizedPnlA != null
+          ? result.exchangeRealizedPnlA
+          : scRawFormulaPnlA - Number(leg.openFeeA ?? 0) - result.closeFeeA;
+      const scPnlB =
+        result.exchangeRealizedPnlB != null
+          ? result.exchangeRealizedPnlB
+          : scRawFormulaPnlB - Number(leg.openFeeB ?? 0) - result.closeFeeB;
+
+      const realizedPnl = scPnlA + scPnlB;
+      const scPnlSource: "exchange" | "formula" | "blended" =
+        scLegAPnlSource === scLegBPnlSource ? scLegAPnlSource : "blended";
+
       const totalFees = Number(leg.openFeeA ?? 0) + Number(leg.openFeeB ?? 0) + closeFees;
       const spreadAtExit = getSpreadPct(closePriceA, closePriceB);
       await db.update(botLegsTable).set({
@@ -728,10 +789,27 @@ export async function closeAllLegsForBot(botId: number): Promise<{ closed: numbe
           quantity: String((Number(leg.bybitQty) * Number(leg.bybitEntry) + Number(leg.binanceQty) * Number(leg.binanceEntry)) / 2),
           entryTime: leg.openedAt,
           closeTime: new Date(),
+          pnlFromExchange: scPnlSource === "exchange",
         });
       } catch {}
       closed++;
-      logger.info({ legId: leg.id, symbol: leg.symbol, realizedPnl, totalFees }, "stop-and-close: leg closed");
+      logger.info(
+        {
+          legId: leg.id,
+          symbol: leg.symbol,
+          exchangePnlA: result.exchangeRealizedPnlA,
+          exchangePnlB: result.exchangeRealizedPnlB,
+          scLegAPnlSource,
+          scLegBPnlSource,
+          realizedPnl,
+          totalFees,
+        },
+        scPnlSource === "exchange"
+          ? "stop-and-close: leg closed — using exchange-reported PnL for both legs"
+          : scPnlSource === "formula"
+          ? "stop-and-close: leg closed — using spread formula for both legs"
+          : "stop-and-close: leg closed — blended PnL (one leg from exchange, one from formula)",
+      );
     } else {
       failed++;
       logger.warn({ legId: leg.id, errorA: result.errorA, errorB: result.errorB }, "stop-and-close: leg close failed");
