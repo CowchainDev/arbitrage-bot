@@ -78,6 +78,7 @@ function NotificationRow({ n }: { n: NotificationEntry }) {
     e.stopPropagation();
     const text = formatDescription(n.event);
     navigator.clipboard.writeText(text).then(() => {
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
       setCopied(true);
       copyTimerRef.current = setTimeout(() => setCopied(false), 1500);
     }).catch(() => {});
