@@ -505,12 +505,23 @@ export default function History() {
   const dateFrom = searchParams.get("dateFrom") ?? "";
   const dateTo = searchParams.get("dateTo") ?? "";
 
+  const chartSymbol = searchParams.get("chartSymbol") ?? "";
+  const chartDateFrom = searchParams.get("chartDateFrom") ?? "";
+  const chartDateTo = searchParams.get("chartDateTo") ?? "";
+
   const setSymbolFilter = (v: string) =>
     setSearchParams((p) => { const n = new URLSearchParams(p); v ? n.set("symbol", v) : n.delete("symbol"); return n; });
   const setDateFrom = (v: string) =>
     setSearchParams((p) => { const n = new URLSearchParams(p); v ? n.set("dateFrom", v) : n.delete("dateFrom"); return n; });
   const setDateTo = (v: string) =>
     setSearchParams((p) => { const n = new URLSearchParams(p); v ? n.set("dateTo", v) : n.delete("dateTo"); return n; });
+
+  const setChartSymbol = (v: string) =>
+    setSearchParams((p) => { const n = new URLSearchParams(p); v ? n.set("chartSymbol", v) : n.delete("chartSymbol"); return n; });
+  const setChartDateFrom = (v: string) =>
+    setSearchParams((p) => { const n = new URLSearchParams(p); v ? n.set("chartDateFrom", v) : n.delete("chartDateFrom"); return n; });
+  const setChartDateTo = (v: string) =>
+    setSearchParams((p) => { const n = new URLSearchParams(p); v ? n.set("chartDateTo", v) : n.delete("chartDateTo"); return n; });
 
   const activeParams = useMemo<GetTradesParams>(() => {
     const p: GetTradesParams = {};
@@ -524,7 +535,20 @@ export default function History() {
     return p;
   }, [symbolFilter, dateFrom, dateTo]);
 
+  const chartParams = useMemo<GetTradesParams>(() => {
+    const p: GetTradesParams = {};
+    if (chartSymbol) p.symbol = chartSymbol;
+    if (chartDateFrom) p.dateFrom = new Date(chartDateFrom).toISOString();
+    if (chartDateTo) {
+      const end = new Date(chartDateTo);
+      end.setHours(23, 59, 59, 999);
+      p.dateTo = end.toISOString();
+    }
+    return p;
+  }, [chartSymbol, chartDateFrom, chartDateTo]);
+
   const hasActiveFilter = !!(symbolFilter || dateFrom || dateTo);
+  const hasActiveChartFilter = !!(chartSymbol || chartDateFrom || chartDateTo);
 
   const runBackfill = async () => {
     setBackfilling(true);
@@ -569,6 +593,16 @@ export default function History() {
     },
   );
 
+  const spreadChartQuery = useGetTradesPnlChart(
+    chartParams,
+    {
+      query: {
+        queryKey: getGetTradesPnlChartQueryKey(chartParams),
+        refetchInterval: 30000,
+      },
+    },
+  );
+
   const availableSymbols = symbolsQuery.data?.symbols ?? [];
 
   const data = tradesQuery.data;
@@ -592,7 +626,13 @@ export default function History() {
       : null;
 
   const clearFilters = () =>
-    setSearchParams(new URLSearchParams());
+    setSearchParams((p) => {
+      const n = new URLSearchParams(p);
+      n.delete("symbol");
+      n.delete("dateFrom");
+      n.delete("dateTo");
+      return n;
+    });
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
@@ -771,27 +811,88 @@ export default function History() {
       </div>
 
       <div className="bg-card border border-border rounded-lg p-4">
-        <div className="flex items-center gap-2 mb-4">
+        <div className="flex items-center gap-2 mb-3">
           <BarChart2 className="w-4 h-4 text-primary" />
           <h2 className="text-sm font-semibold">Funding Rate Spread Over Time</h2>
           <span className="text-xs text-muted-foreground ml-1">per-trade · {ROLLING_WINDOW}-trade rolling avg</span>
-          {pnlChartQuery.isFetching && (
+          {spreadChartQuery.isFetching && (
             <span className="ml-auto text-xs text-muted-foreground animate-pulse">Refreshing…</span>
           )}
         </div>
-        {pnlChartQuery.isLoading ? (
+
+        <div className="flex flex-wrap items-end gap-3 mb-4 pb-3 border-b border-border/40">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground mr-1">
+            <Filter className="w-3.5 h-3.5" />
+            <span className="font-medium">Filters</span>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-muted-foreground">Symbol</label>
+            <select
+              value={chartSymbol}
+              onChange={(e) => setChartSymbol(e.target.value)}
+              className="h-8 px-2 text-xs rounded-md border border-border bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary min-w-[110px]"
+            >
+              <option value="">All symbols</option>
+              {availableSymbols.map((s) => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-muted-foreground">From</label>
+            <input
+              type="date"
+              value={chartDateFrom}
+              onChange={(e) => setChartDateFrom(e.target.value)}
+              max={chartDateTo || undefined}
+              className="h-8 px-2 text-xs rounded-md border border-border bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-muted-foreground">To</label>
+            <input
+              type="date"
+              value={chartDateTo}
+              onChange={(e) => setChartDateTo(e.target.value)}
+              min={chartDateFrom || undefined}
+              className="h-8 px-2 text-xs rounded-md border border-border bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+            />
+          </div>
+          {hasActiveChartFilter && (
+            <button
+              onClick={() =>
+                setSearchParams((p) => {
+                  const n = new URLSearchParams(p);
+                  n.delete("chartSymbol");
+                  n.delete("chartDateFrom");
+                  n.delete("chartDateTo");
+                  return n;
+                })
+              }
+              className="flex items-center gap-1 h-8 px-2 text-xs text-muted-foreground hover:text-foreground border border-border rounded-md transition-colors self-end"
+            >
+              <X className="w-3 h-3" />
+              Clear
+            </button>
+          )}
+          {hasActiveChartFilter && (
+            <span className="self-end text-xs text-muted-foreground ml-auto">Showing filtered results</span>
+          )}
+        </div>
+
+        {spreadChartQuery.isLoading ? (
           <div className="flex items-center justify-center h-40 text-muted-foreground text-sm animate-pulse">
             Loading…
           </div>
-        ) : pnlChartQuery.isError ? (
+        ) : spreadChartQuery.isError ? (
           <div className="flex items-center justify-center h-40 text-destructive text-sm gap-2">
             <ShieldAlert className="w-4 h-4 shrink-0" />
-            {isHttpStatus(pnlChartQuery.error, 401)
+            {isHttpStatus(spreadChartQuery.error, 401)
               ? <span>Bot secret required — <Link href="/settings" className="underline underline-offset-2 hover:opacity-80 transition-opacity">go to Settings</Link> to configure it.</span>
               : "Failed to load chart data."}
           </div>
         ) : (
-          <FundingRateSpreadChart points={chartPoints} />
+          <FundingRateSpreadChart points={spreadChartQuery.data?.points ?? []} />
         )}
       </div>
 
