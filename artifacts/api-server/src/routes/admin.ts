@@ -614,9 +614,9 @@ router.post("/admin/backfill-pnl", requireBotSecret, async (req, res) => {
               .update(closedTradesTable)
               .set({
                 realizedPnl: String(combinedPnl),
-                // Partial backfills are not fully exchange-verified — mark as
-                // estimated so the UI can show the "~" indicator.
-                ...(isPartial ? { pnlFromExchange: false } : {}),
+                // Full backfills are exchange-verified; partial backfills
+                // (one side missing) are still estimated.
+                pnlFromExchange: !isPartial,
               })
               .where(eq(closedTradesTable.id, match.id));
           }

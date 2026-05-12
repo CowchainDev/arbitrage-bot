@@ -22,7 +22,7 @@ import {
 } from "recharts";
 import { useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { TrendingUp, BarChart2, Activity, Info, RefreshCw, Filter, X, ShieldAlert } from "lucide-react";
+import { TrendingUp, BarChart2, Activity, Info, RefreshCw, Filter, X, ShieldAlert, CheckCircle2 } from "lucide-react";
 import { Link, useSearchParams } from "wouter";
 
 function StatCard({
@@ -302,7 +302,16 @@ function TradeTable({ trades }: { trades: ClosedTrade[] }) {
                 />
               </span>
             </th>
-            <th className="text-right px-3 py-2 font-medium">Realized PnL (excl. funding)</th>
+            <th className="text-right px-3 py-2 font-medium">
+              <span className="inline-flex items-center gap-1">
+                Realized PnL (excl. funding)
+                <Info
+                  className="w-3 h-3 text-muted-foreground/60 cursor-help"
+                  aria-label="✓ means PnL was reported directly by the exchange. ~ means it was estimated locally from entry/exit spread and fees."
+                  role="img"
+                />
+              </span>
+            </th>
             <th className="text-right px-3 py-2 font-medium">Net PnL (incl. funding)</th>
             <th className="text-right px-3 py-2 font-medium">PnL (%)</th>
             <th className="text-right px-3 py-2 font-medium">Duration</th>
@@ -428,20 +437,28 @@ function TradeTable({ trades }: { trades: ClosedTrade[] }) {
                 <td
                   className={`px-3 py-2.5 text-right font-semibold ${pnlPositive ? "text-primary" : "text-destructive"}`}
                 >
-                  <span
-                    className="inline-flex items-center gap-0.5"
-                    title={
-                      trade.pnlFromExchange === false
-                        ? "Estimated — calculated from entry/exit spread and fees (exchange did not report PnL)"
-                        : trade.pnlFromExchange === true
-                          ? "Exchange-reported — authoritative figure from the exchange"
-                          : undefined
-                    }
-                  >
-                    {trade.pnlFromExchange === false && (
-                      <span className="text-muted-foreground font-normal text-xs" aria-label="estimated">~</span>
+                  <span className="inline-flex items-center gap-0.5">
+                    {trade.pnlFromExchange === true && (
+                      <span title="Exchange-reported — authoritative figure from the exchange" aria-label="exchange-verified">
+                        <CheckCircle2 className="w-3 h-3 text-emerald-500 shrink-0" />
+                      </span>
                     )}
-                    {formatPnl(trade.realizedPnl)}
+                    {trade.pnlFromExchange === false && (
+                      <span
+                        className="text-muted-foreground font-normal text-xs"
+                        aria-label="estimated"
+                        title="Estimated — calculated from entry/exit spread and fees (exchange did not report PnL)"
+                      >~</span>
+                    )}
+                    <span title={
+                      trade.pnlFromExchange === true
+                        ? "Exchange-reported — authoritative figure from the exchange"
+                        : trade.pnlFromExchange === false
+                          ? "Estimated — calculated from entry/exit spread and fees (exchange did not report PnL)"
+                          : undefined
+                    }>
+                      {formatPnl(trade.realizedPnl)}
+                    </span>
                   </span>
                 </td>
                 <td
