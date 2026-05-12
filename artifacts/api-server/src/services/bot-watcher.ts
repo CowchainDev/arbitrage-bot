@@ -357,28 +357,32 @@ async function closeLeg(
   // cache price that triggered the close. Log a warning so the gap is visible.
   let closePriceA = result.closePriceA;
   if (closePriceA == null) {
+    let tickerPriceA: number | null = null;
     try {
       const ticker = await exA.fetchTicker(marketSymbol);
-      closePriceA = (ticker?.last ?? ticker?.info?.markPrice ?? null) as number | null;
+      tickerPriceA = (ticker?.last ?? ticker?.info?.markPrice ?? null) as number | null;
     } catch (_) {}
+    const source = tickerPriceA != null ? "ticker" : "cache";
+    closePriceA = tickerPriceA ?? priceA;
     logger.warn(
-      { legId: leg.id, symbol: leg.symbol, resolvedFromTicker: closePriceA != null },
-      "Bot: exA fill price absent from close order — using ticker/cache fallback for exit spread",
+      { legId: leg.id, symbol: leg.symbol, closePriceA, source },
+      `Bot: exA fill price absent from close order — exit spread price resolved from ${source}`,
     );
-    closePriceA = closePriceA ?? priceA;
   }
 
   let closePriceB = result.closePriceB;
   if (closePriceB == null) {
+    let tickerPriceB: number | null = null;
     try {
       const ticker = await exB.fetchTicker(marketSymbol);
-      closePriceB = (ticker?.last ?? ticker?.info?.markPrice ?? null) as number | null;
+      tickerPriceB = (ticker?.last ?? ticker?.info?.markPrice ?? null) as number | null;
     } catch (_) {}
+    const source = tickerPriceB != null ? "ticker" : "cache";
+    closePriceB = tickerPriceB ?? priceB;
     logger.warn(
-      { legId: leg.id, symbol: leg.symbol, resolvedFromTicker: closePriceB != null },
-      "Bot: exB fill price absent from close order — using ticker/cache fallback for exit spread",
+      { legId: leg.id, symbol: leg.symbol, closePriceB, source },
+      `Bot: exB fill price absent from close order — exit spread price resolved from ${source}`,
     );
-    closePriceB = closePriceB ?? priceB;
   }
 
   // Prefer exchange-reported realized PnL (authoritative — accounts for blended cost basis,
@@ -671,28 +675,32 @@ export async function closeAllLegsForBot(botId: number): Promise<{ closed: numbe
 
       let closePriceA = result.closePriceA;
       if (closePriceA == null) {
+        let tickerPriceA: number | null = null;
         try {
           const ticker = await exA.fetchTicker(mktSymbol);
-          closePriceA = (ticker?.last ?? ticker?.info?.markPrice ?? null) as number | null;
+          tickerPriceA = (ticker?.last ?? ticker?.info?.markPrice ?? null) as number | null;
         } catch (_) {}
+        const sourceA = tickerPriceA != null ? "ticker" : "cache";
+        closePriceA = tickerPriceA ?? priceA;
         logger.warn(
-          { legId: leg.id, symbol: leg.symbol, resolvedFromTicker: closePriceA != null },
-          "stop-and-close: exA fill price absent — using ticker/cache fallback for exit spread",
+          { legId: leg.id, symbol: leg.symbol, closePriceA, source: sourceA },
+          `stop-and-close: exA fill price absent — exit spread price resolved from ${sourceA}`,
         );
-        closePriceA = closePriceA ?? priceA;
       }
 
       let closePriceB = result.closePriceB;
       if (closePriceB == null) {
+        let tickerPriceB: number | null = null;
         try {
           const ticker = await exB.fetchTicker(mktSymbol);
-          closePriceB = (ticker?.last ?? ticker?.info?.markPrice ?? null) as number | null;
+          tickerPriceB = (ticker?.last ?? ticker?.info?.markPrice ?? null) as number | null;
         } catch (_) {}
+        const sourceB = tickerPriceB != null ? "ticker" : "cache";
+        closePriceB = tickerPriceB ?? priceB;
         logger.warn(
-          { legId: leg.id, symbol: leg.symbol, resolvedFromTicker: closePriceB != null },
-          "stop-and-close: exB fill price absent — using ticker/cache fallback for exit spread",
+          { legId: leg.id, symbol: leg.symbol, closePriceB, source: sourceB },
+          `stop-and-close: exB fill price absent — exit spread price resolved from ${sourceB}`,
         );
-        closePriceB = closePriceB ?? priceB;
       }
 
       const realizedPnl = computeLegPnl(leg, closePriceA, closePriceB, closeFees);
