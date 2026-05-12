@@ -452,6 +452,7 @@ async function closeLeg(
         quantity: String(usdSize / 2),
         entryTime: leg.openedAt,
         closeTime: closedAt,
+        pnlFromExchange: pnlSource === "exchange",
       }),
     `closeLeg insert closed_trade leg=${leg.id}`,
   );

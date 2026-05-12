@@ -428,7 +428,21 @@ function TradeTable({ trades }: { trades: ClosedTrade[] }) {
                 <td
                   className={`px-3 py-2.5 text-right font-semibold ${pnlPositive ? "text-primary" : "text-destructive"}`}
                 >
-                  {formatPnl(trade.realizedPnl)}
+                  <span
+                    className="inline-flex items-center gap-0.5"
+                    title={
+                      trade.pnlFromExchange === false
+                        ? "Estimated — calculated from entry/exit spread and fees (exchange did not report PnL)"
+                        : trade.pnlFromExchange === true
+                          ? "Exchange-reported — authoritative figure from the exchange"
+                          : undefined
+                    }
+                  >
+                    {trade.pnlFromExchange === false && (
+                      <span className="text-muted-foreground font-normal text-xs" aria-label="estimated">~</span>
+                    )}
+                    {formatPnl(trade.realizedPnl)}
+                  </span>
                 </td>
                 <td
                   className={`px-3 py-2.5 text-right font-semibold ${netPnlPositive === true ? "text-primary" : netPnlPositive === false ? "text-destructive" : "text-muted-foreground"}`}

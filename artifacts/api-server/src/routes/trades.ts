@@ -77,6 +77,7 @@ router.get("/trades", requireAuth, async (req: Request, res: Response) => {
           fundingRateSpread: t.fundingRateSpread != null ? Number(t.fundingRateSpread) : undefined,
           spreadAtExit: t.spreadAtExit != null ? Number(t.spreadAtExit) : undefined,
           closeReason: t.closeReason ?? undefined,
+          pnlFromExchange: t.pnlFromExchange ?? undefined,
           quantity: Number(t.quantity),
           entryTime: t.entryTime.toISOString(),
           closeTime: t.closeTime.toISOString(),

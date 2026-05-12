@@ -50,6 +50,7 @@ export const closedTradesTable = pgTable(
     fundingRateSpread: numeric("funding_rate_spread", { precision: 20, scale: 10 }),
     spreadAtExit: numeric("spread_at_exit", { precision: 20, scale: 8 }),
     closeReason: text("close_reason"),
+    pnlFromExchange: boolean("pnl_from_exchange"),
     entryTime: timestamp("entry_time").notNull().defaultNow(),
     closeTime: timestamp("close_time").notNull().defaultNow(),
   },
