@@ -1,4 +1,4 @@
-import { Bell, CheckCheck, Trash2, ChevronDown, Copy, Check } from "lucide-react";
+import { Bell, CheckCheck, Trash2, ChevronDown, Copy, Check, X } from "lucide-react";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useNotifications, type NotificationEntry } from "@/contexts/notifications";
 import type { BotEvent } from "@/hooks/use-notification-stream";
@@ -67,7 +67,7 @@ function formatTime(ts: number): string {
   return new Date(ts).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
-function NotificationRow({ n }: { n: NotificationEntry }) {
+function NotificationRow({ n, onDismiss }: { n: NotificationEntry; onDismiss: (id: string) => void }) {
   const [expanded, setExpanded] = useState(false);
   const [overflows, setOverflows] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -94,9 +94,14 @@ function NotificationRow({ n }: { n: NotificationEntry }) {
     }).catch(() => {});
   }, [n.event]);
 
+  const handleDismiss = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    onDismiss(n.id);
+  }, [n.id, onDismiss]);
+
   return (
     <div
-      className={`px-3 py-2.5 border-b border-border/50 last:border-0 ${!n.read ? "bg-muted/30" : ""} ${canExpand ? "cursor-pointer select-none" : ""}`}
+      className={`group px-3 py-2.5 border-b border-border/50 last:border-0 ${!n.read ? "bg-muted/30" : ""} ${canExpand ? "cursor-pointer select-none" : ""}`}
       onClick={canExpand ? () => setExpanded((v) => !v) : undefined}
       role={canExpand ? "button" : undefined}
       aria-expanded={canExpand ? expanded : undefined}
@@ -113,6 +118,14 @@ function NotificationRow({ n }: { n: NotificationEntry }) {
                   className={`w-3 h-3 text-muted-foreground transition-transform duration-200 ${expanded ? "rotate-180" : ""}`}
                 />
               )}
+              <button
+                onClick={handleDismiss}
+                title="Dismiss"
+                aria-label="Dismiss notification"
+                className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 p-0.5 rounded text-muted-foreground/60 hover:text-foreground hover:bg-muted transition-all duration-150"
+              >
+                <X className="w-3 h-3" />
+              </button>
             </div>
           </div>
           <div className="relative">
@@ -143,7 +156,7 @@ function NotificationRow({ n }: { n: NotificationEntry }) {
 }
 
 export function NotificationBell() {
-  const { notifications, unreadCount, markAllRead, clearAll } = useNotifications();
+  const { notifications, unreadCount, markAllRead, clearAll, dismissOne } = useNotifications();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -205,7 +218,7 @@ export function NotificationBell() {
                 No notifications yet
               </div>
             ) : (
-              notifications.map((n) => <NotificationRow key={n.id} n={n} />)
+              notifications.map((n) => <NotificationRow key={n.id} n={n} onDismiss={dismissOne} />)
             )}
           </div>
         </div>

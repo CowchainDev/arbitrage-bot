@@ -14,6 +14,7 @@ type NotificationsContextValue = {
   unreadCount: number;
   markAllRead: () => void;
   clearAll: () => void;
+  dismissOne: (id: string) => void;
   failingExchanges: Set<string>;
 };
 
@@ -149,9 +150,13 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     setNotifications([]);
   }, []);
 
+  const dismissOne = useCallback((id: string) => {
+    setNotifications((prev) => prev.filter((n) => n.id !== id));
+  }, []);
+
   const value = useMemo(
-    () => ({ notifications, unreadCount, markAllRead, clearAll, failingExchanges }),
-    [notifications, unreadCount, markAllRead, clearAll, failingExchanges],
+    () => ({ notifications, unreadCount, markAllRead, clearAll, dismissOne, failingExchanges }),
+    [notifications, unreadCount, markAllRead, clearAll, dismissOne, failingExchanges],
   );
 
   return (
