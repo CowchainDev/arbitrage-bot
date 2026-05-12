@@ -14,6 +14,7 @@ import { useSpreadAlerts } from "@/hooks/use-spread-alerts";
 import { usePriceStream } from "@/hooks/use-price-stream";
 import { useConnectionStatus } from "@/contexts/connection-status";
 import { usePageVisibility } from "@/hooks/use-page-visibility";
+import { useNow } from "@/hooks/useNow";
 import {
   BotSummaryRow,
   PositionRow,
@@ -116,11 +117,7 @@ function getExchangeFields(token: TokenSpread, ex: string): { ask: number | unde
 }
 
 function useFundingCountdown(nextFundingA: string | undefined | null, nextFundingB: string | undefined | null): string {
-  const [now, setNow] = useState(Date.now);
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, []);
+  const now = useNow();
   const msA = nextFundingA ? new Date(nextFundingA).getTime() - now : null;
   const msB = nextFundingB ? new Date(nextFundingB).getTime() - now : null;
   const ms = [msA, msB].filter((m): m is number => m != null && m > 0).sort((a, b) => a - b)[0] ?? null;
