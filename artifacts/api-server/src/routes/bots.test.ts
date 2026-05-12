@@ -142,3 +142,139 @@ describe("PUT /bots/:id – Zod + buildBotUpdateFields pipeline", () => {
     expect(updates.maxOrders).toBe(3);
   });
 });
+
+describe("UpdateBotBody – range / boundary validation", () => {
+  describe("enterSpreadPct", () => {
+    it("rejects zero", () => {
+      expect(UpdateBotBody.safeParse({ enterSpreadPct: 0 }).success).toBe(false);
+    });
+
+    it("rejects negative values", () => {
+      expect(UpdateBotBody.safeParse({ enterSpreadPct: -0.5 }).success).toBe(false);
+    });
+
+    it("accepts a small positive value", () => {
+      expect(UpdateBotBody.safeParse({ enterSpreadPct: 0.01 }).success).toBe(true);
+    });
+  });
+
+  describe("closeSpreadPct", () => {
+    it("rejects zero", () => {
+      expect(UpdateBotBody.safeParse({ closeSpreadPct: 0 }).success).toBe(false);
+    });
+
+    it("rejects negative values", () => {
+      expect(UpdateBotBody.safeParse({ closeSpreadPct: -1 }).success).toBe(false);
+    });
+
+    it("accepts a positive value", () => {
+      expect(UpdateBotBody.safeParse({ closeSpreadPct: 0.5 }).success).toBe(true);
+    });
+  });
+
+  describe("stopLossSpreadPct", () => {
+    it("accepts zero (disabled)", () => {
+      expect(UpdateBotBody.safeParse({ stopLossSpreadPct: 0 }).success).toBe(true);
+    });
+
+    it("rejects negative values", () => {
+      expect(UpdateBotBody.safeParse({ stopLossSpreadPct: -0.1 }).success).toBe(false);
+    });
+
+    it("accepts a positive value", () => {
+      expect(UpdateBotBody.safeParse({ stopLossSpreadPct: 1.5 }).success).toBe(true);
+    });
+  });
+
+  describe("orderSizeUsd", () => {
+    it("rejects zero", () => {
+      expect(UpdateBotBody.safeParse({ orderSizeUsd: 0 }).success).toBe(false);
+    });
+
+    it("rejects negative values", () => {
+      expect(UpdateBotBody.safeParse({ orderSizeUsd: -100 }).success).toBe(false);
+    });
+
+    it("accepts values >= 1", () => {
+      expect(UpdateBotBody.safeParse({ orderSizeUsd: 1 }).success).toBe(true);
+      expect(UpdateBotBody.safeParse({ orderSizeUsd: 500 }).success).toBe(true);
+    });
+  });
+
+  describe("maxOrders", () => {
+    it("rejects zero", () => {
+      expect(UpdateBotBody.safeParse({ maxOrders: 0 }).success).toBe(false);
+    });
+
+    it("rejects negative values", () => {
+      expect(UpdateBotBody.safeParse({ maxOrders: -1 }).success).toBe(false);
+    });
+
+    it("rejects non-integer values", () => {
+      expect(UpdateBotBody.safeParse({ maxOrders: 1.5 }).success).toBe(false);
+    });
+
+    it("accepts positive integers", () => {
+      expect(UpdateBotBody.safeParse({ maxOrders: 1 }).success).toBe(true);
+      expect(UpdateBotBody.safeParse({ maxOrders: 10 }).success).toBe(true);
+    });
+  });
+
+  describe("leverage fields (bybitLeverage, binanceLeverage, leverageA, leverageB)", () => {
+    const leverageFields = ["bybitLeverage", "binanceLeverage", "leverageA", "leverageB"] as const;
+
+    for (const field of leverageFields) {
+      it(`${field}: rejects 0`, () => {
+        expect(UpdateBotBody.safeParse({ [field]: 0 }).success).toBe(false);
+      });
+
+      it(`${field}: rejects values below 1`, () => {
+        expect(UpdateBotBody.safeParse({ [field]: -5 }).success).toBe(false);
+      });
+
+      it(`${field}: rejects values above 125`, () => {
+        expect(UpdateBotBody.safeParse({ [field]: 126 }).success).toBe(false);
+      });
+
+      it(`${field}: rejects non-integer values`, () => {
+        expect(UpdateBotBody.safeParse({ [field]: 2.5 }).success).toBe(false);
+      });
+
+      it(`${field}: accepts boundary value 1`, () => {
+        expect(UpdateBotBody.safeParse({ [field]: 1 }).success).toBe(true);
+      });
+
+      it(`${field}: accepts boundary value 125`, () => {
+        expect(UpdateBotBody.safeParse({ [field]: 125 }).success).toBe(true);
+      });
+
+      it(`${field}: accepts a valid mid-range value`, () => {
+        expect(UpdateBotBody.safeParse({ [field]: 10 }).success).toBe(true);
+      });
+    }
+  });
+
+  it("accepts a fully-populated valid payload", () => {
+    const result = UpdateBotBody.safeParse({
+      enterSpreadPct: 0.3,
+      closeSpreadPct: 0.1,
+      stopLossSpreadPct: 0,
+      orderSizeUsd: 200,
+      maxOrders: 5,
+      forceStopUsd: -500,
+      bybitLeverage: 10,
+      binanceLeverage: 10,
+      leverageA: 5,
+      leverageB: 5,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects a payload where only one field is out of range", () => {
+    const result = UpdateBotBody.safeParse({
+      enterSpreadPct: 0.3,
+      orderSizeUsd: 0,
+    });
+    expect(result.success).toBe(false);
+  });
+});

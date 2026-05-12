@@ -521,23 +521,24 @@ export const UpdateBotHeader = zod.object({
 });
 
 export const UpdateBotBody = zod.object({
-  enterSpreadPct: zod.number().optional(),
-  closeSpreadPct: zod.number().optional(),
+  enterSpreadPct: zod.number().min(0.0001).optional(),
+  closeSpreadPct: zod.number().min(0.0001).optional(),
   stopLossSpreadPct: zod
     .number()
+    .min(0)
     .optional()
     .describe(
       "Spread % at which a widening position is closed (stop loss, 0 = disabled)",
     ),
-  orderSizeUsd: zod.number().optional(),
-  maxOrders: zod.number().optional(),
+  orderSizeUsd: zod.number().min(1).optional(),
+  maxOrders: zod.number().int().min(1).optional(),
   forceStopUsd: zod.number().optional(),
-  bybitLeverage: zod.number().optional(),
-  binanceLeverage: zod.number().optional(),
+  bybitLeverage: zod.number().int().min(1).max(125).optional(),
+  binanceLeverage: zod.number().int().min(1).max(125).optional(),
   exchangeA: zod.string().optional(),
   exchangeB: zod.string().optional(),
-  leverageA: zod.number().optional(),
-  leverageB: zod.number().optional(),
+  leverageA: zod.number().int().min(1).max(125).optional(),
+  leverageB: zod.number().int().min(1).max(125).optional(),
 });
 
 export const UpdateBotResponse = zod.object({
