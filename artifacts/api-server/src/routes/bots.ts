@@ -36,7 +36,7 @@ function normalizeBotLeg(leg: BotLeg) {
   };
 }
 
-router.get("/bots", async (_req: Request, res: Response) => {
+router.get("/bots", requireBotSecret, async (_req: Request, res: Response) => {
   try {
     const bots = await db.select().from(botConfigsTable).orderBy(botConfigsTable.createdAt);
     res.json({ bots: bots.map(normalizeBotConfig) });
@@ -242,7 +242,7 @@ router.post("/bots/:id/stop-and-close", requireBotSecret, async (req: Request, r
   }
 });
 
-router.get("/bots/:id/stats", async (req: Request, res: Response) => {
+router.get("/bots/:id/stats", requireBotSecret, async (req: Request, res: Response) => {
   const id = Number(req.params.id);
   if (!id) {
     res.status(400).json({ error: "bad_request", message: "Invalid bot id" });
@@ -317,7 +317,7 @@ router.get("/bots/:id/stats", async (req: Request, res: Response) => {
   }
 });
 
-router.get("/bots/:id/leg-history", async (req: Request, res: Response) => {
+router.get("/bots/:id/leg-history", requireBotSecret, async (req: Request, res: Response) => {
   const id = Number(req.params.id);
   if (!id) {
     res.status(400).json({ error: "bad_request", message: "Invalid bot id" });
@@ -357,7 +357,7 @@ router.get("/bots/:id/leg-history", async (req: Request, res: Response) => {
   }
 });
 
-router.get("/bots/:id/legs", async (req: Request, res: Response) => {
+router.get("/bots/:id/legs", requireBotSecret, async (req: Request, res: Response) => {
   const id = Number(req.params.id);
   if (!id) {
     res.status(400).json({ error: "bad_request", message: "Invalid bot id" });

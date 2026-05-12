@@ -2,13 +2,14 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { db } from "@workspace/db";
 import { closedTradesTable } from "@workspace/db";
 import { desc, sql, count, sum, max, min, avg } from "drizzle-orm";
+import { requireBotSecret } from "../middleware/auth";
 
 const router: IRouter = Router();
 
 const DEFAULT_LIMIT = 200;
 const MAX_LIMIT = 1000;
 
-router.get("/trades", async (req: Request, res: Response) => {
+router.get("/trades", requireBotSecret, async (req: Request, res: Response) => {
   const rawLimit = Number(req.query["limit"] ?? DEFAULT_LIMIT);
   const rawOffset = Number(req.query["offset"] ?? 0);
   const limit = Math.min(Math.max(1, isNaN(rawLimit) ? DEFAULT_LIMIT : rawLimit), MAX_LIMIT);
@@ -87,7 +88,7 @@ router.get("/trades", async (req: Request, res: Response) => {
   }
 });
 
-router.get("/trades/pnl-chart", async (req: Request, res: Response) => {
+router.get("/trades/pnl-chart", requireBotSecret, async (req: Request, res: Response) => {
   try {
     const rows = await db
       .select({

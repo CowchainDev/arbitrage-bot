@@ -1,6 +1,11 @@
 import { createRoot } from "react-dom/client";
+import { setBotSecretGetter } from "@workspace/api-client-react";
 import App from "./App";
 import "./index.css";
+
+setBotSecretGetter(() => {
+  try { return localStorage.getItem("bot_secret"); } catch { return null; }
+});
 
 const savedTheme = localStorage.getItem("theme");
 const isDark =

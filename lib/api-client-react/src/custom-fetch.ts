@@ -17,6 +17,7 @@ const DEFAULT_JSON_ACCEPT = "application/json, application/problem+json";
 
 let _baseUrl: string | null = null;
 let _authTokenGetter: AuthTokenGetter | null = null;
+let _botSecretGetter: (() => string | null) | null = null;
 
 /**
  * Set a base URL that is prepended to every relative request URL
@@ -42,6 +43,17 @@ export function setBaseUrl(url: string | null): void {
  */
 export function setAuthTokenGetter(getter: AuthTokenGetter | null): void {
   _authTokenGetter = getter;
+}
+
+/**
+ * Register a getter that supplies the bot secret for the `x-bot-secret` header.
+ * Before every fetch the getter is invoked; when it returns a non-null, non-empty
+ * string, an `x-bot-secret` header is attached to the request.
+ *
+ * Pass `null` to clear the getter.
+ */
+export function setBotSecretGetter(getter: (() => string | null) | null): void {
+  _botSecretGetter = getter;
 }
 
 function isRequest(input: RequestInfo | URL): input is Request {
@@ -355,6 +367,14 @@ export async function customFetch<T = unknown>(
     const token = await _authTokenGetter();
     if (token) {
       headers.set("authorization", `Bearer ${token}`);
+    }
+  }
+
+  // Attach bot secret when a getter is configured and no header has been set.
+  if (_botSecretGetter && !headers.has("x-bot-secret")) {
+    const secret = _botSecretGetter();
+    if (secret) {
+      headers.set("x-bot-secret", secret);
     }
   }
 
