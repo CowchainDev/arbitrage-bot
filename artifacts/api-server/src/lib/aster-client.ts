@@ -24,9 +24,11 @@ const EIP712_DOMAIN = {
   verifyingContract: "0x0000000000000000000000000000000000000000" as `0x${string}`,
 };
 
+// Not `as const` — ethers signTypedData expects a mutable Record<string, TypedDataField[]>,
+// and `as const` produces a readonly tuple that TypeScript rejects at the call site.
 const MESSAGE_TYPES = {
   Message: [{ name: "msg", type: "string" }],
-} as const;
+};
 
 function nowMicros(): number {
   return Math.trunc(Date.now() * 1_000);

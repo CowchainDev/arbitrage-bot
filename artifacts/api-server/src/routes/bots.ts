@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db } from "@workspace/db";
-import { botConfigsTable, botLegsTable, type BotConfig, type BotLeg } from "@workspace/db";
+import { botConfigsTable, botLegsTable, type BotConfig, type BotLeg, type InsertBotConfig } from "@workspace/db";
 import { eq, and, desc } from "drizzle-orm";
 import { CreateBotBody, UpdateBotBody } from "@workspace/api-zod";
 import { closeAllLegsForBot } from "../services/bot-watcher";
@@ -56,7 +56,7 @@ router.post("/bots", requireBotSecret, async (req: Request, res: Response) => {
     symbol, enterSpreadPct, closeSpreadPct, orderSizeUsd,
     maxOrders, forceStopUsd, bybitLeverage, binanceLeverage,
     exchangeA, exchangeB, leverageA, leverageB, stopLossSpreadPct,
-  } = parsed.data as typeof parsed.data & { exchangeA?: string; exchangeB?: string; leverageA?: number; leverageB?: number; stopLossSpreadPct?: number };
+  } = parsed.data;
 
   try {
     const [bot] = await db
@@ -105,9 +105,11 @@ router.put("/bots/:id", requireBotSecret, async (req: Request, res: Response) =>
     enterSpreadPct, closeSpreadPct, orderSizeUsd,
     maxOrders, forceStopUsd, bybitLeverage, binanceLeverage,
     exchangeA, exchangeB, leverageA, leverageB, stopLossSpreadPct,
-  } = parsed.data as typeof parsed.data & { exchangeA?: string; exchangeB?: string; leverageA?: number; leverageB?: number; stopLossSpreadPct?: number };
+  } = parsed.data;
 
-  const updates: Record<string, unknown> = { updatedAt: new Date() };
+  // Typed as Partial<InsertBotConfig> (not Record<string, unknown>) so TypeScript
+  // enforces that only real botConfigsTable columns with correct value types are written.
+  const updates: Partial<InsertBotConfig> = { updatedAt: new Date() };
   if (enterSpreadPct !== undefined) updates.enterSpreadPct = String(enterSpreadPct);
   if (closeSpreadPct !== undefined) updates.closeSpreadPct = String(closeSpreadPct);
   if (stopLossSpreadPct !== undefined) updates.stopLossSpreadPct = String(stopLossSpreadPct);
