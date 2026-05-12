@@ -553,12 +553,15 @@ export default function History() {
     },
   );
 
-  const pnlChartQuery = useGetTradesPnlChart({
-    query: {
-      queryKey: getGetTradesPnlChartQueryKey(),
-      refetchInterval: 30000,
+  const pnlChartQuery = useGetTradesPnlChart(
+    activeParams,
+    {
+      query: {
+        queryKey: getGetTradesPnlChartQueryKey(activeParams),
+        refetchInterval: 30000,
+      },
     },
-  });
+  );
 
   const availableSymbols = symbolsQuery.data?.symbols ?? [];
 

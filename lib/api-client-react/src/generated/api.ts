@@ -33,6 +33,7 @@ import type {
   ExchangeKlinesResponse,
   GetExchangeKlinesParams,
   GetTradesParams,
+  GetTradesPnlChartParams,
   HealthStatus,
   JumpInRequest,
   JumpInResult,
@@ -2003,44 +2004,58 @@ export function useGetTradesSymbols<
 }
 
 /**
- * Returns cumulative PnL data points for every closed trade ordered chronologically. Used for the all-time equity curve chart.
- * @summary Get all-time cumulative PnL chart data
+ * Returns cumulative PnL data points for closed trades ordered chronologically. Supports the same symbol and date filters as the trade history endpoint.
+ * @summary Get cumulative PnL chart data
  */
-export const getGetTradesPnlChartUrl = () => {
-  return `/api/trades/pnl-chart`;
+export const getGetTradesPnlChartUrl = (params?: GetTradesPnlChartParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  return normalizedParams.size
+    ? `/api/trades/pnl-chart?${normalizedParams.toString()}`
+    : `/api/trades/pnl-chart`;
 };
 
 export const getTradesPnlChart = async (
+  params?: GetTradesPnlChartParams,
   options?: RequestInit,
 ): Promise<PnlChartResponse> => {
-  return customFetch<PnlChartResponse>(getGetTradesPnlChartUrl(), {
+  return customFetch<PnlChartResponse>(getGetTradesPnlChartUrl(params), {
     ...options,
     method: "GET",
   });
 };
 
-export const getGetTradesPnlChartQueryKey = () => {
-  return [`/api/trades/pnl-chart`] as const;
+export const getGetTradesPnlChartQueryKey = (params?: GetTradesPnlChartParams) => {
+  return [`/api/trades/pnl-chart`, ...(params ? [params] : [])] as const;
 };
 
 export const getGetTradesPnlChartQueryOptions = <
   TData = Awaited<ReturnType<typeof getTradesPnlChart>>,
   TError = ErrorType<ApiError>,
->(options?: {
-  query?: UseQueryOptions<
-    Awaited<ReturnType<typeof getTradesPnlChart>>,
-    TError,
-    TData
-  >;
-  request?: SecondParameter<typeof customFetch>;
-}) => {
+>(
+  params?: GetTradesPnlChartParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getTradesPnlChart>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
   const { query: queryOptions, request: requestOptions } = options ?? {};
 
-  const queryKey = queryOptions?.queryKey ?? getGetTradesPnlChartQueryKey();
+  const queryKey = queryOptions?.queryKey ?? getGetTradesPnlChartQueryKey(params);
 
   const queryFn: QueryFunction<
     Awaited<ReturnType<typeof getTradesPnlChart>>
-  > = ({ signal }) => getTradesPnlChart({ signal, ...requestOptions });
+  > = ({ signal }) => getTradesPnlChart(params, { signal, ...requestOptions });
 
   return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
     Awaited<ReturnType<typeof getTradesPnlChart>>,
@@ -2055,21 +2070,24 @@ export type GetTradesPnlChartQueryResult = NonNullable<
 export type GetTradesPnlChartQueryError = ErrorType<ApiError>;
 
 /**
- * @summary Get all-time cumulative PnL chart data
+ * @summary Get cumulative PnL chart data
  */
 
 export function useGetTradesPnlChart<
   TData = Awaited<ReturnType<typeof getTradesPnlChart>>,
   TError = ErrorType<ApiError>,
->(options?: {
-  query?: UseQueryOptions<
-    Awaited<ReturnType<typeof getTradesPnlChart>>,
-    TError,
-    TData
-  >;
-  request?: SecondParameter<typeof customFetch>;
-}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-  const queryOptions = getGetTradesPnlChartQueryOptions(options);
+>(
+  params?: GetTradesPnlChartParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getTradesPnlChart>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetTradesPnlChartQueryOptions(params, options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

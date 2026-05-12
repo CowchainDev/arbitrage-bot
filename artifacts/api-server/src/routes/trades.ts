@@ -121,6 +121,19 @@ router.get("/trades/symbols", requireAuth, async (req: Request, res: Response) =
 
 router.get("/trades/pnl-chart", requireAuth, async (req: Request, res: Response) => {
   const userId = (req as any).userId as string;
+
+  const symbolFilter = typeof req.query["symbol"] === "string" && req.query["symbol"] ? req.query["symbol"] : null;
+  const dateFrom = typeof req.query["dateFrom"] === "string" && req.query["dateFrom"] ? new Date(req.query["dateFrom"]) : null;
+  const dateTo = typeof req.query["dateTo"] === "string" && req.query["dateTo"] ? new Date(req.query["dateTo"]) : null;
+
+  const conditions = [
+    eq(closedTradesTable.userId, userId),
+    ...(symbolFilter ? [ilike(closedTradesTable.symbol, symbolFilter)] : []),
+    ...(dateFrom && !isNaN(dateFrom.getTime()) ? [gte(closedTradesTable.closeTime, dateFrom)] : []),
+    ...(dateTo && !isNaN(dateTo.getTime()) ? [lte(closedTradesTable.closeTime, dateTo)] : []),
+  ];
+  const whereClause = and(...conditions);
+
   try {
     const rows = await db
       .select({
@@ -131,7 +144,7 @@ router.get("/trades/pnl-chart", requireAuth, async (req: Request, res: Response)
         symbol: closedTradesTable.symbol,
       })
       .from(closedTradesTable)
-      .where(eq(closedTradesTable.userId, userId))
+      .where(whereClause)
       .orderBy(closedTradesTable.closeTime);
 
     let cumPnl = 0;

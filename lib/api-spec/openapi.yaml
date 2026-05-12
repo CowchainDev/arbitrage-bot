@@ -794,8 +794,27 @@ paths:
     get:
       operationId: getTradesPnlChart
       tags: [trades]
-      summary: Get all-time cumulative PnL chart data
-      description: Returns cumulative PnL data points for every closed trade ordered chronologically. Used for the all-time equity curve chart.
+      summary: Get cumulative PnL chart data
+      description: Returns cumulative PnL data points for closed trades ordered chronologically. Supports the same symbol and date filters as the trade history endpoint.
+      parameters:
+        - in: query
+          name: symbol
+          schema:
+            type: string
+          required: false
+          description: Filter by trading symbol (e.g. BTC, ETH). Case-insensitive exact match.
+        - in: query
+          name: dateFrom
+          schema:
+            type: string
+          required: false
+          description: Start of date range (ISO 8601). Filters trades closed on or after this date.
+        - in: query
+          name: dateTo
+          schema:
+            type: string
+          required: false
+          description: End of date range (ISO 8601). Filters trades closed on or before this date.
       responses:
         "200":
           description: Cumulative PnL chart data

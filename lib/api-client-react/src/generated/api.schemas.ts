@@ -627,3 +627,18 @@ export type GetTradesParams = {
    */
   dateTo?: string;
 };
+
+export type GetTradesPnlChartParams = {
+  /**
+   * Filter by trading symbol (e.g. BTC, ETH). Case-insensitive exact match.
+   */
+  symbol?: string;
+  /**
+   * Start of date range (ISO 8601). Filters trades closed on or after this date.
+   */
+  dateFrom?: string;
+  /**
+   * End of date range (ISO 8601). Filters trades closed on or before this date.
+   */
+  dateTo?: string;
+};
