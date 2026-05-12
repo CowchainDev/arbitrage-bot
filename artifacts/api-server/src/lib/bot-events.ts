@@ -7,7 +7,8 @@ export type BotEvent =
   | { kind: "order_too_small"; symbol: string }
   | { kind: "compensation_failed"; symbol: string; exchange: string }
   | { kind: "force_stop"; symbol: string; totalPnl: number }
-  | { kind: "credential_error"; exchange: string; message: string };
+  | { kind: "credential_error"; exchange: string; message: string }
+  | { kind: "credential_ok"; exchange: string };
 
 export type NotificationWsMessage = { type: "bot_event"; event: BotEvent; ts: number };
 

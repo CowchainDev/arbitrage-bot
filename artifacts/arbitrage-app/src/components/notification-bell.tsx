@@ -12,6 +12,7 @@ function eventColor(event: BotEvent): string {
     case "compensation_failed": return "text-destructive";
     case "force_stop": return "text-amber-400";
     case "credential_error": return "text-destructive";
+    case "credential_ok": return "text-emerald-400";
   }
 }
 
@@ -24,6 +25,7 @@ function eventDot(event: BotEvent): string {
     case "compensation_failed": return "bg-destructive";
     case "force_stop": return "bg-amber-400";
     case "credential_error": return "bg-destructive";
+    case "credential_ok": return "bg-emerald-400";
   }
 }
 
@@ -36,6 +38,7 @@ function formatTitle(event: BotEvent): string {
     case "compensation_failed": return `${event.symbol} comp. failed`;
     case "force_stop": return `${event.symbol} force stop`;
     case "credential_error": return `${event.exchange} credentials invalid`;
+    case "credential_ok": return `${event.exchange} credentials OK`;
   }
 }
 
@@ -55,6 +58,8 @@ function formatDescription(event: BotEvent): string {
       return `Total PnL: $${event.totalPnl.toFixed(2)}`;
     case "credential_error":
       return event.message;
+    case "credential_ok":
+      return `${event.exchange} API credentials verified successfully`;
   }
 }
 

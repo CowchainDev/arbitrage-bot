@@ -65,6 +65,12 @@ function formatToast(event: BotEvent): { title: string; description?: string; va
         description: event.message,
         variant: "error",
       };
+    case "credential_ok":
+      return {
+        title: `${event.exchange} credentials OK`,
+        description: `${event.exchange} API credentials verified successfully`,
+        variant: "success",
+      };
   }
 }
 
@@ -85,6 +91,15 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
         next.add(event.exchange);
         return next;
       });
+    } else if (event.kind === "credential_ok") {
+      // Recovery signal — remove from failing set without adding to notification history.
+      setFailingExchanges((prev) => {
+        if (!prev.has(event.exchange)) return prev;
+        const next = new Set(prev);
+        next.delete(event.exchange);
+        return next;
+      });
+      return;
     } else if (event.kind === "leg_opened") {
       setFailingExchanges((prev) => {
         if (!prev.has(event.exchangeA) && !prev.has(event.exchangeB)) return prev;

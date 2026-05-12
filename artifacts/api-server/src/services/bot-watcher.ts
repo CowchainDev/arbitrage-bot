@@ -62,8 +62,12 @@ function recordCredFailure(userId: string, exchange: string, message: string): b
   return isNew;
 }
 
-function clearCredFailure(userId: string, exchange: string): void {
-  credFailures.delete(`${userId}:${exchange}`);
+/** Clears a recorded failure. Returns true if an entry was actually removed (i.e. there was a recorded failure to clear). */
+function clearCredFailure(userId: string, exchange: string): boolean {
+  const key = `${userId}:${exchange}`;
+  if (!credFailures.has(key)) return false;
+  credFailures.delete(key);
+  return true;
 }
 
 /**
@@ -105,8 +109,11 @@ async function getCachedCredentials(userId: string, exchange: SupportedExchange)
     return null;
   }
   credCache.set(cacheKey, { data: fresh, ts: Date.now() });
-  // Credentials are present in DB — clear any previously recorded missing-creds failure.
-  clearCredFailure(userId, exchange);
+  // Credentials are present in DB — clear any previously recorded missing-creds failure
+  // and emit credential_ok so the frontend warning banner goes away.
+  if (clearCredFailure(userId, exchange)) {
+    botEventBus.emitBotEvent({ kind: "credential_ok", exchange });
+  }
   return fresh;
 }
 
@@ -283,9 +290,14 @@ async function openLeg(config: BotConfig, spreadPct: number): Promise<boolean> {
 
     logger.info({ symbol: config.symbol, exchangeA, sideA, exchangeB, sideB, spreadPct }, "Bot: opened new leg");
     botEventBus.emitBotEvent({ kind: "leg_opened", symbol: config.symbol, exchangeA, sideA, exchangeB, sideB, spreadPct, usdAmount: Number(config.orderSizeUsd) });
-    // Orders succeeded — clear any prior credential failure records for both exchanges.
-    clearCredFailure(config.userId, exchangeA);
-    clearCredFailure(config.userId, exchangeB);
+    // Orders succeeded — clear any prior credential failure records for both exchanges
+    // and emit credential_ok so the frontend warning banner clears immediately.
+    if (clearCredFailure(config.userId, exchangeA)) {
+      botEventBus.emitBotEvent({ kind: "credential_ok", exchange: exchangeA });
+    }
+    if (clearCredFailure(config.userId, exchangeB)) {
+      botEventBus.emitBotEvent({ kind: "credential_ok", exchange: exchangeB });
+    }
     return true;
   } catch (err) {
     logger.error({ err, symbol: config.symbol, exchange: exchangeB }, `Bot: ${exchangeB} leg open failed, compensating ${exchangeA}`);
