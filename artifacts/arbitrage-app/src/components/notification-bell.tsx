@@ -1,4 +1,4 @@
-import { Bell, CheckCheck, Trash2 } from "lucide-react";
+import { Bell, CheckCheck, Trash2, ChevronDown } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { useNotifications, type NotificationEntry } from "@/contexts/notifications";
 import type { BotEvent } from "@/hooks/use-notification-stream";
@@ -43,7 +43,7 @@ function formatDescription(event: BotEvent): string {
     case "leg_closed":
       return `PnL: ${event.realizedPnl >= 0 ? "+" : ""}$${event.realizedPnl.toFixed(2)} · ${event.trigger.replace(/_/g, " ")}`;
     case "leg_open_failed":
-      return `${event.exchange}: ${event.message.slice(0, 60)}`;
+      return `${event.exchange}: ${event.message}`;
     case "order_too_small":
       return "Min $10 per order. Update bot settings.";
     case "compensation_failed":
@@ -58,16 +58,43 @@ function formatTime(ts: number): string {
 }
 
 function NotificationRow({ n }: { n: NotificationEntry }) {
+  const [expanded, setExpanded] = useState(false);
+  const [overflows, setOverflows] = useState(false);
+  const descRef = useRef<HTMLParagraphElement>(null);
+
+  useEffect(() => {
+    const el = descRef.current;
+    if (!el) return;
+    setOverflows(el.scrollHeight > el.clientHeight + 1);
+  }, []);
+
+  const canExpand = overflows || expanded;
+
   return (
-    <div className={`px-3 py-2.5 border-b border-border/50 last:border-0 ${!n.read ? "bg-muted/30" : ""}`}>
+    <div
+      className={`px-3 py-2.5 border-b border-border/50 last:border-0 ${!n.read ? "bg-muted/30" : ""} ${canExpand ? "cursor-pointer select-none" : ""}`}
+      onClick={canExpand ? () => setExpanded((v) => !v) : undefined}
+      role={canExpand ? "button" : undefined}
+      aria-expanded={canExpand ? expanded : undefined}
+    >
       <div className="flex items-start gap-2.5">
         <div className={`w-1.5 h-1.5 rounded-full mt-1.5 shrink-0 ${eventDot(n.event)}`} />
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between gap-2">
             <span className={`text-xs font-semibold ${eventColor(n.event)}`}>{formatTitle(n.event)}</span>
-            <span className="text-[10px] text-muted-foreground shrink-0">{formatTime(n.ts)}</span>
+            <div className="flex items-center gap-1 shrink-0">
+              <span className="text-[10px] text-muted-foreground">{formatTime(n.ts)}</span>
+              {canExpand && (
+                <ChevronDown
+                  className={`w-3 h-3 text-muted-foreground transition-transform duration-200 ${expanded ? "rotate-180" : ""}`}
+                />
+              )}
+            </div>
           </div>
-          <p className="text-[11px] text-muted-foreground mt-0.5 leading-snug line-clamp-2">
+          <p
+            ref={descRef}
+            className={`text-[11px] text-muted-foreground mt-0.5 leading-snug break-all ${expanded ? "" : "line-clamp-2"}`}
+          >
             {formatDescription(n.event)}
           </p>
         </div>
