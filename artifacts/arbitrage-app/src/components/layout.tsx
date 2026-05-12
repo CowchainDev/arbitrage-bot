@@ -169,37 +169,41 @@ function ThemeToggle() {
 export function Layout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col font-mono text-sm">
-      <header className="h-14 border-b border-border bg-card flex items-center justify-between px-4 sticky top-0 z-50">
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2 font-bold text-base">
-            <Activity className="w-5 h-5 text-primary" />
-            <span>ARB_TERM</span>
+      <header className="h-14 border-b border-border bg-card sticky top-0 z-50">
+        <div className="h-full max-w-[1600px] mx-auto w-full px-4 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2 font-bold text-base">
+              <Activity className="w-5 h-5 text-primary" />
+              <span>ARB_TERM</span>
+            </div>
+            <nav className="flex items-center gap-2 ml-4">
+              <NavLink href="/">
+                <LayoutDashboard className="w-4 h-4" />
+                Dashboard
+              </NavLink>
+              <BotsNavItem />
+              <NavLink href="/history">
+                <History className="w-4 h-4" />
+                History
+              </NavLink>
+              <NavLink href="/settings">
+                <Settings className="w-4 h-4" />
+                Settings
+              </NavLink>
+            </nav>
+            <ConnectionBadge />
           </div>
-          <nav className="flex items-center gap-2 ml-4">
-            <NavLink href="/">
-              <LayoutDashboard className="w-4 h-4" />
-              Dashboard
-            </NavLink>
-            <BotsNavItem />
-            <NavLink href="/history">
-              <History className="w-4 h-4" />
-              History
-            </NavLink>
-            <NavLink href="/settings">
-              <Settings className="w-4 h-4" />
-              Settings
-            </NavLink>
-          </nav>
-          <ConnectionBadge />
-        </div>
-        <div className="flex items-center gap-2">
-          <NotificationBell />
-          <ThemeToggle />
-          <HeaderBalances />
+          <div className="flex items-center gap-2">
+            <NotificationBell />
+            <ThemeToggle />
+            <HeaderBalances />
+          </div>
         </div>
       </header>
       <main className="flex-1 overflow-auto p-4">
-        {children}
+        <div className="max-w-[1600px] mx-auto w-full">
+          {children}
+        </div>
       </main>
     </div>
   );
