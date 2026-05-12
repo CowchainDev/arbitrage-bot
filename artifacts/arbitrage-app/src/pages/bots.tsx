@@ -551,7 +551,9 @@ function BotCard({ bot, openLegs }: { bot: BotConfig; openLegs: BotLeg[] }) {
           <div className="flex items-center justify-between">
             <span className="text-muted-foreground">Avg entry</span>
             <span className="text-[13px] font-mono">
-              {stats ? `${stats.avgEntrySpread.toFixed(4)}%` : <span className="text-muted-foreground/40">—</span>}
+              {stats && stats.avgEntrySpread != null
+                ? `${stats.avgEntrySpread.toFixed(4)}%`
+                : <span className="text-muted-foreground/40">—</span>}
             </span>
           </div>
           <div className="flex items-center justify-between">

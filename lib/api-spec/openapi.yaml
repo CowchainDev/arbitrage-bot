@@ -1672,7 +1672,8 @@ components:
           description: Sum of realizedPnlUsd across all closed legs
         avgEntrySpread:
           type: number
-          description: Average spreadAtEntry across all closed legs
+          nullable: true
+          description: Average spreadAtEntry across all closed legs. Null when no legs have entry spread data.
         avgExitSpread:
           type: number
           description: Average spreadAtExit across all closed legs

@@ -338,7 +338,7 @@ router.get("/bots/:id/stats", requireAuth, async (req: Request, res: Response) =
 
     res.json({
       totalRealizedPnlUsd,
-      avgEntrySpread: count > 0 ? sumEntrySpread / count : 0,
+      avgEntrySpread: count > 0 ? sumEntrySpread / count : null,
       avgExitSpread: exitSpreadCount > 0 ? sumExitSpread / exitSpreadCount : null,
       totalVolumeUsd,
       closedLegCount: count,

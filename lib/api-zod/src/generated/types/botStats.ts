@@ -10,8 +10,8 @@ import type { BotStatsClosedLegsByPair } from "./botStatsClosedLegsByPair";
 export interface BotStats {
   /** Sum of realizedPnlUsd across all closed legs */
   totalRealizedPnlUsd: number;
-  /** Average spreadAtEntry across all closed legs */
-  avgEntrySpread: number;
+  /** Average spreadAtEntry across all closed legs. Null when no legs have entry spread data. */
+  avgEntrySpread: number | null;
   /** Average spreadAtExit across all closed legs that have exit spread data. Null when no legs have exit spread data. */
   avgExitSpread: number | null;
   /** Sum of notional value (qty * entry price) across all closed legs */

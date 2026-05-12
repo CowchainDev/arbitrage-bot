@@ -823,7 +823,8 @@ export const GetBotStatsResponse = zod.object({
     .describe("Sum of realizedPnlUsd across all closed legs"),
   avgEntrySpread: zod
     .number()
-    .describe("Average spreadAtEntry across all closed legs"),
+    .nullable()
+    .describe("Average spreadAtEntry across all closed legs. Null when no legs have entry spread data."),
   avgExitSpread: zod
     .number()
     .describe("Average spreadAtExit across all closed legs"),
