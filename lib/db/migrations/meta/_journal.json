@@ -29,6 +29,13 @@
       "when": 1747180800000,
       "tag": "0003_add_pnl_partial",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1747267200000,
+      "tag": "0004_drop_symbol_unique",
+      "breakpoints": true
     }
   ]
 }
