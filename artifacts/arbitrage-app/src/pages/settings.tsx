@@ -4,7 +4,14 @@ import { KeyRound, Eye, EyeOff, CheckCircle, Trash2, ExternalLink, Bell, Volume2
 import { useAlertSettings } from "@/hooks/use-alert-settings";
 import { useWatchedTokens } from "@/hooks/use-watched-tokens";
 import { useToast } from "@/hooks/use-toast";
-import { useStoreCredential, useDeleteCredential, getGetCredentialStatusQueryKey } from "@workspace/api-client-react";
+import {
+  useStoreCredential,
+  useDeleteCredential,
+  getGetCredentialStatusQueryKey,
+  getGetExchangeBalancesQueryKey,
+  getGetPositionsQueryKey,
+  getListBotsQueryKey,
+} from "@workspace/api-client-react";
 import { useExchangeCredentials, type SupportedExchange } from "@/hooks/use-exchange-credentials";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -64,6 +71,9 @@ function ExchangeCard({ meta }: { meta: ExchangeMeta }) {
       });
       setSyncStatus("ok");
       queryClient.invalidateQueries({ queryKey: getGetCredentialStatusQueryKey() });
+      queryClient.invalidateQueries({ queryKey: getGetExchangeBalancesQueryKey() });
+      queryClient.invalidateQueries({ queryKey: getGetPositionsQueryKey() });
+      queryClient.invalidateQueries({ queryKey: getListBotsQueryKey() });
       toast({ title: `${meta.label} credentials saved`, description: "Synced to server." });
     } catch {
       setSyncStatus("error");
@@ -86,6 +96,10 @@ function ExchangeCard({ meta }: { meta: ExchangeMeta }) {
     setPassphrase("");
     setSyncStatus("idle");
     setConfirmDelete(false);
+    queryClient.invalidateQueries({ queryKey: getGetCredentialStatusQueryKey() });
+    queryClient.invalidateQueries({ queryKey: getGetExchangeBalancesQueryKey() });
+    queryClient.invalidateQueries({ queryKey: getGetPositionsQueryKey() });
+    queryClient.invalidateQueries({ queryKey: getListBotsQueryKey() });
     toast({ title: `${meta.label} credentials removed` });
   };
 
