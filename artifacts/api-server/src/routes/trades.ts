@@ -80,6 +80,10 @@ router.get("/trades", requireAuth, async (req: Request, res: Response) => {
           pnlFromExchange: t.pnlFromExchange ?? undefined,
           pnlPartial: t.pnlPartial ?? undefined,
           quantity: Number(t.quantity),
+          longEntryPrice: t.longEntryPrice != null ? Number(t.longEntryPrice) : undefined,
+          shortEntryPrice: t.shortEntryPrice != null ? Number(t.shortEntryPrice) : undefined,
+          longExitPrice: t.longExitPrice != null ? Number(t.longExitPrice) : undefined,
+          shortExitPrice: t.shortExitPrice != null ? Number(t.shortExitPrice) : undefined,
           entryTime: t.entryTime.toISOString(),
           closeTime: t.closeTime.toISOString(),
         };

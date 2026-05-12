@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { formatFee } from "@/lib/utils";
 import { isHttpStatus } from "@/lib/api-errors";
+import { TradeDetailModal } from "@/components/trade-detail-modal";
 import {
   useGetTrades,
   getGetTradesQueryKey,
@@ -271,6 +272,8 @@ function CumulativePnlChart({ points }: { points: PnlChartPoint[] }) {
 }
 
 function TradeTable({ trades }: { trades: ClosedTrade[] }) {
+  const [selectedTrade, setSelectedTrade] = useState<ClosedTrade | null>(null);
+
   if (trades.length === 0) {
     return (
       <div className="text-center py-12 text-muted-foreground text-sm">
@@ -280,218 +283,166 @@ function TradeTable({ trades }: { trades: ClosedTrade[] }) {
   }
 
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-xs font-mono">
-        <thead>
-          <tr className="border-b border-border text-muted-foreground">
-            <th className="text-left px-3 py-2 font-medium">Symbol</th>
-            <th className="text-left px-3 py-2 font-medium">Long / Short</th>
-            <th className="text-right px-3 py-2 font-medium">Entry Spread</th>
-            <th className="text-right px-3 py-2 font-medium">Condition</th>
-            <th className="text-right px-3 py-2 font-medium">Exit Spread</th>
-            <th className="text-right px-3 py-2 font-medium">Close</th>
-            <th className="text-right px-3 py-2 font-medium">Size (USD)</th>
-            <th className="text-right px-3 py-2 font-medium">Open Fees / Close Fees</th>
-            <th className="text-right px-3 py-2 font-medium">
-              <span className="inline-flex items-center gap-1">
-                Funding / Rate Spread
-                <Info
-                  className="w-3 h-3 text-muted-foreground/60 cursor-help"
-                  aria-label="Net funding received (+) or paid (−) over the life of this trade, with the funding rate spread at close shown below where available. Figures for trades closed before the 8-hour interval snap fix may be continuous-ratio estimates rather than settled-interval counts."
-                  role="img"
-                />
-              </span>
-            </th>
-            <th className="text-right px-3 py-2 font-medium">
-              <span className="inline-flex items-center gap-1">
-                Realized PnL (excl. funding)
-                <Info
-                  className="w-3 h-3 text-muted-foreground/60 cursor-help"
-                  aria-label="✓ means PnL was reported directly by the exchange. ~ means it was estimated locally from entry/exit spread and fees."
-                  role="img"
-                />
-              </span>
-            </th>
-            <th className="text-right px-3 py-2 font-medium">Net PnL (incl. funding)</th>
-            <th className="text-right px-3 py-2 font-medium">PnL (%)</th>
-            <th className="text-right px-3 py-2 font-medium">Duration</th>
-            <th className="text-right px-3 py-2 font-medium">Closed At</th>
-          </tr>
-        </thead>
-        <tbody>
-          {trades.map((trade) => {
-            const pnlPositive = trade.realizedPnl >= 0;
-            const pnlPct =
-              trade.quantity > 0
-                ? (trade.realizedPnl / (trade.quantity * 2)) * 100
-                : null;
-            const funding = trade.fundingPaidUsd;
-            const netPnl = funding != null ? trade.realizedPnl + funding : null;
-            const netPnlPositive = netPnl != null ? netPnl >= 0 : null;
-            return (
-              <tr
-                key={trade.id}
-                className="border-b border-border/40 hover:bg-muted/30 transition-colors"
-              >
-                <td className="px-3 py-2.5 font-semibold">{trade.symbol}</td>
-                <td className="px-3 py-2.5">
-                  <span className="capitalize text-primary">{trade.longExchange}</span>
-                  {" / "}
-                  <span className="capitalize text-destructive">{trade.shortExchange}</span>
-                </td>
-                <td className="px-3 py-2.5 text-right">
-                  <span
-                    className={
-                      trade.enterSpreadThresholdPct != null &&
-                      Math.abs(trade.spreadAtEntry) < trade.enterSpreadThresholdPct
-                        ? "text-amber-500"
-                        : undefined
-                    }
-                  >
-                    {trade.spreadAtEntry !== 0
-                      ? `${trade.spreadAtEntry >= 0 ? "+" : ""}${trade.spreadAtEntry.toFixed(3)}%`
-                      : "—"}
-                  </span>
-                </td>
-                <td
-                  className={`px-3 py-2.5 text-right ${
-                    trade.enterSpreadThresholdPct != null &&
-                    Math.abs(trade.spreadAtEntry) < trade.enterSpreadThresholdPct
-                      ? "text-amber-500"
-                      : "text-muted-foreground"
-                  }`}
-                  title={
-                    trade.enterSpreadThresholdPct != null &&
-                    Math.abs(trade.spreadAtEntry) < trade.enterSpreadThresholdPct
-                      ? "Entry spread was below the configured threshold"
-                      : undefined
-                  }
+    <>
+      <TradeDetailModal trade={selectedTrade} onClose={() => setSelectedTrade(null)} />
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs font-mono">
+          <thead>
+            <tr className="border-b border-border text-muted-foreground">
+              <th className="text-left px-3 py-2 font-medium">Symbol</th>
+              <th className="text-left px-3 py-2 font-medium">Long / Short</th>
+              <th className="text-right px-3 py-2 font-medium">Entry Spread</th>
+              <th className="text-right px-3 py-2 font-medium">Exit Spread</th>
+              <th className="text-right px-3 py-2 font-medium">Size (USD)</th>
+              <th className="text-right px-3 py-2 font-medium">
+                <span className="inline-flex items-center gap-1">
+                  Funding / Rate Spread
+                  <Info
+                    className="w-3 h-3 text-muted-foreground/60 cursor-help"
+                    aria-label="Net funding received (+) or paid (−) over the life of this trade, with the funding rate spread at close shown below where available. Figures for trades closed before the 8-hour interval snap fix may be continuous-ratio estimates rather than settled-interval counts."
+                    role="img"
+                  />
+                </span>
+              </th>
+              <th className="text-right px-3 py-2 font-medium">
+                <span className="inline-flex items-center gap-1">
+                  Realized PnL (excl. funding)
+                  <Info
+                    className="w-3 h-3 text-muted-foreground/60 cursor-help"
+                    aria-label="✓ means PnL was reported directly by the exchange. ~ means it was estimated locally from entry/exit spread and fees."
+                    role="img"
+                  />
+                </span>
+              </th>
+              <th className="text-right px-3 py-2 font-medium">PnL (%)</th>
+              <th className="text-right px-3 py-2 font-medium">Duration</th>
+              <th className="text-right px-3 py-2 font-medium">Closed At</th>
+            </tr>
+          </thead>
+          <tbody>
+            {trades.map((trade) => {
+              const pnlPositive = trade.realizedPnl >= 0;
+              const pnlPct =
+                trade.quantity > 0
+                  ? (trade.realizedPnl / (trade.quantity * 2)) * 100
+                  : null;
+              const funding = trade.fundingPaidUsd;
+              return (
+                <tr
+                  key={trade.id}
+                  className="border-b border-border/40 hover:bg-muted/40 transition-colors cursor-pointer group"
+                  onClick={() => setSelectedTrade(trade)}
+                  title="Click to view trade details"
                 >
-                  {trade.enterSpreadThresholdPct != null
-                    ? `≥${trade.enterSpreadThresholdPct.toFixed(3)}%`
-                    : "—"}
-                </td>
-                <td className="px-3 py-2.5 text-right text-muted-foreground">
-                  {trade.spreadAtExit != null
-                    ? `${trade.spreadAtExit >= 0 ? "+" : ""}${trade.spreadAtExit.toFixed(3)}%`
-                    : "—"}
-                </td>
-                <td className="px-3 py-2.5 text-right">
-                  {trade.closeReason ? (
+                  <td className="px-3 py-2.5 font-semibold">
+                    <span className="inline-flex items-center gap-1">
+                      {trade.symbol}
+                      <span className="opacity-0 group-hover:opacity-40 transition-opacity text-muted-foreground text-[10px]">↗</span>
+                    </span>
+                  </td>
+                  <td className="px-3 py-2.5">
+                    <span className="capitalize text-primary">{trade.longExchange}</span>
+                    {" / "}
+                    <span className="capitalize text-destructive">{trade.shortExchange}</span>
+                  </td>
+                  <td className="px-3 py-2.5 text-right">
                     <span
-                      title={trade.closeReason}
                       className={
-                        trade.closeReason === "take_profit"
-                          ? "text-primary"
-                          : trade.closeReason === "stop_loss" || trade.closeReason === "force_stop"
-                            ? "text-destructive"
-                            : "text-muted-foreground"
+                        trade.enterSpreadThresholdPct != null &&
+                        Math.abs(trade.spreadAtEntry) < trade.enterSpreadThresholdPct
+                          ? "text-amber-500"
+                          : undefined
                       }
                     >
-                      {trade.closeReason === "take_profit"
-                        ? "TP"
-                        : trade.closeReason === "stop_loss"
-                          ? "SL"
-                          : trade.closeReason === "force_stop"
-                            ? "FS"
-                            : trade.closeReason}
+                      {trade.spreadAtEntry !== 0
+                        ? `${trade.spreadAtEntry >= 0 ? "+" : ""}${trade.spreadAtEntry.toFixed(3)}%`
+                        : "—"}
                     </span>
-                  ) : "—"}
-                </td>
-                <td className="px-3 py-2.5 text-right">
-                  {trade.quantity > 0 ? `$${trade.quantity.toFixed(2)}` : "—"}
-                </td>
-                <td className="px-3 py-2.5 text-right text-muted-foreground">
-                  {trade.openFees != null && trade.closeFees != null ? (
-                    <span className="flex flex-col items-end gap-0.5">
-                      <span title="Open fees">-${formatFee(trade.openFees)}</span>
-                      <span title="Close fees" className="text-muted-foreground/60">-${formatFee(trade.closeFees)}</span>
-                    </span>
-                  ) : trade.totalFees > 0 ? (
-                    `-$${formatFee(trade.totalFees)}`
-                  ) : "—"}
-                </td>
-                <td
-                  className={`px-3 py-2.5 text-right ${funding != null ? (funding >= 0 ? "text-primary/80" : "text-destructive/80") : "text-muted-foreground"}`}
-                  title={
-                    trade.fundingRateSpread != null
-                      ? `Rate spread at close: ${trade.fundingRateSpread >= 0 ? "+" : ""}${(trade.fundingRateSpread * 100).toFixed(4)}% — Estimated net funding received (+) or paid (−) over the life of this trade. Older records may reflect continuous-ratio estimates rather than discrete 8-hour settled intervals.`
-                      : "Estimated net funding received (+) or paid (−) over the life of this trade. Older records may reflect continuous-ratio estimates rather than discrete 8-hour settled intervals."
-                  }
-                >
-                  {funding != null || trade.fundingRateSpread != null ? (
-                    <span className="flex flex-col items-end gap-0.5">
-                      {funding != null ? (
-                        <span>{`${funding >= 0 ? "+" : ""}$${Math.abs(funding).toFixed(4)}`}</span>
-                      ) : (
-                        <span>—</span>
-                      )}
-                      {trade.fundingRateSpread != null && (
-                        <span className="text-muted-foreground/60 text-[10px]">
-                          {`${trade.fundingRateSpread >= 0 ? "+" : ""}${(trade.fundingRateSpread * 100).toFixed(4)}%`}
+                  </td>
+                  <td className="px-3 py-2.5 text-right text-muted-foreground">
+                    {trade.spreadAtExit != null
+                      ? `${trade.spreadAtExit >= 0 ? "+" : ""}${trade.spreadAtExit.toFixed(3)}%`
+                      : "—"}
+                  </td>
+                  <td className="px-3 py-2.5 text-right">
+                    {trade.quantity > 0 ? `$${trade.quantity.toFixed(2)}` : "—"}
+                  </td>
+                  <td
+                    className={`px-3 py-2.5 text-right ${funding != null ? (funding >= 0 ? "text-primary/80" : "text-destructive/80") : "text-muted-foreground"}`}
+                    title={
+                      trade.fundingRateSpread != null
+                        ? `Rate spread at close: ${trade.fundingRateSpread >= 0 ? "+" : ""}${(trade.fundingRateSpread * 100).toFixed(4)}% — Estimated net funding received (+) or paid (−) over the life of this trade. Older records may reflect continuous-ratio estimates rather than discrete 8-hour settled intervals.`
+                        : "Estimated net funding received (+) or paid (−) over the life of this trade. Older records may reflect continuous-ratio estimates rather than discrete 8-hour settled intervals."
+                    }
+                  >
+                    {funding != null || trade.fundingRateSpread != null ? (
+                      <span className="flex flex-col items-end gap-0.5">
+                        {funding != null ? (
+                          <span>{`${funding >= 0 ? "+" : ""}$${Math.abs(funding).toFixed(4)}`}</span>
+                        ) : (
+                          <span>—</span>
+                        )}
+                        {trade.fundingRateSpread != null && (
+                          <span className="text-muted-foreground/60 text-[10px]">
+                            {`${trade.fundingRateSpread >= 0 ? "+" : ""}${(trade.fundingRateSpread * 100).toFixed(4)}%`}
+                          </span>
+                        )}
+                      </span>
+                    ) : "—"}
+                  </td>
+                  <td
+                    className={`px-3 py-2.5 text-right font-semibold ${pnlPositive ? "text-primary" : "text-destructive"}`}
+                  >
+                    <span className="inline-flex items-center gap-0.5">
+                      {trade.pnlFromExchange === true && (
+                        <span title="Exchange-reported — authoritative figure from the exchange" aria-label="exchange-verified">
+                          <CheckCircle2 className="w-3 h-3 text-emerald-500 shrink-0" />
                         </span>
                       )}
-                    </span>
-                  ) : "—"}
-                </td>
-                <td
-                  className={`px-3 py-2.5 text-right font-semibold ${pnlPositive ? "text-primary" : "text-destructive"}`}
-                >
-                  <span className="inline-flex items-center gap-0.5">
-                    {trade.pnlFromExchange === true && (
-                      <span title="Exchange-reported — authoritative figure from the exchange" aria-label="exchange-verified">
-                        <CheckCircle2 className="w-3 h-3 text-emerald-500 shrink-0" />
+                      {trade.pnlFromExchange === false && (
+                        <span
+                          className="text-muted-foreground font-normal text-xs"
+                          aria-label={trade.pnlPartial ? "partial-backfill" : "estimated"}
+                          title={
+                            trade.pnlPartial
+                              ? "Partial backfill — only one exchange returned historical PnL; the missing side was treated as zero. This figure may be incomplete."
+                              : "Estimated — calculated from entry/exit spread and fees (exchange did not report PnL)"
+                          }
+                        >~</span>
+                      )}
+                      <span title={
+                        trade.pnlFromExchange === true
+                          ? "Exchange-reported — authoritative figure from the exchange"
+                          : trade.pnlFromExchange === false
+                            ? trade.pnlPartial
+                              ? "Partial backfill — only one exchange returned historical PnL; the missing side was treated as zero. This figure may be incomplete."
+                              : "Estimated — calculated from entry/exit spread and fees (exchange did not report PnL)"
+                            : undefined
+                      }>
+                        {formatPnl(trade.realizedPnl)}
                       </span>
-                    )}
-                    {trade.pnlFromExchange === false && (
-                      <span
-                        className="text-muted-foreground font-normal text-xs"
-                        aria-label={trade.pnlPartial ? "partial-backfill" : "estimated"}
-                        title={
-                          trade.pnlPartial
-                            ? "Partial backfill — only one exchange returned historical PnL; the missing side was treated as zero. This figure may be incomplete."
-                            : "Estimated — calculated from entry/exit spread and fees (exchange did not report PnL)"
-                        }
-                      >~</span>
-                    )}
-                    <span title={
-                      trade.pnlFromExchange === true
-                        ? "Exchange-reported — authoritative figure from the exchange"
-                        : trade.pnlFromExchange === false
-                          ? trade.pnlPartial
-                            ? "Partial backfill — only one exchange returned historical PnL; the missing side was treated as zero. This figure may be incomplete."
-                            : "Estimated — calculated from entry/exit spread and fees (exchange did not report PnL)"
-                          : undefined
-                    }>
-                      {formatPnl(trade.realizedPnl)}
                     </span>
-                  </span>
-                </td>
-                <td
-                  className={`px-3 py-2.5 text-right font-semibold ${netPnlPositive === true ? "text-primary" : netPnlPositive === false ? "text-destructive" : "text-muted-foreground"}`}
-                  title={netPnl == null ? "Funding data unavailable for this trade; net PnL cannot be calculated" : undefined}
-                >
-                  {netPnl != null ? formatPnl(netPnl) : "—"}
-                </td>
-                <td
-                  className={`px-3 py-2.5 text-right ${pnlPositive ? "text-primary" : "text-destructive"}`}
-                >
-                  {pnlPct !== null
-                    ? `${pnlPct >= 0 ? "+" : ""}${pnlPct.toFixed(2)}%`
-                    : "—"}
-                </td>
-                <td className="px-3 py-2.5 text-right text-muted-foreground">
-                  {formatDuration(trade.entryTime, trade.closeTime)}
-                </td>
-                <td className="px-3 py-2.5 text-right text-muted-foreground">
-                  {format(new Date(trade.closeTime), "MM/dd HH:mm")}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
+                  </td>
+                  <td
+                    className={`px-3 py-2.5 text-right ${pnlPositive ? "text-primary" : "text-destructive"}`}
+                  >
+                    {pnlPct !== null
+                      ? `${pnlPct >= 0 ? "+" : ""}${pnlPct.toFixed(2)}%`
+                      : "—"}
+                  </td>
+                  <td className="px-3 py-2.5 text-right text-muted-foreground">
+                    {formatDuration(trade.entryTime, trade.closeTime)}
+                  </td>
+                  <td className="px-3 py-2.5 text-right text-muted-foreground">
+                    {format(new Date(trade.closeTime), "MM/dd HH:mm")}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </>
   );
 }
 

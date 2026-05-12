@@ -495,6 +495,11 @@ async function closeLeg(
     `closeLeg update leg=${leg.id}`,
   );
 
+  const longEntryPrice = leg.bybitSide === "long" ? entryA : entryB;
+  const shortEntryPrice = leg.bybitSide === "short" ? entryA : entryB;
+  const longExitPrice = leg.bybitSide === "long" ? closePriceA : closePriceB;
+  const shortExitPrice = leg.bybitSide === "short" ? closePriceA : closePriceB;
+
   await withDbRetry(
     () =>
       db.insert(closedTradesTable).values({
@@ -515,6 +520,10 @@ async function closeLeg(
         entryTime: leg.openedAt,
         closeTime: closedAt,
         pnlFromExchange: pnlSource === "exchange",
+        longEntryPrice: longEntryPrice > 0 ? String(longEntryPrice) : undefined,
+        shortEntryPrice: shortEntryPrice > 0 ? String(shortEntryPrice) : undefined,
+        longExitPrice: longExitPrice > 0 ? String(longExitPrice) : undefined,
+        shortExitPrice: shortExitPrice > 0 ? String(shortExitPrice) : undefined,
       }),
     `closeLeg insert closed_trade leg=${leg.id}`,
   );
@@ -791,6 +800,10 @@ export async function closeAllLegsForBot(botId: number): Promise<{ closed: numbe
       // true  → both legs used exchange-reported PnL
       // false → at least one leg fell back to the spread formula (covers "formula" and "blended")
       const pnlFromExchange = scPnlSource === "exchange";
+      const scLongEntryPrice = leg.bybitSide === "long" ? scEntryA : scEntryB;
+      const scShortEntryPrice = leg.bybitSide === "short" ? scEntryA : scEntryB;
+      const scLongExitPrice = leg.bybitSide === "long" ? closePriceA : closePriceB;
+      const scShortExitPrice = leg.bybitSide === "short" ? closePriceA : closePriceB;
       try {
         await db.insert(closedTradesTable).values({
           userId: botConfig.userId,
@@ -808,6 +821,10 @@ export async function closeAllLegsForBot(botId: number): Promise<{ closed: numbe
           entryTime: leg.openedAt,
           closeTime: new Date(),
           pnlFromExchange,
+          longEntryPrice: scLongEntryPrice > 0 ? String(scLongEntryPrice) : undefined,
+          shortEntryPrice: scShortEntryPrice > 0 ? String(scShortEntryPrice) : undefined,
+          longExitPrice: scLongExitPrice > 0 ? String(scLongExitPrice) : undefined,
+          shortExitPrice: scShortExitPrice > 0 ? String(scShortExitPrice) : undefined,
         });
       } catch {}
       closed++;
