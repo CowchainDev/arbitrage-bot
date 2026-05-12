@@ -5,6 +5,7 @@ import { useGetExchangeBalances, getGetExchangeBalancesQueryKey } from "@workspa
 import { useConnectionStatus } from "@/contexts/connection-status";
 import { useBots } from "@/hooks/use-bots";
 import { useTheme } from "@/contexts/theme";
+import { NotificationBell } from "@/components/notification-bell";
 
 function loadExchangeCreds(exchange: string): { apiKey: string; apiSecret: string; passphrase?: string } | null {
   try {
@@ -192,6 +193,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <ConnectionBadge />
         </div>
         <div className="flex items-center gap-2">
+          <NotificationBell />
           <ThemeToggle />
           <HeaderBalances />
         </div>

@@ -1,0 +1,149 @@
+import { Bell, CheckCheck, Trash2 } from "lucide-react";
+import { useState, useRef, useEffect } from "react";
+import { useNotifications, type NotificationEntry } from "@/contexts/notifications";
+import type { BotEvent } from "@/hooks/use-notification-stream";
+
+function eventColor(event: BotEvent): string {
+  switch (event.kind) {
+    case "leg_opened": return "text-emerald-400";
+    case "leg_closed": return event.realizedPnl >= 0 ? "text-emerald-400" : "text-amber-400";
+    case "leg_open_failed": return "text-destructive";
+    case "order_too_small": return "text-amber-400";
+    case "compensation_failed": return "text-destructive";
+    case "force_stop": return "text-amber-400";
+  }
+}
+
+function eventDot(event: BotEvent): string {
+  switch (event.kind) {
+    case "leg_opened": return "bg-emerald-400";
+    case "leg_closed": return event.realizedPnl >= 0 ? "bg-emerald-400" : "bg-amber-400";
+    case "leg_open_failed": return "bg-destructive";
+    case "order_too_small": return "bg-amber-400";
+    case "compensation_failed": return "bg-destructive";
+    case "force_stop": return "bg-amber-400";
+  }
+}
+
+function formatTitle(event: BotEvent): string {
+  switch (event.kind) {
+    case "leg_opened": return `${event.symbol} opened`;
+    case "leg_closed": return `${event.symbol} closed`;
+    case "leg_open_failed": return `${event.symbol} open failed`;
+    case "order_too_small": return `${event.symbol} too small`;
+    case "compensation_failed": return `${event.symbol} comp. failed`;
+    case "force_stop": return `${event.symbol} force stop`;
+  }
+}
+
+function formatDescription(event: BotEvent): string {
+  switch (event.kind) {
+    case "leg_opened":
+      return `${event.exchangeA} ${event.sideA} / ${event.exchangeB} ${event.sideB} @ ${event.spreadPct.toFixed(3)}%`;
+    case "leg_closed":
+      return `PnL: ${event.realizedPnl >= 0 ? "+" : ""}$${event.realizedPnl.toFixed(2)} · ${event.trigger.replace(/_/g, " ")}`;
+    case "leg_open_failed":
+      return `${event.exchange}: ${event.message.slice(0, 60)}`;
+    case "order_too_small":
+      return "Min $10 per order. Update bot settings.";
+    case "compensation_failed":
+      return `Manual action needed on ${event.exchange}`;
+    case "force_stop":
+      return `Total PnL: $${event.totalPnl.toFixed(2)}`;
+  }
+}
+
+function formatTime(ts: number): string {
+  return new Date(ts).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+}
+
+function NotificationRow({ n }: { n: NotificationEntry }) {
+  return (
+    <div className={`px-3 py-2.5 border-b border-border/50 last:border-0 ${!n.read ? "bg-muted/30" : ""}`}>
+      <div className="flex items-start gap-2.5">
+        <div className={`w-1.5 h-1.5 rounded-full mt-1.5 shrink-0 ${eventDot(n.event)}`} />
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center justify-between gap-2">
+            <span className={`text-xs font-semibold ${eventColor(n.event)}`}>{formatTitle(n.event)}</span>
+            <span className="text-[10px] text-muted-foreground shrink-0">{formatTime(n.ts)}</span>
+          </div>
+          <p className="text-[11px] text-muted-foreground mt-0.5 leading-snug line-clamp-2">
+            {formatDescription(n.event)}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function NotificationBell() {
+  const { notifications, unreadCount, markAllRead, clearAll } = useNotifications();
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handle(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handle);
+    return () => document.removeEventListener("mousedown", handle);
+  }, []);
+
+  function toggle() {
+    const next = !open;
+    setOpen(next);
+    if (next) markAllRead();
+  }
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={toggle}
+        className="relative p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+        aria-label="Notifications"
+      >
+        <Bell className="w-4 h-4" />
+        {unreadCount > 0 && (
+          <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-destructive text-destructive-foreground text-[10px] font-bold rounded-full flex items-center justify-center leading-none">
+            {unreadCount > 9 ? "9+" : unreadCount}
+          </span>
+        )}
+      </button>
+
+      {open && (
+        <div className="absolute right-0 top-full mt-2 w-80 bg-card border border-border rounded-lg shadow-xl z-50 overflow-hidden">
+          <div className="flex items-center justify-between px-3 py-2 border-b border-border">
+            <span className="text-xs font-semibold text-foreground">Notifications</span>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={markAllRead}
+                className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                title="Mark all read"
+              >
+                <CheckCheck className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={clearAll}
+                className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                title="Clear all"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+          <div className="max-h-96 overflow-y-auto">
+            {notifications.length === 0 ? (
+              <div className="px-3 py-8 text-center text-xs text-muted-foreground">
+                No notifications yet
+              </div>
+            ) : (
+              notifications.map((n) => <NotificationRow key={n.id} n={n} />)
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

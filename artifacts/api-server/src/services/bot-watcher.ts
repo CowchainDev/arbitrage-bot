@@ -21,6 +21,7 @@ import {
   type SupportedCcxtExchange,
 } from "../routes/exchanges";
 import { getStoredCredentials, type SupportedExchange } from "../routes/credentials";
+import { botEventBus } from "../lib/bot-events";
 
 let watcherTimer: ReturnType<typeof setTimeout> | null = null;
 let priceRefreshTimer: ReturnType<typeof setTimeout> | null = null;
@@ -175,6 +176,7 @@ async function openLeg(config: BotConfig, spreadPct: number): Promise<boolean> {
   const halfSize = Number(config.orderSizeUsd) / 2;
   if (halfSize < 5) {
     logger.warn({ symbol: config.symbol }, "Bot: order size too small, min $10 total");
+    botEventBus.emitBotEvent({ kind: "order_too_small", symbol: config.symbol });
     return false;
   }
 
@@ -189,6 +191,7 @@ async function openLeg(config: BotConfig, spreadPct: number): Promise<boolean> {
     resultA = await placeOrderInternal(exA, config.symbol, sideA, halfSize, leverageA);
   } catch (err) {
     logger.error({ err, symbol: config.symbol, exchange: exchangeA }, `Bot: ${exchangeA} leg open failed`);
+    botEventBus.emitBotEvent({ kind: "leg_open_failed", symbol: config.symbol, exchange: exchangeA, message: String(err) });
     return false;
   }
 
@@ -220,15 +223,18 @@ async function openLeg(config: BotConfig, spreadPct: number): Promise<boolean> {
     });
 
     logger.info({ symbol: config.symbol, exchangeA, sideA, exchangeB, sideB, spreadPct }, "Bot: opened new leg");
+    botEventBus.emitBotEvent({ kind: "leg_opened", symbol: config.symbol, exchangeA, sideA, exchangeB, sideB, spreadPct, usdAmount: Number(config.orderSizeUsd) });
     return true;
   } catch (err) {
     logger.error({ err, symbol: config.symbol, exchange: exchangeB }, `Bot: ${exchangeB} leg open failed, compensating ${exchangeA}`);
+    botEventBus.emitBotEvent({ kind: "leg_open_failed", symbol: config.symbol, exchange: exchangeB, message: String(err) });
     const compensateSide = sideA === "long" ? "sell" : "buy";
     try {
       await exA.createMarketOrder(`${config.symbol}/USDT:USDT`, compensateSide, resultA.filledQty, undefined, { reduceOnly: true });
       logger.info({ symbol: config.symbol }, `Bot: ${exchangeA} compensation order placed`);
     } catch (compErr) {
       logger.error({ compErr, symbol: config.symbol }, `Bot: ${exchangeA} compensation FAILED — manual intervention required`);
+      botEventBus.emitBotEvent({ kind: "compensation_failed", symbol: config.symbol, exchange: exchangeA });
     }
     return false;
   }
@@ -341,6 +347,7 @@ async function closeLeg(
   );
 
   logger.info({ legId: leg.id, symbol: leg.symbol, realizedPnl, totalFees }, "Bot: closed leg successfully");
+  botEventBus.emitBotEvent({ kind: "leg_closed", symbol: leg.symbol, legId: leg.id, realizedPnl, totalFees, trigger: closeReason });
   return true;
 }
 
@@ -403,6 +410,7 @@ async function processBotConfig(config: BotConfig, canOpen: boolean): Promise<vo
 
   if (anyForceStop) {
     logger.warn({ symbol: config.symbol, totalPnl, forceStopUsd: forceStop }, "Bot: force-stop triggered");
+    botEventBus.emitBotEvent({ kind: "force_stop", symbol: config.symbol, totalPnl });
     return;
   }
 

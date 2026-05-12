@@ -6,6 +6,7 @@ import { fetchPriceSpreads, prewarmKlinesCache, KLINES_PREWARM_INTERVAL_MS, PREW
 import { startBotWatcher } from "./services/bot-watcher";
 import { db, botLegsTable, closedTradesTable } from "@workspace/db";
 import { sql, eq, isNull, and } from "drizzle-orm";
+import { botEventBus, type NotificationWsMessage } from "./lib/bot-events";
 
 const rawPort = process.env["PORT"];
 
@@ -23,14 +24,34 @@ if (Number.isNaN(port) || port <= 0) {
 
 const server = http.createServer(app);
 const wss = new WebSocketServer({ noServer: true });
+const wssNotify = new WebSocketServer({ noServer: true });
 
 server.on("upgrade", (request, socket, head) => {
   if (request.url === "/api/ws/prices") {
     wss.handleUpgrade(request, socket, head, (ws) => {
       wss.emit("connection", ws, request);
     });
+  } else if (request.url === "/api/ws/notifications") {
+    wssNotify.handleUpgrade(request, socket, head, (ws) => {
+      wssNotify.emit("connection", ws, request);
+    });
   } else {
     socket.destroy();
+  }
+});
+
+wssNotify.on("connection", (ws) => {
+  ws.on("error", (err) => logger.error({ err }, "WS notify client error"));
+});
+
+botEventBus.onBotEvent((event) => {
+  if (wssNotify.clients.size === 0) return;
+  const msg: NotificationWsMessage = { type: "bot_event", event, ts: Date.now() };
+  const payload = JSON.stringify(msg);
+  for (const client of wssNotify.clients) {
+    if (client.readyState === WebSocket.OPEN) {
+      client.send(payload);
+    }
   }
 });
 
