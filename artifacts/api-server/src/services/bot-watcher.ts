@@ -809,23 +809,79 @@ function startReconcileLoop(): void {
   reconcileTimer = setTimeout(tick, RECONCILE_INTERVAL_MS);
 }
 
+/**
+ * Pre-warms the in-memory credential cache for all currently enabled bots.
+ * Called once on startup so the very first watcher tick has credentials ready
+ * instead of hitting the DB cold under load.
+ */
+async function warmCredentialCache(): Promise<void> {
+  const enabledBots = await db
+    .select()
+    .from(botConfigsTable)
+    .where(eq(botConfigsTable.enabled, true));
+
+  if (enabledBots.length === 0) {
+    logger.info("Bot watcher: no enabled bots — credential cache warmup skipped");
+    return;
+  }
+
+  logger.info(
+    { count: enabledBots.length },
+    "Bot watcher: warming credential cache for enabled bots",
+  );
+
+  const results = await Promise.allSettled(
+    enabledBots.flatMap((config) => {
+      const { exchangeA, exchangeB } = botExchangeNames(config);
+      return [
+        getCachedCredentials(config.userId, exchangeA as SupportedExchange),
+        getCachedCredentials(config.userId, exchangeB as SupportedExchange),
+      ];
+    }),
+  );
+
+  const loaded = results.filter(
+    (r) => r.status === "fulfilled" && r.value !== null,
+  ).length;
+  const missing = results.filter(
+    (r) => r.status === "fulfilled" && r.value === null,
+  ).length;
+  const failed = results.filter((r) => r.status === "rejected").length;
+
+  logger.info(
+    { loaded, missing, failed },
+    "Bot watcher: credential cache warmup complete",
+  );
+}
+
+function startWatcherLoop(): void {
+  const tick = () => {
+    watcherTick().finally(() => {
+      if (running) watcherTimer = setTimeout(tick, WATCHER_INTERVAL_MS);
+    });
+  };
+  watcherTimer = setTimeout(tick, WATCHER_INTERVAL_MS);
+}
+
 export function startBotWatcher(): void {
   if (running) return;
   running = true;
 
+  // Price refresh doesn't need credentials — start it immediately.
   startPriceRefreshLoop();
-  startReconcileLoop();
 
-  const tick = () => {
-    watcherTick().finally(() => {
-      if (running) {
-        watcherTimer = setTimeout(tick, WATCHER_INTERVAL_MS);
-      }
+  // Pre-warm credentials before the first watcher tick fires so bots
+  // restored from DB on restart never see a cold cache.
+  warmCredentialCache()
+    .catch((err) =>
+      logger.warn({ err }, "Bot watcher: credential cache warmup failed — continuing without pre-warm"),
+    )
+    .finally(() => {
+      if (!running) return;
+      startReconcileLoop();
+      startWatcherLoop();
+      logger.info("Bot watcher started");
     });
-  };
-
-  watcherTimer = setTimeout(tick, WATCHER_INTERVAL_MS);
-  logger.info("Bot watcher started");
 }
 
 /** Returns all currently recorded credential failures for a given user. */
