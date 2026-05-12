@@ -1,5 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import ccxt from "ccxt";
+import { requireBotSecret } from "../middleware/auth";
 import {
   PlaceOrderBody,
   ClosePositionBody,
@@ -1672,7 +1673,7 @@ router.post("/exchanges/close-position", async (req: Request, res: Response) => 
   }
 });
 
-router.get("/positions", async (req: Request, res: Response) => {
+router.get("/positions", requireBotSecret, async (req: Request, res: Response) => {
   const bybitCreds = getBybitCredentials(req);
   const binanceCreds = getBinanceCredentials(req);
 
