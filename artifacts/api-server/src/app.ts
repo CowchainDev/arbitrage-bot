@@ -3,6 +3,7 @@ import cors from "cors";
 import pinoHttp from "pino-http";
 import { clerkMiddleware } from "@clerk/express";
 import { publishableKeyFromHost } from "@clerk/shared/keys";
+import path from "path";
 import router from "./routes";
 import { logger } from "./lib/logger";
 import {
@@ -10,6 +11,11 @@ import {
   clerkProxyMiddleware,
   getClerkProxyHost,
 } from "./middlewares/clerkProxyMiddleware";
+
+const FRONTEND_DIST = path.resolve(
+  path.dirname(new URL(import.meta.url).pathname),
+  "../../arbitrage-app/dist/public",
+);
 
 const app: Express = express();
 
@@ -83,5 +89,10 @@ app.get("/health", (_req, res) => {
 });
 
 app.use("/api", router);
+
+app.use(express.static(FRONTEND_DIST));
+app.use((_req, res) => {
+  res.sendFile(path.join(FRONTEND_DIST, "index.html"));
+});
 
 export default app;
