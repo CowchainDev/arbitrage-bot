@@ -53,6 +53,16 @@ const LEG_OPEN_COOLDOWN_MS = 2 * WATCHER_INTERVAL_MS; // ~3 s
 const lastLegFailedAt = new Map<number, number>();
 const LEG_OPEN_FAILURE_COOLDOWN_MS = 60_000; // 60 s back-off on any open failure
 
+/**
+ * Minimum time a leg must be held open before take-profit is allowed to fire.
+ * Prevents phantom-spread closes caused by brief price-cache staleness: if both
+ * exchange prices are not simultaneously fresh (they refresh every ~5 s), the
+ * computed spread can look like it has collapsed even though no real convergence
+ * occurred. Requiring at least 2–3 full cache cycles eliminates those false closes.
+ * Stop-loss and force-stop are intentionally exempt — they should fire immediately.
+ */
+const MIN_LEG_HOLD_MS = 15_000; // 15 s — covers ~3 full price-cache refresh cycles
+
 async function getCachedCredentials(exchange: SupportedExchange): Promise<CredEntry | null> {
   const cached = credCache.get(exchange);
   if (cached && Date.now() - cached.ts < CRED_CACHE_TTL_MS) {
@@ -394,11 +404,13 @@ async function processBotConfig(config: BotConfig, canOpen: boolean): Promise<vo
   const forceStopTriggered = forceStop > 0 && openLegs.length > 0 && totalPnl <= -forceStop;
 
   function legShouldClose(leg: BotLeg): { close: boolean; reason: string } {
+    const heldMs = Date.now() - leg.openedAt.getTime();
+    const tpAllowed = heldMs >= MIN_LEG_HOLD_MS;
     if (leg.bybitSide === "short") {
-      if (spreadPct <= closeSpread) return { close: true, reason: "take_profit" };
+      if (spreadPct <= closeSpread && tpAllowed) return { close: true, reason: "take_profit" };
       if (stopLossSpread > 0 && spreadPct >= stopLossSpread) return { close: true, reason: "stop_loss" };
     } else {
-      if (spreadPct >= -closeSpread) return { close: true, reason: "take_profit" };
+      if (spreadPct >= -closeSpread && tpAllowed) return { close: true, reason: "take_profit" };
       if (stopLossSpread > 0 && spreadPct <= -stopLossSpread) return { close: true, reason: "stop_loss" };
     }
     return { close: false, reason: "" };

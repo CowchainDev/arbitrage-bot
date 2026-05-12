@@ -1897,7 +1897,17 @@ export async function placeOrderInternal(
     const orderResult = await asterPlaceOrder(symbol, asterSide, qty, creds.walletAddress, creds.signerAddress, creds.privateKey);
 
     const filledQty = Number(orderResult.executedQty) || qty;
-    const avgPrice  = orderResult.avgPrice ? Number(orderResult.avgPrice) : price;
+    // Prefer avgPrice from the response; fall back to cumQuote/executedQty (standard
+    // Binance-style calculation) when avgPrice is absent or "0"; finally fall back to
+    // the theoretical price used for sizing so the entry is never stored as 0.
+    let avgPrice = price;
+    const rawAvg = Number(orderResult.avgPrice ?? 0);
+    if (rawAvg > 0) {
+      avgPrice = rawAvg;
+    } else {
+      const cumQuote = Number(orderResult.cumQuote ?? 0);
+      if (cumQuote > 0 && filledQty > 0) avgPrice = cumQuote / filledQty;
+    }
 
     return {
       orderId:      String(orderResult.orderId),
@@ -2121,10 +2131,21 @@ async function closeOnExchange(
     if (closeQty <= 0) closeQty = qty;
 
     const orderResult = await asterClosePosition(symbol, positionSide, closeQty, creds.walletAddress, creds.signerAddress, creds.privateKey);
+    // Derive fill price: prefer avgPrice, then cumQuote/executedQty, then null so
+    // the bot-watcher ?? fallback can use the price-cache value instead of 0.
+    let asterCloseAvgPrice: number | null = null;
+    const rawCloseAvg = Number(orderResult.avgPrice ?? 0);
+    if (rawCloseAvg > 0) {
+      asterCloseAvgPrice = rawCloseAvg;
+    } else {
+      const cumQuote = Number(orderResult.cumQuote ?? 0);
+      const execQty  = Number(orderResult.executedQty ?? 0);
+      if (cumQuote > 0 && execQty > 0) asterCloseAvgPrice = cumQuote / execQty;
+    }
     return {
       orderId:  String(orderResult.orderId),
       feeCost:  0,
-      avgPrice: orderResult.avgPrice ? Number(orderResult.avgPrice) : null,
+      avgPrice: asterCloseAvgPrice,
     };
   }
   // ─────────────────────────────────────────────────────────────────────────
