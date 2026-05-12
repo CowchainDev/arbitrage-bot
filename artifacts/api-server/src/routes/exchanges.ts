@@ -2095,6 +2095,10 @@ export type ClosePositionInternalResult = {
   closeFeeB: number;
   closePriceA: number | null;
   closePriceB: number | null;
+  /** Realized PnL as reported by exchange A for the close order. Null if unavailable. */
+  exchangeRealizedPnlA: number | null;
+  /** Realized PnL as reported by exchange B for the close order. Null if unavailable. */
+  exchangeRealizedPnlB: number | null;
   errorA?: string;
   errorB?: string;
   /** @deprecated use orderIdA */ bybitOrderId: string | null;
@@ -2103,13 +2107,98 @@ export type ClosePositionInternalResult = {
   /** @deprecated use errorB */ binanceError?: string;
 };
 
+/**
+ * Attempt to extract the exchange's own realized PnL for a close order.
+ * Returns null when the exchange does not expose it in a reliable field.
+ */
+async function extractExchangeRealizedPnl(
+  ex: SupportedCcxtExchange,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  order: any,
+  marketSymbol: string,
+): Promise<number | null> {
+  try {
+    if (ex.id === "bybit") {
+      // Bybit V5 linear: closedPnl is populated on position-reducing orders.
+      const raw = order.info?.closedPnl ?? order.info?.realisedPnl;
+      if (raw != null) {
+        const val = Number(raw);
+        if (!isNaN(val) && (val !== 0 || String(raw) === "0")) return val;
+      }
+      // Try fetching the fully-settled order — closedPnl may only appear after fill.
+      try {
+        await new Promise<void>((r) => setTimeout(r, FEE_RETRY_DELAY_MS));
+        const fetched = await ex.fetchOrder(String(order.id), marketSymbol);
+        const rawF = fetched.info?.closedPnl ?? fetched.info?.realisedPnl;
+        if (rawF != null) {
+          const val = Number(rawF);
+          if (!isNaN(val)) return val;
+        }
+      } catch (_) {}
+      return null;
+    }
+
+    if (ex.id === "binance") {
+      // Binance Futures: realizedPnl is per trade fill — sum across all fills for the order.
+      try {
+        await new Promise<void>((r) => setTimeout(r, FEE_RETRY_DELAY_MS));
+        const trades = await ex.fetchMyTrades(marketSymbol, undefined, undefined, { orderId: String(order.id) });
+        if (trades && trades.length > 0) {
+          const total = trades.reduce((sum: number, t: any) => {
+            const raw = t.info?.realizedPnl;
+            return sum + (raw != null ? Number(raw) : 0);
+          }, 0);
+          if (!isNaN(total)) return total;
+        }
+      } catch (_) {}
+      return null;
+    }
+
+    if (ex.id === "gate") {
+      // Gate.io futures: pnl field in the order info.
+      const raw = order.info?.pnl;
+      if (raw != null) {
+        const val = Number(raw);
+        if (!isNaN(val)) return val;
+      }
+      return null;
+    }
+
+    if (ex.id === "okx") {
+      // OKX: pnl may appear in order info after fill; also try trade history.
+      const raw = order.info?.pnl;
+      if (raw != null) {
+        const val = Number(raw);
+        if (!isNaN(val) && (val !== 0 || String(raw) === "0")) return val;
+      }
+      try {
+        await new Promise<void>((r) => setTimeout(r, FEE_RETRY_DELAY_MS));
+        const trades = await ex.fetchMyTrades(marketSymbol, undefined, undefined, { ordId: String(order.id) });
+        if (trades && trades.length > 0) {
+          const total = trades.reduce((sum: number, t: any) => {
+            const raw = t.info?.pnl;
+            return sum + (raw != null ? Number(raw) : 0);
+          }, 0);
+          if (!isNaN(total)) return total;
+        }
+      } catch (_) {}
+      return null;
+    }
+
+    // MEXC and HyperLiquid do not expose realized PnL on close orders via CCXT.
+    return null;
+  } catch (_) {
+    return null;
+  }
+}
+
 async function closeOnExchange(
   ex: SupportedCcxtExchange,
   symbol: string,
   positionSide: "long" | "short",
   qty: number,
   contractSize?: number,
-): Promise<{ orderId: string; feeCost: number; avgPrice: number | null }> {
+): Promise<{ orderId: string; feeCost: number; avgPrice: number | null; exchangeRealizedPnl: number | null }> {
   const marketSymbol = `${symbol}/USDT:USDT`;
   const closeSide = positionSide === "long" ? "sell" : "buy";
 
@@ -2147,6 +2236,7 @@ async function closeOnExchange(
       orderId:  String(orderResult.orderId),
       feeCost:  0,
       avgPrice: asterCloseAvgPrice,
+      exchangeRealizedPnl: null, // AsterDex custom client does not expose realized PnL
     };
   }
   // ─────────────────────────────────────────────────────────────────────────
@@ -2178,7 +2268,8 @@ async function closeOnExchange(
     order = await ex.createMarketOrder(marketSymbol, closeSide, closeQty, undefined, { reduceOnly: true });
   }
   const feeCost = await extractFeeFromOrder(ex, order, marketSymbol);
-  return { orderId: String(order.id), feeCost, avgPrice: order.average ?? null };
+  const exchangeRealizedPnl = await extractExchangeRealizedPnl(ex, order, marketSymbol);
+  return { orderId: String(order.id), feeCost, avgPrice: order.average ?? null, exchangeRealizedPnl };
 }
 
 export async function closePositionInternal(
@@ -2202,6 +2293,8 @@ export async function closePositionInternal(
   const closeFeeB = orderB.status === "fulfilled" ? orderB.value.feeCost : 0;
   const closePriceA = orderA.status === "fulfilled" ? orderA.value.avgPrice : null;
   const closePriceB = orderB.status === "fulfilled" ? orderB.value.avgPrice : null;
+  const exchangeRealizedPnlA = orderA.status === "fulfilled" ? orderA.value.exchangeRealizedPnl : null;
+  const exchangeRealizedPnlB = orderB.status === "fulfilled" ? orderB.value.exchangeRealizedPnl : null;
   const errorA = orderA.status === "rejected" ? String(orderA.reason) : undefined;
   const errorB = orderB.status === "rejected" ? String(orderB.reason) : undefined;
 
@@ -2213,6 +2306,8 @@ export async function closePositionInternal(
     closeFeeB,
     closePriceA,
     closePriceB,
+    exchangeRealizedPnlA,
+    exchangeRealizedPnlB,
     errorA,
     errorB,
     bybitOrderId: orderIdA,

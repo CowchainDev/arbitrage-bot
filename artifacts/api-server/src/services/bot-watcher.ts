@@ -298,7 +298,41 @@ async function closeLeg(
   // cache prices that triggered the close trigger if the exchange didn't return an avgPrice.
   const closePriceA = result.closePriceA ?? priceA;
   const closePriceB = result.closePriceB ?? priceB;
-  const realizedPnl = computeLegPnl(leg, closePriceA, closePriceB, closeFees);
+
+  // Prefer exchange-reported realized PnL (authoritative — accounts for blended cost basis,
+  // partial fills, and prior DCA). The exchange values are used as-is (no extra fee
+  // adjustments) because each exchange has different PnL field semantics; applying a global
+  // fee subtraction would cause systematic drift. Fall back to local spread formula only
+  // when the exchange does not provide a value.
+  let realizedPnl: number;
+  let pnlSource: "exchange" | "formula";
+  if (result.exchangeRealizedPnlA != null && result.exchangeRealizedPnlB != null) {
+    realizedPnl = result.exchangeRealizedPnlA + result.exchangeRealizedPnlB;
+    pnlSource = "exchange";
+    logger.info(
+      {
+        legId: leg.id,
+        symbol: leg.symbol,
+        exchangePnlA: result.exchangeRealizedPnlA,
+        exchangePnlB: result.exchangeRealizedPnlB,
+        realizedPnl,
+      },
+      "Bot: using exchange-reported realized PnL",
+    );
+  } else {
+    realizedPnl = computeLegPnl(leg, closePriceA, closePriceB, closeFees);
+    pnlSource = "formula";
+    logger.info(
+      {
+        legId: leg.id,
+        symbol: leg.symbol,
+        exchangePnlA: result.exchangeRealizedPnlA,
+        exchangePnlB: result.exchangeRealizedPnlB,
+        realizedPnl,
+      },
+      "Bot: exchange PnL unavailable — using local spread formula as fallback",
+    );
+  }
   const totalFees =
     Number(leg.openFeeA ?? 0) + Number(leg.openFeeB ?? 0) + closeFees;
   const spreadAtExit = getSpreadPct(closePriceA, closePriceB);
@@ -365,7 +399,7 @@ async function closeLeg(
     `closeLeg insert closed_trade leg=${leg.id}`,
   );
 
-  logger.info({ legId: leg.id, symbol: leg.symbol, realizedPnl, totalFees }, "Bot: closed leg successfully");
+  logger.info({ legId: leg.id, symbol: leg.symbol, realizedPnl, totalFees, pnlSource }, "Bot: closed leg successfully");
   botEventBus.emitBotEvent({ kind: "leg_closed", symbol: leg.symbol, legId: leg.id, realizedPnl, totalFees, trigger: closeReason });
   return true;
 }
