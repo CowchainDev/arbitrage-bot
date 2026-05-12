@@ -1135,9 +1135,13 @@ export async function probeCredentialsForBot(config: BotConfig): Promise<void> {
   // confirmed credential error would show a persistent false "Credentials
   // invalid" banner until the first real trade opens (which can be hours later).
   //
-  // Only two things trigger a credential_error from the probe path:
-  //   1. Credentials are outright missing in the DB → user definitely can't trade.
-  //   2. fetchBalance() *succeeds* → clears any prior trade-auth failure on record.
+  // What the probe path does and does not do:
+  //   - Missing credentials in the DB → records failure + emits credential_error
+  //     (definitive: user definitely cannot trade without stored API keys).
+  //   - fetchBalance() *succeeds* → clears any prior trade-auth failure on record
+  //     and emits credential_ok (key has at least read permission).
+  //   - fetchBalance() fails with auth error → logs only; no credFailures write,
+  //     no credential_error event (see IMPORTANT comment above).
   //
   // Real credential errors (wrong key, bad secret, IP whitelist) are caught by
   // placeOrderInternal() in openLeg() and recorded there.
