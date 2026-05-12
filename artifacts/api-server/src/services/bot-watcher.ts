@@ -1127,6 +1127,20 @@ export async function probeCredentialsForBot(config: BotConfig): Promise<void> {
 
   // Each exchange is probed independently so a missing/broken credential on
   // one side never silently prevents the other side from being validated.
+  //
+  // IMPORTANT: fetchBalance() auth failures are intentionally NOT recorded as
+  // credential errors. Some exchanges (e.g. AsterDex) issue trading-only API
+  // keys that reject balance reads with AuthenticationError/PermissionDenied
+  // even though order placement works fine. Treating such a probe failure as a
+  // confirmed credential error would show a persistent false "Credentials
+  // invalid" banner until the first real trade opens (which can be hours later).
+  //
+  // Only two things trigger a credential_error from the probe path:
+  //   1. Credentials are outright missing in the DB → user definitely can't trade.
+  //   2. fetchBalance() *succeeds* → clears any prior trade-auth failure on record.
+  //
+  // Real credential errors (wrong key, bad secret, IP whitelist) are caught by
+  // placeOrderInternal() in openLeg() and recorded there.
   await Promise.allSettled([
     (async () => {
       if (!credsA) {
@@ -1138,19 +1152,22 @@ export async function probeCredentialsForBot(config: BotConfig): Promise<void> {
       try {
         const exA = createExchangeForName(exchangeA, credsA.apiKey, credsA.apiSecret, credsA.passphrase ?? undefined);
         await exA.fetchBalance();
+        // fetchBalance succeeded → key has at least read permission; clear any
+        // prior trade-auth failure so the banner doesn't linger unnecessarily.
         if (clearCredFailure(userId, exchangeA)) {
           botEventBus.emitBotEvent({ kind: "credential_ok", exchange: exchangeA });
         }
       } catch (err) {
+        // Auth error from fetchBalance does NOT confirm the key can't trade.
+        // Trading-only keys legitimately fail here on many exchanges.
+        // Non-auth errors (rate limit, network timeout) also don't mean bad creds.
+        // Either way: log for diagnostics, do not touch credFailures or emit an event.
         if (isAuthError(err)) {
-          const msg = String((err as { message?: string }).message ?? err);
-          logger.warn({ exchange: exchangeA, botId: config.id }, "Bot startup credential probe: auth error");
-          if (recordCredFailure(userId, exchangeA, msg)) {
-            botEventBus.emitBotEvent({ kind: "credential_error", exchange: exchangeA, message: `${exchangeA} credentials rejected — check API key or IP whitelist` });
-          }
+          logger.info(
+            { exchange: exchangeA, botId: config.id },
+            "Bot startup probe: fetchBalance auth error — key may be trading-only; deferring to first real trade",
+          );
         }
-        // Non-auth errors (rate limit, network) are not flagged —
-        // they don't indicate bad credentials.
       }
     })(),
     (async () => {
@@ -1168,11 +1185,10 @@ export async function probeCredentialsForBot(config: BotConfig): Promise<void> {
         }
       } catch (err) {
         if (isAuthError(err)) {
-          const msg = String((err as { message?: string }).message ?? err);
-          logger.warn({ exchange: exchangeB, botId: config.id }, "Bot startup credential probe: auth error");
-          if (recordCredFailure(userId, exchangeB, msg)) {
-            botEventBus.emitBotEvent({ kind: "credential_error", exchange: exchangeB, message: `${exchangeB} credentials rejected — check API key or IP whitelist` });
-          }
+          logger.info(
+            { exchange: exchangeB, botId: config.id },
+            "Bot startup probe: fetchBalance auth error — key may be trading-only; deferring to first real trade",
+          );
         }
       }
     })(),
