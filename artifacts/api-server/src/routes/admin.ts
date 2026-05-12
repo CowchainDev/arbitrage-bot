@@ -10,6 +10,7 @@ import {
 } from "./credentials";
 import {
   createExchangeForName,
+  extractExchangeRealizedPnl,
   sumFeesFromOrder,
 } from "./exchanges";
 
@@ -447,6 +448,193 @@ router.post("/admin/backfill-conditions", requireBotSecret, async (req, res) => 
     res.json({ updated });
   } catch (err) {
     req.log.error({ err }, "backfill-conditions: fatal error");
+    res.status(500).json({ error: "backfill_failed", message: String(err) });
+  }
+});
+
+// POST /api/admin/backfill-pnl
+// For each closed bot_leg that has at least one stored exchange order ID and has
+// not yet been backfilled, fetches the authoritative realized PnL from the
+// exchange(s) and writes it back to both bot_legs.realized_pnl_usd and the
+// matching closed_trades.realized_pnl row.
+//
+// Idempotency: a pnl_backfilled_at column is added to bot_legs on first call;
+// only rows where that column is NULL are processed.  Subsequent calls skip
+// already-backfilled rows.
+//
+// Partial backfill: if credentials or exchange history are only available for
+// one leg, the endpoint still updates with the best available data rather than
+// skipping the row entirely.
+//
+// Rows where neither exchange returns usable history are left unchanged and
+// reported in the "skipped" list.
+router.post("/admin/backfill-pnl", requireBotSecret, async (req, res) => {
+  try {
+    // ── Step 1: Ensure idempotency marker column exists ──────────────────────
+    await db.execute(sql`
+      ALTER TABLE bot_legs
+        ADD COLUMN IF NOT EXISTS pnl_backfilled_at TIMESTAMP
+    `);
+
+    // ── Step 2: Select target rows ───────────────────────────────────────────
+    // All closed legs that have at least one order ID stored and have not yet
+    // been processed by a previous backfill run.
+    const closedLegs = await db
+      .select()
+      .from(botLegsTable)
+      .where(
+        and(
+          eq(botLegsTable.status, "closed"),
+          sql`pnl_backfilled_at IS NULL`,
+          sql`(${botLegsTable.bybitOrderId} IS NOT NULL OR ${botLegsTable.binanceOrderId} IS NOT NULL)`,
+        ),
+      );
+
+    const results: Array<{
+      legId: number;
+      symbol: string;
+      pnlA: number;
+      pnlB: number;
+      combinedPnl: number;
+      closedTradeId: number | null;
+      oldTradePnl: number | null;
+    }> = [];
+    const skipped: number[] = [];
+
+    // Helper: fetch an order then extract its exchange-reported realized PnL.
+    // Returns null if the exchange no longer has history or does not expose PnL.
+    async function fetchPnlForOrderId(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ex: any,
+      orderId: string,
+      marketSymbol: string,
+    ): Promise<number | null> {
+      try {
+        const order = await ex.fetchOrder(orderId, marketSymbol);
+        return await extractExchangeRealizedPnl(ex, order, marketSymbol);
+      } catch (_) {
+        return null;
+      }
+    }
+
+    for (const leg of closedLegs) {
+      try {
+        const [config] = await db
+          .select()
+          .from(botConfigsTable)
+          .where(eq(botConfigsTable.id, leg.botConfigId))
+          .limit(1);
+        if (!config) {
+          skipped.push(leg.id);
+          continue;
+        }
+
+        const exchangeA = (config.exchangeA ?? "bybit") as SupportedExchange;
+        const exchangeB = (config.exchangeB ?? "binance") as SupportedExchange;
+
+        const [credsA, credsB] = await Promise.all([
+          getStoredCredentials(exchangeA),
+          getStoredCredentials(exchangeB),
+        ]);
+
+        const marketSymbol = `${leg.symbol}/USDT:USDT`;
+
+        // Fetch PnL for each side that has a stored order ID.
+        // Sides without an order ID contribute zero (no exchange data ever existed).
+        const [pnlA, pnlB] = await Promise.all([
+          credsA && leg.bybitOrderId
+            ? fetchPnlForOrderId(
+                createExchangeForName(exchangeA, credsA.apiKey, credsA.apiSecret, credsA.passphrase ?? undefined),
+                leg.bybitOrderId,
+                marketSymbol,
+              )
+            : Promise.resolve(leg.bybitOrderId ? null : 0),
+          credsB && leg.binanceOrderId
+            ? fetchPnlForOrderId(
+                createExchangeForName(exchangeB, credsB.apiKey, credsB.apiSecret, credsB.passphrase ?? undefined),
+                leg.binanceOrderId,
+                marketSymbol,
+              )
+            : Promise.resolve(leg.binanceOrderId ? null : 0),
+        ]);
+
+        // Only update when every side that has an order ID returned authoritative
+        // data.  If any such side returned null (exchange history expired or
+        // credentials missing), leave the row unchanged — a zero-substituted
+        // total would be less accurate than the existing formula estimate.
+        if (pnlA === null || pnlB === null) {
+          req.log.info(
+            { legId: leg.id, symbol: leg.symbol, pnlA, pnlB },
+            "backfill-pnl: skipping leg — exchange history unavailable for one or more sides",
+          );
+          skipped.push(leg.id);
+          continue;
+        }
+
+        const combinedPnl = pnlA + pnlB;
+
+        // Find the single best-matching closed_trade using SQL ordering so the
+        // result is deterministic even when multiple close events for the same
+        // symbol fall within the 5-second window (mirrors backfill-open-fees).
+        const matchRows = await db.execute<{ id: number; realized_pnl: string }>(sql`
+          SELECT id, realized_pnl
+          FROM   closed_trades
+          WHERE  symbol = ${leg.symbol}
+            AND  ABS(EXTRACT(EPOCH FROM (entry_time - ${leg.openedAt}::timestamp))) < 5
+          ORDER BY ABS(EXTRACT(EPOCH FROM (entry_time - ${leg.openedAt}::timestamp))) ASC,
+                   id ASC
+          LIMIT  1
+        `);
+        const match = matchRows.rows[0] ?? null;
+
+        const closedTradeId: number | null = match ? Number(match.id) : null;
+        const oldTradePnl: number | null = match ? Number(match.realized_pnl) : null;
+
+        // Wrap all writes for this leg in a single transaction so that
+        // pnl_backfilled_at is only set after every update succeeds.
+        // If any write fails the transaction rolls back and the leg retains
+        // pnl_backfilled_at = NULL, making it eligible for the next run.
+        await db.transaction(async (tx) => {
+          await tx
+            .update(botLegsTable)
+            .set({ realizedPnlUsd: String(combinedPnl) })
+            .where(eq(botLegsTable.id, leg.id));
+
+          if (match) {
+            await tx
+              .update(closedTradesTable)
+              .set({ realizedPnl: String(combinedPnl) })
+              .where(eq(closedTradesTable.id, match.id));
+          }
+
+          // pnl_backfilled_at is set last, inside the transaction, so it is
+          // only committed when both preceding writes succeed.  Raw SQL is used
+          // because the column is not yet part of the Drizzle schema object.
+          await tx.execute(sql`
+            UPDATE bot_legs SET pnl_backfilled_at = NOW() WHERE id = ${leg.id}
+          `);
+        });
+
+        results.push({ legId: leg.id, symbol: leg.symbol, pnlA, pnlB, combinedPnl, closedTradeId, oldTradePnl });
+      } catch (legErr) {
+        req.log.warn({ legErr, legId: leg.id }, "backfill-pnl: error processing leg");
+        skipped.push(leg.id);
+      }
+    }
+
+    req.log.info(
+      { processed: closedLegs.length, updated: results.length, skipped: skipped.length },
+      "backfill-pnl: complete",
+    );
+
+    res.json({
+      processed: closedLegs.length,
+      updated: results.length,
+      skipped: skipped.length,
+      results,
+    });
+  } catch (err) {
+    req.log.error({ err }, "backfill-pnl: fatal error");
     res.status(500).json({ error: "backfill_failed", message: String(err) });
   }
 });

@@ -2111,7 +2111,7 @@ export type ClosePositionInternalResult = {
  * Attempt to extract the exchange's own realized PnL for a close order.
  * Returns null when the exchange does not expose it in a reliable field.
  */
-async function extractExchangeRealizedPnl(
+export async function extractExchangeRealizedPnl(
   ex: SupportedCcxtExchange,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   order: any,
