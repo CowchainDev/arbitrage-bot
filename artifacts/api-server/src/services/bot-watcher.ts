@@ -779,6 +779,12 @@ export async function closeAllLegsForBot(botId: number): Promise<{ closed: numbe
         spreadAtExit: spreadAtExit != null ? String(spreadAtExit) : undefined,
         realizedPnlUsd: String(realizedPnl),
       }).where(eq(botLegsTable.id, leg.id));
+      // pnlFromExchange must be set explicitly here — this path bypasses closeLeg()
+      // and has its own DB insert. Without it the row would store NULL, making it
+      // indistinguishable from pre-feature historical records.
+      // true  → both legs used exchange-reported PnL
+      // false → at least one leg fell back to the spread formula (covers "formula" and "blended")
+      const pnlFromExchange = scPnlSource === "exchange";
       try {
         await db.insert(closedTradesTable).values({
           userId: botConfig.userId,
@@ -795,7 +801,7 @@ export async function closeAllLegsForBot(botId: number): Promise<{ closed: numbe
           quantity: String((Number(leg.bybitQty) * Number(leg.bybitEntry) + Number(leg.binanceQty) * Number(leg.binanceEntry)) / 2),
           entryTime: leg.openedAt,
           closeTime: new Date(),
-          pnlFromExchange: scPnlSource === "exchange",
+          pnlFromExchange,
         });
       } catch {}
       closed++;
@@ -807,6 +813,7 @@ export async function closeAllLegsForBot(botId: number): Promise<{ closed: numbe
           exchangePnlB: result.exchangeRealizedPnlB,
           scLegAPnlSource,
           scLegBPnlSource,
+          pnlFromExchange,
           realizedPnl,
           totalFees,
         },
