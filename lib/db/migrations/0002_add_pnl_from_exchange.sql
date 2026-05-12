@@ -1,1 +1,1 @@
-ALTER TABLE "closed_trades" ADD COLUMN "pnl_from_exchange" boolean;
+ALTER TABLE "closed_trades" ADD COLUMN IF NOT EXISTS "pnl_from_exchange" boolean;

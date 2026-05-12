@@ -1,1 +1,1 @@
-ALTER TABLE "closed_trades" ADD COLUMN "pnl_partial" boolean;
+ALTER TABLE "closed_trades" ADD COLUMN IF NOT EXISTS "pnl_partial" boolean;
