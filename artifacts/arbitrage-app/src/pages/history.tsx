@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { formatFee } from "@/lib/utils";
+import { isHttpStatus } from "@/lib/api-errors";
 import {
   useGetTrades,
   getGetTradesQueryKey,
@@ -457,15 +458,6 @@ function TradeTable({ trades }: { trades: ClosedTrade[] }) {
   );
 }
 
-function isHttpStatus(error: unknown, status: number): boolean {
-  return (
-    error != null &&
-    typeof error === "object" &&
-    "status" in error &&
-    (error as { status: number }).status === status
-  );
-}
-
 export default function History() {
   const queryClient = useQueryClient();
   const [backfilling, setBackfilling] = useState(false);
@@ -573,9 +565,9 @@ export default function History() {
           <div className="text-sm text-destructive">
             {isHttpStatus(tradesQuery.error, 401) ? (
               <>
-                <span className="font-medium">Authentication required</span> — your session may have expired.{" "}
-                Reload the page to sign in again, or verify your credentials in{" "}
-                <Link href="/settings" className="underline underline-offset-2 hover:opacity-80 transition-opacity">Settings</Link>.
+                <span className="font-medium">Bot secret required</span> — go to{" "}
+                <Link href="/settings" className="underline underline-offset-2 hover:opacity-80 transition-opacity">Settings</Link>{" "}
+                to configure it.
               </>
             ) : (
               "Failed to load trade history."
@@ -725,7 +717,7 @@ export default function History() {
           <div className="flex items-center justify-center h-40 text-destructive text-sm gap-2">
             <ShieldAlert className="w-4 h-4 shrink-0" />
             {isHttpStatus(pnlChartQuery.error, 401)
-              ? <span>Authentication required — <Link href="/settings" className="underline underline-offset-2 hover:opacity-80 transition-opacity">go to Settings</Link>.</span>
+              ? <span>Bot secret required — <Link href="/settings" className="underline underline-offset-2 hover:opacity-80 transition-opacity">go to Settings</Link> to configure it.</span>
               : "Failed to load chart data."}
           </div>
         ) : (
@@ -750,7 +742,7 @@ export default function History() {
           <div className="flex items-center justify-center h-40 text-destructive text-sm gap-2">
             <ShieldAlert className="w-4 h-4 shrink-0" />
             {isHttpStatus(pnlChartQuery.error, 401)
-              ? <span>Authentication required — <Link href="/settings" className="underline underline-offset-2 hover:opacity-80 transition-opacity">go to Settings</Link>.</span>
+              ? <span>Bot secret required — <Link href="/settings" className="underline underline-offset-2 hover:opacity-80 transition-opacity">go to Settings</Link> to configure it.</span>
               : "Failed to load chart data."}
           </div>
         ) : (

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { useBots } from "@/hooks/use-bots";
+import { isHttpStatus } from "@/lib/api-errors";
 import { useApiCredentials } from "@/hooks/use-api-credentials";
 import { useNotifications } from "@/contexts/notifications";
 import {
@@ -666,15 +667,6 @@ function BotCard({ bot, openLegs }: { bot: BotConfig; openLegs: BotLeg[] }) {
   );
 }
 
-function is401(error: unknown): boolean {
-  return (
-    error != null &&
-    typeof error === "object" &&
-    "status" in error &&
-    (error as { status: number }).status === 401
-  );
-}
-
 export default function Bots() {
   const { bots, getBotStatusForSymbol, isLoading, isError, error } = useBots();
 
@@ -729,13 +721,12 @@ export default function Bots() {
         <div className="flex flex-col items-center justify-center py-20 gap-3">
           <AlertTriangle className="w-8 h-8 text-destructive opacity-70" />
           <p className="text-sm font-medium text-destructive">
-            {is401(error) ? "Authentication required — your session may have expired." : "Failed to load bots."}
+            {isHttpStatus(error, 401) ? "Bot secret required." : "Failed to load bots."}
           </p>
           <p className="text-xs text-muted-foreground">
-            {is401(error)
-              ? "Reload the page to sign in again, or check your credentials in "
-              : "If the problem persists, check your credentials in "}
-            <Link href="/settings" className="underline underline-offset-2 hover:text-foreground transition-colors">Settings</Link>.
+            {isHttpStatus(error, 401)
+              ? <>Go to <Link href="/settings" className="underline underline-offset-2 hover:text-foreground transition-colors">Settings</Link> to configure your bot secret.</>
+              : <>If the problem persists, check your configuration in <Link href="/settings" className="underline underline-offset-2 hover:text-foreground transition-colors">Settings</Link>.</>}
           </p>
         </div>
       ) : bots.length === 0 ? (
