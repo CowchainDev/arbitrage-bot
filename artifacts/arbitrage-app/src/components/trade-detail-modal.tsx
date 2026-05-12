@@ -180,7 +180,7 @@ export function TradeDetailModal({ trade, onClose }: TradeDetailModalProps) {
             <Row label="Realized PnL (excl. funding)">
               <span className={`font-semibold inline-flex items-center gap-1 ${pnlPositive ? "text-primary" : "text-destructive"}`}>
                 {trade.pnlFromExchange === true && (
-                  <CheckCircle2 className="w-3 h-3 text-emerald-500 shrink-0" title="Exchange-reported" />
+                  <span title="Exchange-reported"><CheckCircle2 className="w-3 h-3 text-emerald-500 shrink-0" /></span>
                 )}
                 {trade.pnlFromExchange === false && (
                   <span

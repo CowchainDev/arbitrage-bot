@@ -293,6 +293,14 @@ export interface ClosedTrade {
   /** True when this figure came from a partial backfill — one exchange returned historical PnL but the other did not (the missing side was treated as zero). Always null/absent for live trades. */
   pnlPartial?: boolean | null;
   quantity: number;
+  /** Entry price for the long leg. Null for trades recorded before this field was added. */
+  longEntryPrice?: number | null;
+  /** Entry price for the short leg. Null for trades recorded before this field was added. */
+  shortEntryPrice?: number | null;
+  /** Exit price for the long leg. Null for trades recorded before this field was added. */
+  longExitPrice?: number | null;
+  /** Exit price for the short leg. Null for trades recorded before this field was added. */
+  shortExitPrice?: number | null;
   entryTime: string;
   closeTime: string;
 }

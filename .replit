@@ -69,12 +69,12 @@ args = "pnpm --filter @workspace/api-zod exec tsc --noEmit --project tsconfig.js
 name = "typecheck-arbitrage-app"
 author = "agent"
 
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "pnpm --filter @workspace/arbitrage-app exec tsc --noEmit --project tsconfig.json"
-
 [workflows.workflow.metadata]
 isValidation = true
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "bash scripts/typecheck-frontend.sh"
 
 [agent]
 stack = "PNPM_WORKSPACE"

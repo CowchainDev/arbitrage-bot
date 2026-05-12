@@ -1268,6 +1268,22 @@ components:
           type: boolean
           nullable: true
           description: True when this figure came from a partial backfill — one exchange returned historical PnL but the other did not (the missing side was treated as zero). Always null/absent for live trades.
+        longEntryPrice:
+          type: number
+          nullable: true
+          description: Entry price for the long leg. Null for trades recorded before this field was added.
+        shortEntryPrice:
+          type: number
+          nullable: true
+          description: Entry price for the short leg. Null for trades recorded before this field was added.
+        longExitPrice:
+          type: number
+          nullable: true
+          description: Exit price for the long leg. Null for trades recorded before this field was added.
+        shortExitPrice:
+          type: number
+          nullable: true
+          description: Exit price for the short leg. Null for trades recorded before this field was added.
         quantity:
           type: number
         entryTime:

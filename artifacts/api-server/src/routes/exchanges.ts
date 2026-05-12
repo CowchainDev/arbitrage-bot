@@ -1879,9 +1879,18 @@ export async function placeOrderInternal(
     const creds = getAsterCreds(ex);
     if (!creds) throw new Error("AsterDex: missing wallet/signer credentials");
 
-    if (leverage && leverage !== 1) {
+    // Always attempt to set leverage so stale account leverage can't block
+    // the order. If the requested value exceeds the symbol's maximum, AsterDex
+    // returns -4028; we catch that, fall back to 1x, and log a warning so
+    // the user can lower their configured leverage.
+    const wantedLeverage = (leverage && leverage >= 1) ? leverage : 1;
+    try {
+      await asterSetLeverage(symbol, wantedLeverage, creds.walletAddress, creds.signerAddress, creds.privateKey);
+    } catch (leverageErr) {
+      const leverageMsg = String((leverageErr as { message?: string }).message ?? leverageErr);
+      logger.warn({ symbol, wantedLeverage, err: leverageMsg }, "AsterDex: setLeverage failed, falling back to 1x");
       try {
-        await asterSetLeverage(symbol, leverage, creds.walletAddress, creds.signerAddress, creds.privateKey);
+        await asterSetLeverage(symbol, 1, creds.walletAddress, creds.signerAddress, creds.privateKey);
       } catch (_) {}
     }
 
@@ -1898,7 +1907,22 @@ export async function placeOrderInternal(
     logger.info({ exchange: "aster", symbol, side, usdAmount, price, qty }, "placeOrderInternal: placing order");
 
     const asterSide = side === "long" ? "BUY" : "SELL";
-    const orderResult = await asterPlaceOrder(symbol, asterSide, qty, creds.walletAddress, creds.signerAddress, creds.privateKey);
+    let orderResult: Awaited<ReturnType<typeof asterPlaceOrder>>;
+    try {
+      orderResult = await asterPlaceOrder(symbol, asterSide, qty, creds.walletAddress, creds.signerAddress, creds.privateKey);
+    } catch (orderErr) {
+      const errMsg = String((orderErr as { message?: string }).message ?? orderErr);
+      // -2027: current leverage exceeds symbol maximum — set to 1x and retry once.
+      if (errMsg.includes("-2027") || errMsg.toLowerCase().includes("leverage exceeds")) {
+        logger.warn({ symbol, err: errMsg }, "AsterDex: order rejected due to leverage, retrying at 1x");
+        try {
+          await asterSetLeverage(symbol, 1, creds.walletAddress, creds.signerAddress, creds.privateKey);
+        } catch (_) {}
+        orderResult = await asterPlaceOrder(symbol, asterSide, qty, creds.walletAddress, creds.signerAddress, creds.privateKey);
+      } else {
+        throw orderErr;
+      }
+    }
 
     const filledQty = Number(orderResult.executedQty) || qty;
     // Prefer avgPrice from the response; fall back to cumQuote/executedQty (standard
