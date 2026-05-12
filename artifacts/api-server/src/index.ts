@@ -228,20 +228,19 @@ server.listen(port, (err?: Error) => {
     startBotWatcher();
   })().catch((e) => logger.error({ err: e }, "Startup failed during migration or bot watcher init"));
 
-  fetchPriceSpreads()
-    .then(() => {
-      logger.info("Startup price cache warm-up complete");
-      return prewarmKlinesCache();
-    })
-    .then(({ succeeded, failed, symbols }) => {
+  // Run price fetch and klines prewarm in parallel — previously sequential, causing ~24s cold-start delay.
+  // prewarmKlinesCache falls back to PREWARM_SYMBOLS when priceCache is empty so the order is fine.
+  Promise.all([
+    fetchPriceSpreads().then(() => logger.info("Startup price cache warm-up complete")),
+    prewarmKlinesCache().then(({ succeeded, failed, symbols }) => {
       const total = symbols.length * PREWARM_INTERVALS.length;
       if (failed > 0) {
         logger.warn({ succeeded, failed, total, symbols }, "Startup klines cache pre-warm completed with failures");
       } else {
         logger.info({ succeeded, total, symbols }, "Startup klines cache pre-warm complete");
       }
-    })
-    .catch((e) => logger.warn({ err: e }, "Startup price/klines cache warm-up failed"));
+    }),
+  ]).catch((e) => logger.warn({ err: e }, "Startup price/klines cache warm-up failed"));
 
   setInterval(() => {
     prewarmKlinesCache()

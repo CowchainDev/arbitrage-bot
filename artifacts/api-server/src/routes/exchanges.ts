@@ -67,7 +67,7 @@ function getKlinesCacheTtl(interval: string): number {
 
 export const PREWARM_SYMBOLS = ["BTC", "ETH", "SOL", "BNB", "XRP", "DOGE"];
 export const PREWARM_INTERVALS = ["15m", "1h", "4h", "1d"];
-const PREWARM_CONCURRENCY = 4;
+const PREWARM_CONCURRENCY = 10;
 const PREWARM_TOP_N = 10;
 const KLINES_TIMEOUT_MS = 4000;
 const RELAY_TIMEOUT_MS = 8000;

@@ -44,6 +44,10 @@ app.use(
 app.use(express.json({ limit: "100kb" }));
 app.use(express.urlencoded({ extended: true, limit: "100kb" }));
 
+app.get("/health", (_req, res) => {
+  res.json({ ok: true, ts: Date.now() });
+});
+
 app.use("/api", router);
 
 export default app;
