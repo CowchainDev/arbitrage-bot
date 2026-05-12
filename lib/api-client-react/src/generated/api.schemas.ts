@@ -530,8 +530,8 @@ export interface BotStats {
   totalRealizedPnlUsd: number;
   /** Average spreadAtEntry across all closed legs */
   avgEntrySpread: number;
-  /** Average spreadAtExit across all closed legs */
-  avgExitSpread: number;
+  /** Average spreadAtExit across all closed legs that have exit spread data. Null when no legs have exit spread data. */
+  avgExitSpread: number | null;
   /** Sum of notional value (qty * entry price) across all closed legs */
   totalVolumeUsd: number;
   /** Number of closed legs */

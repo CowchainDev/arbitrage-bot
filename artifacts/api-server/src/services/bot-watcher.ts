@@ -349,11 +349,37 @@ async function closeLeg(
   }
 
   const closeFees = result.closeFeeA + result.closeFeeB;
-  // Use actual fill prices from the close orders when available — cache prices are stale
-  // and can differ from real fills, especially on illiquid tokens. Fall back to the
-  // cache prices that triggered the close trigger if the exchange didn't return an avgPrice.
-  const closePriceA = result.closePriceA ?? priceA;
-  const closePriceB = result.closePriceB ?? priceB;
+  const marketSymbol = `${leg.symbol}/USDT:USDT`;
+
+  // Use actual fill prices from the close orders when available.
+  // When the exchange doesn't return a fill price, try to fetch the last
+  // traded price via ticker before falling back to the (potentially stale)
+  // cache price that triggered the close. Log a warning so the gap is visible.
+  let closePriceA = result.closePriceA;
+  if (closePriceA == null) {
+    try {
+      const ticker = await exA.fetchTicker(marketSymbol);
+      closePriceA = (ticker?.last ?? ticker?.info?.markPrice ?? null) as number | null;
+    } catch (_) {}
+    logger.warn(
+      { legId: leg.id, symbol: leg.symbol, resolvedFromTicker: closePriceA != null },
+      "Bot: exA fill price absent from close order — using ticker/cache fallback for exit spread",
+    );
+    closePriceA = closePriceA ?? priceA;
+  }
+
+  let closePriceB = result.closePriceB;
+  if (closePriceB == null) {
+    try {
+      const ticker = await exB.fetchTicker(marketSymbol);
+      closePriceB = (ticker?.last ?? ticker?.info?.markPrice ?? null) as number | null;
+    } catch (_) {}
+    logger.warn(
+      { legId: leg.id, symbol: leg.symbol, resolvedFromTicker: closePriceB != null },
+      "Bot: exB fill price absent from close order — using ticker/cache fallback for exit spread",
+    );
+    closePriceB = closePriceB ?? priceB;
+  }
 
   // Prefer exchange-reported realized PnL (authoritative — accounts for blended cost basis,
   // partial fills, and prior DCA). The exchange values are used as-is (no extra fee
@@ -641,8 +667,34 @@ export async function closeAllLegsForBot(botId: number): Promise<{ closed: numbe
 
     if (result.bothClosed) {
       const closeFees = result.closeFeeA + result.closeFeeB;
-      const closePriceA = result.closePriceA ?? priceA;
-      const closePriceB = result.closePriceB ?? priceB;
+      const mktSymbol = `${leg.symbol}/USDT:USDT`;
+
+      let closePriceA = result.closePriceA;
+      if (closePriceA == null) {
+        try {
+          const ticker = await exA.fetchTicker(mktSymbol);
+          closePriceA = (ticker?.last ?? ticker?.info?.markPrice ?? null) as number | null;
+        } catch (_) {}
+        logger.warn(
+          { legId: leg.id, symbol: leg.symbol, resolvedFromTicker: closePriceA != null },
+          "stop-and-close: exA fill price absent — using ticker/cache fallback for exit spread",
+        );
+        closePriceA = closePriceA ?? priceA;
+      }
+
+      let closePriceB = result.closePriceB;
+      if (closePriceB == null) {
+        try {
+          const ticker = await exB.fetchTicker(mktSymbol);
+          closePriceB = (ticker?.last ?? ticker?.info?.markPrice ?? null) as number | null;
+        } catch (_) {}
+        logger.warn(
+          { legId: leg.id, symbol: leg.symbol, resolvedFromTicker: closePriceB != null },
+          "stop-and-close: exB fill price absent — using ticker/cache fallback for exit spread",
+        );
+        closePriceB = closePriceB ?? priceB;
+      }
+
       const realizedPnl = computeLegPnl(leg, closePriceA, closePriceB, closeFees);
       const totalFees = Number(leg.openFeeA ?? 0) + Number(leg.openFeeB ?? 0) + closeFees;
       const spreadAtExit = getSpreadPct(closePriceA, closePriceB);
