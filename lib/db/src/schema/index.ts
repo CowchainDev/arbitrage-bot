@@ -8,6 +8,7 @@ import {
   integer,
   index,
   unique,
+  primaryKey,
 } from "drizzle-orm/pg-core";
 
 export const credentialsTable = pgTable(
@@ -20,7 +21,7 @@ export const credentialsTable = pgTable(
     passphrase: text("passphrase"),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
-  (t) => [unique("credentials_user_exchange").on(t.userId, t.exchange)],
+  (t) => [primaryKey({ name: "credentials_pkey", columns: [t.userId, t.exchange] })],
 );
 
 export type Credential = typeof credentialsTable.$inferSelect;

@@ -50,6 +50,13 @@
       "when": 1778601600000,
       "tag": "0006_add_user_id",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1747526400000,
+      "tag": "0007_credentials_composite_pk",
+      "breakpoints": true
     }
   ]
 }
